@@ -22,9 +22,8 @@ class PixivSource implements ImageSourceProvider {
     final effectivePath = path ?? '/recommended';
 
     if (effectivePath.startsWith('/bookmarks')) {
-      final uri = Uri.parse('https://dummy$effectivePath');
-      final userId = uri.queryParameters['user_id'];
-      if (userId == null) throw Exception('user_id が必要です');
+      final userId = _client.userId;
+      if (userId == null) throw Exception('ログインが必要です');
       result = await _client.userBookmarksIllust(
         int.parse(userId),
         offset: _nextOffset ?? 0,

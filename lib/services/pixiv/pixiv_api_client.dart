@@ -17,6 +17,8 @@ class PixivApiClient {
   final PixivWebClient _webClient;
   final Dio _imageDio;
 
+  String? get userId => _webClient.userId;
+
   PixivApiClient({required PixivWebClient webClient})
       : _webClient = webClient,
         _imageDio = Dio(BaseOptions(
