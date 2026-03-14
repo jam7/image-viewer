@@ -236,11 +236,26 @@ class _ViewerScreenState extends State<ViewerScreen> {
     }
 
     if (_error != null) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(backgroundColor: Colors.transparent),
-        body: Center(
-          child: Text(_error!, style: const TextStyle(color: Colors.red)),
+      return Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: _onKeyEvent,
+        child: Listener(
+          onPointerDown: _onPointerDown,
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              title: const Text('エラー', style: TextStyle(color: Colors.white)),
+            ),
+            body: Center(
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+          ),
         ),
       );
     }
