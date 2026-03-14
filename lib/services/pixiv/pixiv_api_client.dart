@@ -113,6 +113,55 @@ class PixivApiClient {
     );
   }
 
+  /// ユーザーの作品一覧を取得。
+  Future<PixivIllustList> userIllusts(
+    int userId, {
+    int offset = 0,
+    int limit = 48,
+  }) async {
+    // まずユーザーの全作品IDを取得
+    final profileData = await _webClient.fetchJson(
+      '$_baseUrl/ajax/user/$userId/profile/all?lang=ja',
+    );
+    _checkError(profileData);
+    final body = profileData['body'] as Map<String, dynamic>;
+    final illusts = body['illusts'] as Map<String, dynamic>? ?? {};
+    final manga = body['manga'] as Map<String, dynamic>? ?? {};
+
+    // ID一覧（新しい順）
+    final allIds = [...illusts.keys, ...manga.keys]
+      ..sort((a, b) => int.parse(b).compareTo(int.parse(a)));
+
+    if (allIds.isEmpty) {
+      return const PixivIllustList(illusts: [], nextOffset: null);
+    }
+
+    // ページネーション
+    final pageIds = allIds.skip(offset).take(limit).toList();
+    if (pageIds.isEmpty) {
+      return const PixivIllustList(illusts: [], nextOffset: null);
+    }
+
+    // 作品詳細を一括取得
+    final idsParam = pageIds.map((id) => 'ids%5B%5D=$id').join('&');
+    final worksData = await _webClient.fetchJson(
+      '$_baseUrl/ajax/user/$userId/profile/illusts?$idsParam&work_category=illustManga&is_first_page=0&lang=ja',
+    );
+    _checkError(worksData);
+    final worksBody = worksData['body'] as Map<String, dynamic>? ?? {};
+    final works = worksBody['works'] as Map<String, dynamic>? ?? {};
+
+    final artworks = works.values
+        .map((w) => PixivArtwork.fromThumbnailJson(w as Map<String, dynamic>))
+        .toList()
+      ..sort((a, b) => b.id.compareTo(a.id));
+
+    return PixivIllustList(
+      illusts: artworks,
+      nextOffset: offset + limit < allIds.length ? offset + limit : null,
+    );
+  }
+
   /// 画像をダウンロード（Refererヘッダ付き）。
   Future<Uint8List> downloadImage(
     String imageUrl, {

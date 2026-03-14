@@ -112,7 +112,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
+  String? _userPath; // /user/{id} で作者ページを表示中の場合
+
   String get _currentPath {
+    if (_userPath != null) return _userPath!;
     switch (_currentTab) {
       case _PixivTab.recommended:
         return '/recommended';
@@ -120,7 +123,49 @@ class _GalleryScreenState extends State<GalleryScreen> {
         return '/bookmarks';
       case _PixivTab.search:
         final word = _searchController.text.trim();
-        return word.isEmpty ? '/recommended' : '/search?word=$word';
+        if (word.isEmpty) return '/recommended';
+        final parsed = _parsePixivUrl(word);
+        if (parsed != null) return parsed;
+        return '/search?word=$word';
+    }
+  }
+
+  /// Pixiv URLを解析して内部パスに変換。
+  /// - https://www.pixiv.net/artworks/12345 → 作品を直接開く
+  /// - https://www.pixiv.net/users/12345 → /user/12345
+  String? _parsePixivUrl(String input) {
+    final uri = Uri.tryParse(input);
+    if (uri == null || !uri.host.contains('pixiv.net')) return null;
+
+    // /artworks/{id}
+    final artworkMatch = RegExp(r'/artworks/(\d+)').firstMatch(uri.path);
+    if (artworkMatch != null) {
+      return '/artworks/${artworkMatch.group(1)}';
+    }
+
+    // /users/{id}
+    final userMatch = RegExp(r'/users/(\d+)').firstMatch(uri.path);
+    if (userMatch != null) {
+      return '/user/${userMatch.group(1)}';
+    }
+
+    return null;
+  }
+
+  /// 作者ページをギャラリーで表示。
+  void showUserWorks(int userId, String userName) {
+    setState(() {
+      _userPath = '/user/$userId';
+      _images.clear();
+      _thumbnailData.clear();
+    });
+    widget.source.resetPagination();
+    _loadImages();
+  }
+
+  void _clearUserPath() {
+    if (_userPath != null) {
+      setState(() => _userPath = null);
     }
   }
 
@@ -196,25 +241,57 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   void _onTabChanged(_PixivTab tab) {
-    if (_currentTab == tab) return;
+    if (_currentTab == tab && _userPath == null) return;
     _currentTab = tab;
+    _clearUserPath();
     _loadImages();
   }
 
   void _onSearch() {
+    _clearUserPath();
     _currentTab = _PixivTab.search;
+
+    final input = _searchController.text.trim();
+    final parsed = _parsePixivUrl(input);
+
+    // /artworks/{id} の場合は直接ビューアを開く
+    if (parsed != null && parsed.startsWith('/artworks/')) {
+      final id = parsed.substring('/artworks/'.length);
+      final source = ImageSource(
+        id: id,
+        name: 'Artwork $id',
+        uri: '',
+        type: ImageSourceType.pixiv,
+        metadata: {'illustId': int.parse(id)},
+      );
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ViewerScreen(
+          initialImage: source,
+          source: widget.source,
+          cacheManager: widget.cacheManager,
+          favoritesStore: widget.favoritesStore,
+        ),
+      ));
+      return;
+    }
+
     _loadImages();
   }
 
-  void _openViewer(int index) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ViewerScreen(
-        initialImage: _images[index],
-        source: widget.source,
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
+  void _openViewer(int index) async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => ViewerScreen(
+          initialImage: _images[index],
+          source: widget.source,
+          cacheManager: widget.cacheManager,
+          favoritesStore: widget.favoritesStore,
+        ),
       ),
-    ));
+    );
+    if (result != null && result['action'] == 'showUser') {
+      showUserWorks(result['userId'] as int, result['userName'] as String);
+    }
   }
 
   void _openSettings() {
@@ -234,7 +311,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
       onKeyEvent: _onKeyEvent,
       child: Scaffold(
       appBar: AppBar(
-        title: const Text('Pixiv'),
+        leading: _userPath != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  _clearUserPath();
+                  _loadImages();
+                },
+              )
+            : null,
+        title: Text(_userPath != null ? '作者の作品' : 'Pixiv'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),

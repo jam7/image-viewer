@@ -342,13 +342,30 @@ class _ViewerScreenState extends State<ViewerScreen> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                currentImage.metadata?['author']
-                                        as String? ??
-                                    '',
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12),
-                                overflow: TextOverflow.ellipsis,
+                              child: GestureDetector(
+                                onTap: () {
+                                  final authorId = currentImage.metadata?['authorId'];
+                                  final authorName = currentImage.metadata?['author'] as String? ?? '';
+                                  if (authorId != null) {
+                                    Navigator.of(context).pop({
+                                      'action': 'showUser',
+                                      'userId': authorId,
+                                      'userName': authorName,
+                                    });
+                                  }
+                                },
+                                child: Text(
+                                  currentImage.metadata?['author']
+                                          as String? ??
+                                      '',
+                                  style: const TextStyle(
+                                    color: Colors.lightBlueAccent,
+                                    fontSize: 12,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Colors.lightBlueAccent,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
                             IconButton(
