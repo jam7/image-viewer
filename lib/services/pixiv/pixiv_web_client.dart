@@ -92,31 +92,38 @@ class PixivWebClient {
   Future<bool> checkLoginStatus() async {
     try {
       _log('Checking login status...');
-      // ページ内のメタデータからユーザーIDを取得
-      if (_winController != null) {
+
+      // /ajax/user/extra でログイン確認
+      final data = await fetchJson('https://www.pixiv.net/ajax/user/extra');
+      _log('Login check result: error=${data['error']}');
+      if (data['error'] == true) return false;
+
+      // ユーザーIDをmeta-global-dataから取得
+      if (_winController != null && _userId == null) {
         final result = await _winController!.executeScript(
-          "document.querySelector('meta[name=\"global-data\"]')?.getAttribute('id') "
-          "|| document.body?.dataset?.userId "
-          "|| (document.cookie.match(/user_id=(\\d+)/) || [])[1] "
-          "|| ''",
+          "document.querySelector('#meta-global-data')?.content || ''",
         );
-        var id = result.toString().replaceAll('"', '').replaceAll("'", '');
-        if (id.isEmpty) {
-          // pixiv.netのグローバル変数からユーザーIDを取得
-          final jsResult = await _winController!.executeScript(
-            "typeof pixiv !== 'undefined' && pixiv.user ? pixiv.user.id.toString() : ''",
-          );
-          id = jsResult.toString().replaceAll('"', '').replaceAll("'", '');
-        }
-        if (id.isNotEmpty && id != 'null') {
-          _userId = id;
+        var raw = result.toString().replaceAll('"', '').replaceAll("'", '');
+        _log('meta-global-data (first 200): ${raw.substring(0, raw.length > 200 ? 200 : raw.length)}');
+
+        // JSONの中から userId を探す
+        final match = RegExp(r'userId\\?:[\s\\]*(\d+)').firstMatch(raw);
+        if (match != null) {
+          _userId = match.group(1);
           _log('User ID: $_userId');
+        } else {
+          _log('Could not detect user ID from meta-global-data, trying fetch...');
+          // フォールバック: WebView内fetchでプロフィールページを取得
+          try {
+            final profileData = await fetchJson(
+              'https://www.pixiv.net/ajax/user/me',
+            );
+            _log('user/me response: $profileData');
+          } catch (_) {}
         }
       }
 
-      final data = await fetchJson('https://www.pixiv.net/ajax/user/extra');
-      _log('Login check result: error=${data['error']}');
-      return data['error'] != true;
+      return true;
     } catch (e) {
       _log('Login check exception: $e');
       return false;
