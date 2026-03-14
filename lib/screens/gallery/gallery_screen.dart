@@ -27,7 +27,7 @@ class GalleryScreen extends StatefulWidget {
   State<GalleryScreen> createState() => _GalleryScreenState();
 }
 
-enum _PixivTab { recommended, bookmarks, search }
+enum _PixivTab { recommended, bookmarks, favorites, search }
 
 class _GalleryScreenState extends State<GalleryScreen> {
   final List<ImageSource> _images = [];
@@ -131,6 +131,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         return '/recommended';
       case _PixivTab.bookmarks:
         return '/bookmarks';
+      case _PixivTab.favorites:
+        return '/favorites'; // ローカル処理、APIは呼ばない
       case _PixivTab.search:
         final word = _searchController.text.trim();
         if (word.isEmpty) return '/recommended';
@@ -195,6 +197,27 @@ class _GalleryScreenState extends State<GalleryScreen> {
     widget.source.resetPagination();
     _images.clear();
     _thumbnailData.clear();
+
+    // お気に入りタブはローカルデータから読み込み
+    if (_currentTab == _PixivTab.favorites && _userPath == null) {
+      final entries = widget.favoritesStore.listAll();
+      final images = entries.map((e) => ImageSource(
+        id: e.imageId,
+        name: e.name,
+        uri: e.uri,
+        type: ImageSourceType.pixiv,
+        metadata: {
+          ...e.sourceInfo,
+          'thumbnailUrl': e.thumbnailUrl,
+        },
+      )).toList();
+      setState(() {
+        _images.addAll(images);
+        _isLoading = false;
+      });
+      _loadThumbnails(images);
+      return;
+    }
 
     try {
       final images = await widget.source.listImages(path: _currentPath);
@@ -310,6 +333,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
     if (result != null && result['action'] == 'showUser') {
       showUserWorks(result['userId'] as int, result['userName'] as String);
+    } else if (_currentTab == _PixivTab.favorites) {
+      // ビューアでお気に入りが変更された可能性があるので再読み込み
+      _loadImages();
     }
   }
 
@@ -352,6 +378,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
             children: [
               _tabButton('おすすめ', _PixivTab.recommended),
               _tabButton('ブックマーク', _PixivTab.bookmarks),
+              _tabButton('お気に入り', _PixivTab.favorites),
               _tabButton('検索', _PixivTab.search),
             ],
           ),
