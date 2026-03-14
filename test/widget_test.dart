@@ -1,0 +1,12 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:image_viewer/app.dart';
+
+void main() {
+  testWidgets('App smoke test', (WidgetTester tester) async {
+    await tester.pumpWidget(const ImageViewerApp());
+
+    // 初期状態はローディング表示
+    expect(find.byType(ImageViewerApp), findsOneWidget);
+  });
+}
