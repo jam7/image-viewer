@@ -203,7 +203,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _isLoading = false;
       });
       _loadThumbnails(images);
-    } catch (e) {
+    } catch (e, st) {
+      print('[Gallery] loadImages error: $e\n$st');
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -222,7 +223,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _isLoading = false;
       });
       _loadThumbnails(images);
-    } catch (e) {
+    } catch (e, st) {
+      print('[Gallery] loadMore error: $e\n$st');
       setState(() {
         _error = e.toString();
         _isLoading = false;
