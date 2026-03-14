@@ -36,8 +36,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String? _error;
   _PixivTab _currentTab = _PixivTab.recommended;
   final _searchController = TextEditingController();
+  final _filterController = TextEditingController();
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
+  int _minPageCount = 0;
+
+  void _applyFilter() {
+    final text = _filterController.text.trim();
+    final match = RegExp(r'>(\d+)').firstMatch(text);
+    _minPageCount = match != null ? int.parse(match.group(1)!) : 0;
+  }
+
+  List<ImageSource> _filterImages(List<ImageSource> images) {
+    if (_minPageCount <= 0) return images;
+    return images.where((img) {
+      final pageCount = img.metadata?['pageCount'] as int? ?? 1;
+      return pageCount > _minPageCount;
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -49,6 +65,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _filterController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -189,6 +206,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _loadImages() async {
+    _applyFilter();
     setState(() {
       _isLoading = true;
       _error = null;
@@ -201,7 +219,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     // お気に入りタブはローカルデータから読み込み
     if (_currentTab == _PixivTab.favorites && _userPath == null) {
       final entries = widget.favoritesStore.listAll();
-      final images = entries.map((e) => ImageSource(
+      final images = _filterImages(entries.map((e) => ImageSource(
         id: e.imageId,
         name: e.name,
         uri: e.uri,
@@ -210,7 +228,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           ...e.sourceInfo,
           'thumbnailUrl': e.thumbnailUrl,
         },
-      )).toList();
+      )).toList());
       setState(() {
         _images.addAll(images);
         _isLoading = false;
@@ -220,7 +238,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
 
     try {
-      final images = await widget.source.listImages(path: _currentPath);
+      final images = _filterImages(
+        await widget.source.listImages(path: _currentPath),
+      );
       setState(() {
         _images.addAll(images);
         _isLoading = false;
@@ -240,7 +260,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final images = await widget.source.listImages(path: _currentPath);
+      final images = _filterImages(
+        await widget.source.listImages(path: _currentPath),
+      );
       setState(() {
         _images.addAll(images);
         _isLoading = false;
@@ -386,23 +408,43 @@ class _GalleryScreenState extends State<GalleryScreen> {
       ),
       body: Column(
         children: [
-          if (_currentTab == _PixivTab.search)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'タグを検索...',
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.search),
-                    onPressed: _onSearch,
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                if (_currentTab == _PixivTab.search)
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'タグ or URL...',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.search),
+                          onPressed: _onSearch,
+                        ),
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      onSubmitted: (_) => _onSearch(),
+                    ),
                   ),
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                if (_currentTab == _PixivTab.search)
+                  const SizedBox(width: 8),
+                SizedBox(
+                  width: 80,
+                  child: TextField(
+                    controller: _filterController,
+                    decoration: const InputDecoration(
+                      hintText: '>N',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onSubmitted: (_) => _loadImages(),
+                  ),
                 ),
-                onSubmitted: (_) => _onSearch(),
-              ),
+              ],
             ),
+          ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.all(8),
