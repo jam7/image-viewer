@@ -84,10 +84,36 @@ class PixivWebClient {
     throw Exception('Pixiv API timeout: $url');
   }
 
-  /// ログイン状態を確認。
+  /// ログイン中のユーザーID。
+  String? _userId;
+  String? get userId => _userId;
+
+  /// ログイン状態を確認し、ユーザーIDを取得。
   Future<bool> checkLoginStatus() async {
     try {
       _log('Checking login status...');
+      // ページ内のメタデータからユーザーIDを取得
+      if (_winController != null) {
+        final result = await _winController!.executeScript(
+          "document.querySelector('meta[name=\"global-data\"]')?.getAttribute('id') "
+          "|| document.body?.dataset?.userId "
+          "|| (document.cookie.match(/user_id=(\\d+)/) || [])[1] "
+          "|| ''",
+        );
+        var id = result.toString().replaceAll('"', '').replaceAll("'", '');
+        if (id.isEmpty) {
+          // pixiv.netのグローバル変数からユーザーIDを取得
+          final jsResult = await _winController!.executeScript(
+            "typeof pixiv !== 'undefined' && pixiv.user ? pixiv.user.id.toString() : ''",
+          );
+          id = jsResult.toString().replaceAll('"', '').replaceAll("'", '');
+        }
+        if (id.isNotEmpty && id != 'null') {
+          _userId = id;
+          _log('User ID: $_userId');
+        }
+      }
+
       final data = await fetchJson('https://www.pixiv.net/ajax/user/extra');
       _log('Login check result: error=${data['error']}');
       return data['error'] != true;
