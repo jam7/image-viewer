@@ -130,9 +130,12 @@ class PixivApiClient {
 
     // ID一覧（新しい順）
     final allIds = [...illusts.keys, ...manga.keys];
-    // 重複除去してソート
-    final uniqueIds = allIds.toSet().toList()
+    // 重複除去、数値のみ、ソート
+    final uniqueIds = allIds.toSet()
+        .where((id) => int.tryParse(id) != null)
+        .toList()
       ..sort((a, b) => int.parse(b).compareTo(int.parse(a)));
+    print('[PixivAPI] userIllusts: total IDs=${uniqueIds.length}');
 
     if (uniqueIds.isEmpty) {
       return const PixivIllustList(illusts: [], nextOffset: null);
@@ -147,7 +150,7 @@ class PixivApiClient {
     }
 
     // 作品詳細を一括取得
-    final idsParam = pageIds.map((id) => 'ids[]=$id').join('&');
+    final idsParam = pageIds.map((id) => 'ids%5B%5D=$id').join('&');
     final url = '$_baseUrl/ajax/user/$userId/profile/illusts?$idsParam&work_category=illustManga&is_first_page=0&lang=ja';
     print('[PixivAPI] userIllusts: ${pageIds.length} ids, offset=$offset, total=${uniqueIds.length}');
     final worksData = await _webClient.fetchJson(url);
