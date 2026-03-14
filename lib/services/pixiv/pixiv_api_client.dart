@@ -125,8 +125,13 @@ class PixivApiClient {
     );
     _checkError(profileData);
     final body = profileData['body'] as Map<String, dynamic>;
-    final illusts = body['illusts'] as Map<String, dynamic>? ?? {};
-    final manga = body['manga'] as Map<String, dynamic>? ?? {};
+    // illusts/manga は作品がある場合はMap、ない場合はList([])で返る
+    final illusts = body['illusts'] is Map<String, dynamic>
+        ? body['illusts'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final manga = body['manga'] is Map<String, dynamic>
+        ? body['manga'] as Map<String, dynamic>
+        : <String, dynamic>{};
 
     // ID一覧（新しい順）
     final allIds = [...illusts.keys, ...manga.keys];
