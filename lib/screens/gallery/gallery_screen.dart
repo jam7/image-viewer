@@ -70,6 +70,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return KeyEventResult.ignored;
     }
 
+    // TextFieldにフォーカスがある時はキーナビゲーション無効
+    if (FocusManager.instance.primaryFocus != _focusNode) {
+      return KeyEventResult.ignored;
+    }
+
+    // ScrollControllerがまだアタッチされていない場合はスキップ
+    if (!_scrollController.hasClients) {
+      return KeyEventResult.ignored;
+    }
+
     final key = event.logicalKey;
     final viewportHeight = _scrollController.position.viewportDimension;
 
@@ -132,6 +142,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   /// Pixiv URLを解析して内部パスに変換。
   /// - https://www.pixiv.net/artworks/12345 → 作品を直接開く
+  /// - https://www.pixiv.net/ajax/illust/12345/pages → 作品を直接開く
   /// - https://www.pixiv.net/users/12345 → /user/12345
   String? _parsePixivUrl(String input) {
     final uri = Uri.tryParse(input);
@@ -141,6 +152,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final artworkMatch = RegExp(r'/artworks/(\d+)').firstMatch(uri.path);
     if (artworkMatch != null) {
       return '/artworks/${artworkMatch.group(1)}';
+    }
+
+    // /ajax/illust/{id}/pages or /ajax/illust/{id}
+    final ajaxMatch = RegExp(r'/ajax/illust/(\d+)').firstMatch(uri.path);
+    if (ajaxMatch != null) {
+      return '/artworks/${ajaxMatch.group(1)}';
     }
 
     // /users/{id}
