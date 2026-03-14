@@ -28,6 +28,12 @@ class PixivSource implements ImageSourceProvider {
         int.parse(userId),
         offset: _nextOffset ?? 0,
       );
+    } else if (effectivePath.startsWith('/user/')) {
+      final userId = effectivePath.substring('/user/'.length);
+      result = await _client.userIllusts(
+        int.parse(userId),
+        offset: _nextOffset ?? 0,
+      );
     } else if (effectivePath.startsWith('/search')) {
       final uri = Uri.parse('https://dummy$effectivePath');
       final word = uri.queryParameters['word'] ?? '';
