@@ -98,28 +98,29 @@ class PixivWebClient {
       _log('Login check result: error=${data['error']}');
       if (data['error'] == true) return false;
 
-      // ユーザーIDをmeta-global-dataから取得
+      // ユーザーIDをページ内のJavaScriptデータから取得
       if (_winController != null && _userId == null) {
+        // pixiv.netのページにはdataLayerやinitConfigにユーザーIDが含まれている
         final result = await _winController!.executeScript(
-          "document.querySelector('#meta-global-data')?.content || ''",
+          "(function() {"
+          "  var s = document.documentElement.innerHTML;"
+          "  var m = s.match(/user_id[\"']?\\s*[:=]\\s*[\"'](\\d+)[\"']/);"
+          "  if (m) return m[1];"
+          "  m = s.match(/userId[\"']?\\s*[:=]\\s*[\"'](\\d+)[\"']/);"
+          "  if (m) return m[1];"
+          "  m = s.match(/\\\"userId\\\":\\\"(\\d+)\\\"/);"
+          "  if (m) return m[1];"
+          "  return '';"
+          "})()",
         );
-        var raw = result.toString().replaceAll('"', '').replaceAll("'", '');
-        _log('meta-global-data (first 200): ${raw.substring(0, raw.length > 200 ? 200 : raw.length)}');
+        var id = result.toString().replaceAll('"', '').replaceAll("'", '');
+        _log('User ID from page HTML: "$id"');
 
-        // JSONの中から userId を探す
-        final match = RegExp(r'userId\\?:[\s\\]*(\d+)').firstMatch(raw);
-        if (match != null) {
-          _userId = match.group(1);
+        if (id.isNotEmpty && id != 'null') {
+          _userId = id;
           _log('User ID: $_userId');
         } else {
-          _log('Could not detect user ID from meta-global-data, trying fetch...');
-          // フォールバック: WebView内fetchでプロフィールページを取得
-          try {
-            final profileData = await fetchJson(
-              'https://www.pixiv.net/ajax/user/me',
-            );
-            _log('user/me response: $profileData');
-          } catch (_) {}
+          _log('Could not detect user ID');
         }
       }
 
