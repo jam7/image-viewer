@@ -188,11 +188,13 @@ class PixivWebClient {
   }
 
   /// プラットフォーム別: スクリプト実行（戻り値あり）
-  Future<Object> _evaluateScript(String js) async {
+  Future<String> _evaluateScript(String js) async {
     if (Platform.isWindows && _winController != null) {
-      return await _winController!.executeScript(js);
+      final result = await _winController!.executeScript(js);
+      return result?.toString() ?? 'null';
     } else if (_mobileController != null) {
-      return await _mobileController!.runJavaScriptReturningResult(js);
+      final result = await _mobileController!.runJavaScriptReturningResult(js);
+      return result.toString();
     }
     return 'null';
   }
