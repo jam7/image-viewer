@@ -59,7 +59,7 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
       ..setJavaScriptMode(mobile.JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         mobile.NavigationDelegate(
-          onPageFinished: (url) => _onUrlChanged(url),
+          onUrlChange: (change) => _onUrlChanged(change.url ?? ''),
         ),
       )
       ..loadRequest(Uri.parse('https://accounts.pixiv.net/login'));
