@@ -128,6 +128,9 @@ BlurHash表示（即座、~30バイト）
 - ログイン用: Windows は `webview_windows`（WebView2）、iOS は `webview_flutter`（WKWebView）
 - API 用: iOS は `webview_flutter`、Windows は `webview_windows`（`webview_flutter` は Windows 非対応のため）
 - **重要**: `webview_flutter` は Windows をサポートしていない。Windows 向けは必ず `webview_windows` を使うこと
+- ログイン成功検知: URL変化時点で即座に遷移（iOS は `onUrlChange`、Windows は `url.listen`）。ページ読み込み完了を待たない
+- `fetchJson` は `initialize()` の完了を await するため、API用WebView未準備でも安全に呼べる
+- ログイン画面で取得したユーザーIDは `onLoginSuccess` 経由で `PixivWebClient.userId` に設定
 - PixivWebClient → PixivApiClient → PixivSource の順に抽象化
 
 ### ビューア操作
@@ -155,8 +158,8 @@ BlurHash表示（即座、~30バイト）
 
 ## 主要パッケージ
 
-- `webview_flutter`: API用WebView（全プラットフォーム共通）
-- `webview_windows`: Windows用ログインWebView（WebView2）
-- `dio`: HTTP通信
+- `webview_flutter`: iOS/Android 用 WebView（ログイン + API）
+- `webview_windows`: Windows 用 WebView2（ログイン + API）
+- `dio`: HTTP通信（画像ダウンロード等）
 - `path_provider`: アプリ固有ディレクトリ取得
 - `crypto`: ハッシュ計算
