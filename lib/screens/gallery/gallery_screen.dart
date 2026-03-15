@@ -188,10 +188,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
     return null;
   }
 
+  String? _userName;
+
   /// 作者ページをギャラリーで表示。
   void showUserWorks(int userId, String userName) {
     setState(() {
       _userPath = '/user/$userId';
+      _userName = userName;
       _images.clear();
       _thumbnailData.clear();
     });
@@ -201,7 +204,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   void _clearUserPath() {
     if (_userPath != null) {
-      setState(() => _userPath = null);
+      setState(() {
+        _userPath = null;
+        _userName = null;
+      });
     }
   }
 
@@ -246,6 +252,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _isLoading = false;
       });
       _loadThumbnails(images);
+      _loadMoreIfNeeded();
     } catch (e, st) {
       print('[Gallery] loadImages error: $e\n$st');
       setState(() {
@@ -268,6 +275,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _isLoading = false;
       });
       _loadThumbnails(images);
+      _loadMoreIfNeeded();
     } catch (e, st) {
       print('[Gallery] loadMore error: $e\n$st');
       setState(() {
@@ -275,6 +283,17 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// コンテンツが画面に収まってスクロールできない場合、追加読み込みする
+  void _loadMoreIfNeeded() {
+    if (!widget.source.hasNextPage) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      if (_scrollController.position.maxScrollExtent <= 0) {
+        _loadMore();
+      }
+    });
   }
 
   Future<void> _loadThumbnails(List<ImageSource> images) async {
@@ -387,7 +406,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 },
               )
             : null,
-        title: Text(_userPath != null ? '作者の作品' : 'Pixiv'),
+        title: Text(
+          _userName != null ? '$_userName の作品' : 'Pixiv',
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
