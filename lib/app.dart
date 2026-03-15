@@ -60,11 +60,10 @@ class _AppRootState extends State<_AppRoot> {
     await favStore.init();
     _favoritesStore = favStore;
 
-    await _webClient.initialize();
-    final loggedIn = await _webClient.checkLoginStatus();
+    // API用WebViewの準備はバックグラウンドで進める（ログイン画面と並行）
+    _webClient.initialize();
 
     setState(() {
-      _isLoggedIn = loggedIn;
       _isLoading = false;
     });
   }
@@ -85,7 +84,6 @@ class _AppRootState extends State<_AppRoot> {
 
     if (!_isLoggedIn) {
       return PixivLoginScreen(
-        webClient: _webClient,
         onLoginSuccess: () => setState(() => _isLoggedIn = true),
       );
     }
