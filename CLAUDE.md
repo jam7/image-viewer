@@ -126,7 +126,8 @@ BlurHash表示（即座、~30バイト）
 - 2つの WebView は Cookie ストアを共有。ログイン用でログインすれば API 用も認証済みになる
 - API 用 WebView はアプリ起動時に pixiv.net を読み込み、ログイン画面と並行で準備
 - ログイン用: Windows は `webview_windows`（WebView2）、iOS は `webview_flutter`（WKWebView）
-- API 用: 全プラットフォーム `webview_flutter` で統一
+- API 用: iOS は `webview_flutter`、Windows は `webview_windows`（`webview_flutter` は Windows 非対応のため）
+- **重要**: `webview_flutter` は Windows をサポートしていない。Windows 向けは必ず `webview_windows` を使うこと
 - PixivWebClient → PixivApiClient → PixivSource の順に抽象化
 
 ### ビューア操作
