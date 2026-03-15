@@ -272,22 +272,22 @@ class _ViewerScreenState extends State<ViewerScreen> {
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: _onKeyEvent,
-      child: Listener(
-        onPointerSignal: _onPointerSignal,
-        onPointerDown: _onPointerDown,
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          body: GestureDetector(
-            onTap: () => setState(() => _showOverlay = !_showOverlay),
-            onVerticalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity < -300) {
-                _nextPage(); // 上スワイプ → 次
-              } else if (velocity > 300) {
-                _prevPage(); // 下スワイプ → 前
-              }
-            },
-            child: Stack(
+      child: GestureDetector(
+        onTap: () => setState(() => _showOverlay = !_showOverlay),
+        onVerticalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          if (velocity < -300) {
+            _nextPage(); // 上スワイプ → 次
+          } else if (velocity > 300) {
+            _prevPage(); // 下スワイプ → 前
+          }
+        },
+        child: Listener(
+          onPointerSignal: _onPointerSignal,
+          onPointerDown: _onPointerDown,
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: Stack(
               children: [
                 // 画像表示
                 Center(
