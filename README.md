@@ -44,4 +44,4 @@
 |---|---|---|
 | Google Drive | OAuth 2.0 + Drive API v3 | 部分ダウンロード対応。APIクォータ制限あり |
 | OneDrive | OAuth 2.0 + Microsoft Graph API | 部分ダウンロード対応（`@microsoft.graph.downloadUrl` 経由） |
-| ~~iCloud~~ | ~~対象外~~ | 非Appleプラットフォームからのプログラマティックアクセスは不可（AppleがAPIを公開していない） |
+| iCloud Drive | NSFileManager / icloud_storage | iOS/macOS限定。Apple プラットフォームのみ対応 |

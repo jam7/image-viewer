@@ -15,4 +15,5 @@
 
 ## プロバイダー
 - [ ] DMM対応
+- [ ] iCloud Drive対応（iOS/macOS限定）
 - [ ] その他プロバイダー（HTTP/SMB/Google Drive/OneDrive）
