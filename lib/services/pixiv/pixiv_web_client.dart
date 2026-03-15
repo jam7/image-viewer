@@ -1,45 +1,70 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
 
-import 'package:webview_windows/webview_windows.dart' as win;
+import 'package:webview_flutter/webview_flutter.dart';
 
 void _log(String message) {
   print('[PixivWebClient] $message');
 }
 
-/// WebView2を使ってPixiv Web APIにアクセスするクライアント。
-/// httpOnly cookieを含む全cookieが自動送信される。
+/// WebViewを使ってPixiv Web APIにアクセスするクライアント。
+/// 非表示の WebView で pixiv.net を読み込み、fetch() で API を呼び出す。
+/// Cookie は WKWebView / WebView2 のデフォルトストアで共有されるため、
+/// 別の WebView（ログイン画面）でログインすれば自動的にログイン済みになる。
 class PixivWebClient {
-  win.WebviewController? _winController;
-  bool _isInitialized = false;
+  WebViewController? _controller;
+  Future<void>? _readyFuture;
+  bool _isReady = false;
   int _requestId = 0;
 
-  /// WebView2を初期化。
-  Future<void> initialize() async {
-    if (_isInitialized) return;
-
-    if (Platform.isWindows) {
-      _log('Initializing WebView2...');
-      _winController = win.WebviewController();
-      await _winController!.initialize();
-      _log('Loading pixiv.net...');
-      await _winController!.loadUrl('https://www.pixiv.net/');
-      await Future.delayed(const Duration(seconds: 3));
-      _log('WebView2 ready');
-    }
-    _isInitialized = true;
+  /// WebView を作成し pixiv.net を読み込む。
+  /// ログイン画面と並行して呼ばれる想定。
+  Future<void> initialize() {
+    _readyFuture ??= _doInitialize();
+    return _readyFuture!;
   }
 
-  /// WebView内からfetch()でAPIを呼び出し、JSONを返す。
+  Future<void> _doInitialize() async {
+    _log('Initializing WebView...');
+    final completer = Completer<void>();
+
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (url) {
+            _log('Page finished: $url');
+            if (!completer.isCompleted) {
+              completer.complete();
+            }
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse('https://www.pixiv.net/'));
+
+    _controller = controller;
+
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () => _log('Page load timeout, continuing anyway'),
+    );
+
+    _isReady = true;
+    _log('WebView ready');
+  }
+
+  /// 初期化完了を待ってからfetch()でAPIを呼び出し、JSONを返す。
   Future<Map<String, dynamic>> fetchJson(String url) async {
-    if (!_isInitialized || _winController == null) {
+    if (_readyFuture != null) {
+      await _readyFuture;
+    }
+    if (!_isReady || _controller == null) {
       throw Exception('PixivWebClient が初期化されていません');
     }
 
     _log('fetchJson: $url');
     final reqId = '_pixiv_result_${_requestId++}';
 
-    // fetch結果をwindowのグローバル変数に格納するスクリプト
     final js = '''
       window['$reqId'] = null;
       fetch('$url', {
@@ -54,19 +79,18 @@ class PixivWebClient {
       .catch(e => { window['$reqId'] = JSON.stringify({error: true, message: e.toString()}); });
     ''';
 
-    await _winController!.executeScript(js);
+    await _controller!.runJavaScript(js);
 
     // ポーリングで結果を待つ（最大10秒）
     for (var i = 0; i < 100; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
-      final check = await _winController!.executeScript("window['$reqId']");
+      final check = await _controller!.runJavaScriptReturningResult("window['$reqId']");
       final checkStr = check.toString();
-      if (checkStr != 'null' && checkStr.isNotEmpty) {
-        // クリーンアップ
-        await _winController!.executeScript("delete window['$reqId'];");
+      if (checkStr != 'null' && checkStr != '<null>' && checkStr.isNotEmpty) {
+        await _controller!.runJavaScript("delete window['$reqId'];");
 
         String jsonStr = checkStr;
-        // WebView2は文字列をクォートで囲んで返す
+        // WebView は文字列をクォートで囲んで返すことがある
         if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
           jsonStr = jsonStr.substring(1, jsonStr.length - 1);
           jsonStr = jsonStr.replaceAll(r'\"', '"');
@@ -84,7 +108,6 @@ class PixivWebClient {
     throw Exception('Pixiv API timeout: $url');
   }
 
-  /// ログイン中のユーザーID。
   String? _userId;
   String? get userId => _userId;
 
@@ -93,15 +116,17 @@ class PixivWebClient {
     try {
       _log('Checking login status...');
 
-      // /ajax/user/extra でログイン確認
+      if (!_isReady || _controller == null) {
+        _log('WebView not ready yet');
+        return false;
+      }
+
       final data = await fetchJson('https://www.pixiv.net/ajax/user/extra');
       _log('Login check result: error=${data['error']}');
       if (data['error'] == true) return false;
 
-      // ユーザーIDをページ内のJavaScriptデータから取得
-      if (_winController != null && _userId == null) {
-        // pixiv.netのページにはdataLayerやinitConfigにユーザーIDが含まれている
-        final result = await _winController!.executeScript(
+      if (_userId == null) {
+        final jsGetUserId =
           "(function() {"
           "  var s = document.documentElement.innerHTML;"
           "  var m = s.match(/user_id[\"']?\\s*[:=]\\s*[\"'](\\d+)[\"']/);"
@@ -111,8 +136,9 @@ class PixivWebClient {
           "  m = s.match(/\\\"userId\\\":\\\"(\\d+)\\\"/);"
           "  if (m) return m[1];"
           "  return '';"
-          "})()",
-        );
+          "})()";
+
+        final result = await _controller!.runJavaScriptReturningResult(jsGetUserId);
         var id = result.toString().replaceAll('"', '').replaceAll("'", '');
         _log('User ID from page HTML: "$id"');
 
@@ -132,6 +158,6 @@ class PixivWebClient {
   }
 
   void dispose() {
-    _winController?.dispose();
+    // WebViewController has no dispose method
   }
 }

@@ -1,16 +1,16 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
-import 'package:webview_windows/webview_windows.dart';
+import 'package:webview_flutter/webview_flutter.dart' as mobile;
+import 'package:webview_windows/webview_windows.dart' as win;
 
-import '../../services/pixiv/pixiv_web_client.dart';
-
-/// Pixiv ログイン画面。WebView2でpixiv.netにログインする。
+/// Pixiv ログイン画面。Windows は WebView2、iOS/Android は WKWebView/Android WebView。
+/// ログイン専用。API 呼び出しには PixivWebClient の別 WebView を使う。
 class PixivLoginScreen extends StatefulWidget {
-  final PixivWebClient webClient;
   final VoidCallback onLoginSuccess;
 
   const PixivLoginScreen({
     super.key,
-    required this.webClient,
     required this.onLoginSuccess,
   });
 
@@ -19,8 +19,14 @@ class PixivLoginScreen extends StatefulWidget {
 }
 
 class _PixivLoginScreenState extends State<PixivLoginScreen> {
-  final _controller = WebviewController();
+  // Windows
+  win.WebviewController? _winController;
+
+  // iOS / Android
+  mobile.WebViewController? _mobileController;
+
   bool _isInitialized = false;
+  bool _loginHandled = false;
 
   @override
   void initState() {
@@ -29,33 +35,52 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
   }
 
   Future<void> _initWebView() async {
-    await _controller.initialize();
+    if (Platform.isWindows) {
+      await _initWindows();
+    } else {
+      _initMobile();
+    }
+  }
 
-    _controller.url.listen((url) async {
-      // ログインページから離れたらログイン成功と判定
-      if (url.contains('pixiv.net') &&
-          !url.contains('accounts.pixiv.net/login')) {
-        // WebView2はユーザーデータフォルダを共有するため、
-        // このWebViewでのログインCookieはPixivWebClientのWebView2でも使える
-        // 念のためWebClientで再確認
-        await Future.delayed(const Duration(seconds: 1));
-        final loggedIn = await widget.webClient.checkLoginStatus();
-        if (loggedIn) {
-          widget.onLoginSuccess();
-        }
-      }
-    });
+  Future<void> _initWindows() async {
+    final controller = win.WebviewController();
+    await controller.initialize();
 
-    await _controller.loadUrl('https://accounts.pixiv.net/login');
+    controller.url.listen((url) => _onUrlChanged(url));
+    await controller.loadUrl('https://accounts.pixiv.net/login');
 
-    if (mounted) {
-      setState(() => _isInitialized = true);
+    _winController = controller;
+    if (mounted) setState(() => _isInitialized = true);
+  }
+
+  void _initMobile() {
+    final controller = mobile.WebViewController()
+      ..setJavaScriptMode(mobile.JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        mobile.NavigationDelegate(
+          onPageFinished: (url) => _onUrlChanged(url),
+        ),
+      )
+      ..loadRequest(Uri.parse('https://accounts.pixiv.net/login'));
+
+    _mobileController = controller;
+    if (mounted) setState(() => _isInitialized = true);
+  }
+
+  void _onUrlChanged(String url) {
+    if (_loginHandled) return;
+
+    // ログイン画面から離れた = ログイン成功
+    if (url.contains('pixiv.net') &&
+        !url.contains('accounts.pixiv.net/login')) {
+      _loginHandled = true;
+      widget.onLoginSuccess();
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _winController?.dispose();
     super.dispose();
   }
 
@@ -63,9 +88,17 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Pixiv ログイン')),
-      body: _isInitialized
-          ? Webview(_controller)
-          : const Center(child: Text('読み込み中...')),
+      body: _isInitialized ? _buildWebView() : const Center(child: Text('読み込み中...')),
     );
+  }
+
+  Widget _buildWebView() {
+    if (Platform.isWindows && _winController != null) {
+      return win.Webview(_winController!);
+    }
+    if (_mobileController != null) {
+      return mobile.WebViewWidget(controller: _mobileController!);
+    }
+    return const Center(child: Text('WebView unavailable'));
   }
 }

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/Android/Windows）。
+Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/iPad/Android/Windows）。
 リモートサーバーから画像をストリーミング表示し、ローカルキャッシュを最小限に抑える。
 
 ## 開発コマンド
@@ -14,8 +14,18 @@ flutter analyze          # 静的解析
 flutter test             # 全テスト実行
 flutter test test/widget_test.dart  # 単一テスト実行
 flutter run -d windows   # Windows向けビルド＆実行（Windows側で実行）
+flutter run -d <iPad ID> # iOS/iPad向け（flutter devices でID確認）
 flutter run -d chrome    # Web向け（デバッグ用）
 ```
+
+### iOS/iPad 開発メモ
+
+- 初回: `ios/DeveloperSettings.xcconfig` を作成し `DEVELOPMENT_TEAM = <your team ID>` を記載（gitignore済み）
+- iPadの Developer Mode をオンにし、証明書を信頼する必要あり（設定 > 一般 > VPNとデバイス管理）
+- Wi-Fiデバッグ可能（Xcode > Devices and Simulators でネットワーク接続を有効化）
+- `project.pbxproj` は `--assume-unchanged` 設定済み（Xcodeが頻繁に書き換えるため）
+  - 正当にコミットしたい時: `git update-index --no-assume-unchanged ios/Runner.xcodeproj/project.pbxproj`
+  - 再設定: `git update-index --assume-unchanged ios/Runner.xcodeproj/project.pbxproj`
 
 ## コード構成
 
@@ -34,9 +44,8 @@ lib/
 │   │   ├── google_drive_source.dart
 │   │   └── onedrive_source.dart
 │   ├── pixiv/                         # Pixiv API連携
-│   │   ├── pixiv_auth.dart            # OAuth 2.0 + PKCE認証
-│   │   ├── pixiv_token_store.dart     # トークン永続化
-│   │   └── pixiv_api_client.dart      # App API通信 + 画像DL
+│   │   ├── pixiv_web_client.dart      # WebView経由のAPI通信（Cookie認証）
+│   │   └── pixiv_api_client.dart      # Pixiv Web API ラッパー
 │   ├── cache/                         # 3層キャッシュ
 │   │   ├── memory_cache.dart          # L1: メモリ（LRU）
 │   │   ├── disk_cache.dart            # L2: ディスク（LRU、500MB〜5GB）
@@ -49,7 +58,8 @@ lib/
 │       └── prefetch_manager.dart      # スライディングウィンドウ制御
 ├── screens/                           # 画面（画面固有のウィジェットも同フォルダに置く）
 │   ├── gallery/gallery_screen.dart    # サムネイル一覧
-│   ├── viewer/viewer_screen.dart      # フルスクリーン画像ビューア
+│   ├── viewer/viewer_screen.dart      # フルスクリーン画像ビューア（スワイプ/キーボード操作）
+│   ├── pixiv/pixiv_login_screen.dart  # Pixivログイン（プラットフォーム別WebView）
 │   └── settings/settings_screen.dart  # 接続先設定
 └── widgets/                           # 複数画面で共有するウィジェット
     └── progressive_image.dart         # 3段階ロード画像ウィジェット
@@ -97,6 +107,39 @@ BlurHash表示（即座、~30バイト）
 - キー命名: `thumb:<imageId>` / `full:<imageId>`
 - メタデータは `_metadata.json` でatomic write管理
 
+### Pixiv 認証 & API（WebView 2台構成）
+
+```
+┌─────────────────────┐    ┌─────────────────────┐
+│  ログイン用 WebView   │    │   API用 WebView      │
+│  (pixiv_login_screen)│    │  (pixiv_web_client)  │
+│                     │    │                     │
+│  ユーザーがログイン   │    │  非表示・バックグラウンド│
+│  操作する画面       │    │  fetch() でAPI呼び出し │
+└─────────┬───────────┘    └─────────┬───────────┘
+          │                          │
+          └──── Cookie 共有 ─────────┘
+            (WKWebsiteDataStore /
+             WebView2 ユーザーデータ)
+```
+
+- 2つの WebView は Cookie ストアを共有。ログイン用でログインすれば API 用も認証済みになる
+- API 用 WebView はアプリ起動時に pixiv.net を読み込み、ログイン画面と並行で準備
+- ログイン用: Windows は `webview_windows`（WebView2）、iOS は `webview_flutter`（WKWebView）
+- API 用: 全プラットフォーム `webview_flutter` で統一
+- PixivWebClient → PixivApiClient → PixivSource の順に抽象化
+
+### ビューア操作
+
+| 入力 | 動作 |
+|---|---|
+| 上スワイプ | 次ページ |
+| 下スワイプ | 前ページ |
+| マウスホイール | ページ送り |
+| Ctrl + ホイール | ズーム |
+| 矢印キー / Space | ページ送り |
+| Escape | 一覧に戻る |
+
 ### ネットワーク
 
 - HTTP/2 マルチプレクシング優先（1接続で複数ストリーム、優先度制御可能）
@@ -109,10 +152,10 @@ BlurHash表示（即座、~30バイト）
 - RGB565フォーマット: 透過不要な画像は2バイト/ピクセルで50%削減
 - リージョンデコード: ズーム時は可視領域のみデコード
 
-## 主要パッケージ（想定）
+## 主要パッケージ
 
-- `cached_network_image`: ネットワーク画像のキャッシュ付きロード
-- `smb_connect`: SMB 1.0/2.0/2.1 ファイル共有アクセス
-- `flutter_blurhash`: BlurHashプレースホルダー表示
-- Google Drive: `googleapis` or `googledrivehandler`
-- OneDrive: Microsoft Graph REST API を直接呼び出し（`@microsoft.graph.downloadUrl` 経由でRange Request）
+- `webview_flutter`: API用WebView（全プラットフォーム共通）
+- `webview_windows`: Windows用ログインWebView（WebView2）
+- `dio`: HTTP通信
+- `path_provider`: アプリ固有ディレクトリ取得
+- `crypto`: ハッシュ計算
