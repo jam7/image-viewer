@@ -395,88 +395,98 @@ class _GalleryScreenState extends State<GalleryScreen> {
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: _onKeyEvent,
-      child: Scaffold(
-      appBar: AppBar(
-        leading: _userPath != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
+      child: GestureDetector(
+        onHorizontalDragEnd: _userPath != null
+            ? (details) {
+                if ((details.primaryVelocity ?? 0) > 300) {
                   _clearUserPath();
                   _loadImages();
-                },
-              )
+                }
+              }
             : null,
-        title: Text(
-          _userName != null ? '$_userName の作品' : 'Pixiv',
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _openSettings,
+        child: Scaffold(
+          appBar: AppBar(
+            leading: _userPath != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () {
+                      _clearUserPath();
+                      _loadImages();
+                    },
+                  )
+                : null,
+            title: Text(
+              _userName != null ? '$_userName の作品' : 'Pixiv',
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: _openSettings,
+              ),
+            ],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(48),
+              child: Row(
+                children: [
+                  _tabButton('おすすめ', _PixivTab.recommended),
+                  _tabButton('ブックマーク', _PixivTab.bookmarks),
+                  _tabButton('お気に入り', _PixivTab.favorites),
+                  _tabButton('検索', _PixivTab.search),
+                ],
+              ),
+            ),
           ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Row(
+          body: Column(
             children: [
-              _tabButton('おすすめ', _PixivTab.recommended),
-              _tabButton('ブックマーク', _PixivTab.bookmarks),
-              _tabButton('お気に入り', _PixivTab.favorites),
-              _tabButton('検索', _PixivTab.search),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  children: [
+                    if (_currentTab == _PixivTab.search)
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'タグ or URL...',
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.search),
+                              onPressed: _onSearch,
+                            ),
+                            border: const OutlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          onSubmitted: (_) => _onSearch(),
+                        ),
+                      ),
+                    if (_currentTab == _PixivTab.search)
+                      const SizedBox(width: 8),
+                    SizedBox(
+                      width: 80,
+                      child: TextField(
+                        controller: _filterController,
+                        decoration: const InputDecoration(
+                          hintText: '>N',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        onSubmitted: (_) => _loadImages(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                ),
+              Expanded(child: _buildGrid()),
             ],
           ),
         ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                if (_currentTab == _PixivTab.search)
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: 'タグ or URL...',
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.search),
-                          onPressed: _onSearch,
-                        ),
-                        border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                      ),
-                      onSubmitted: (_) => _onSearch(),
-                    ),
-                  ),
-                if (_currentTab == _PixivTab.search)
-                  const SizedBox(width: 8),
-                SizedBox(
-                  width: 80,
-                  child: TextField(
-                    controller: _filterController,
-                    decoration: const InputDecoration(
-                      hintText: '>N',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    onSubmitted: (_) => _loadImages(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
-          Expanded(child: _buildGrid()),
-        ],
-      ),
-    ),
     );
   }
 
