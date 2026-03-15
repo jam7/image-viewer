@@ -84,7 +84,16 @@ class _AppRootState extends State<_AppRoot> {
 
     if (!_isLoggedIn) {
       return PixivLoginScreen(
-        onLoginSuccess: () => setState(() => _isLoggedIn = true),
+        onLoginSuccess: ({String? userId}) {
+          if (userId != null) {
+            _webClient.userId = userId;
+          }
+          if (!_isLoggedIn) {
+            setState(() => _isLoggedIn = true);
+            // バックグラウンドでWebClientのログイン状態も確認
+            _webClient.initialize().then((_) => _webClient.checkLoginStatus());
+          }
+        },
       );
     }
 

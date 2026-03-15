@@ -7,7 +7,8 @@ import 'package:webview_windows/webview_windows.dart' as win;
 /// Pixiv ログイン画面。Windows は WebView2、iOS/Android は WKWebView/Android WebView。
 /// ログイン専用。API 呼び出しには PixivWebClient の別 WebView を使う。
 class PixivLoginScreen extends StatefulWidget {
-  final VoidCallback onLoginSuccess;
+  /// ログイン成功時に呼ばれる。ユーザーIDが取得できた場合は渡す。
+  final void Function({String? userId}) onLoginSuccess;
 
   const PixivLoginScreen({
     super.key,
@@ -74,7 +75,44 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
     if (url.contains('pixiv.net') &&
         !url.contains('accounts.pixiv.net/login')) {
       _loginHandled = true;
-      widget.onLoginSuccess();
+      // 即座に画面遷移、ユーザーID取得はバックグラウンド
+      widget.onLoginSuccess(userId: null);
+      _extractUserIdAsync();
+    }
+  }
+
+  /// ログイン後のページHTMLからユーザーIDを非同期で取得
+  Future<void> _extractUserIdAsync() async {
+    try {
+      final js =
+        "(function() {"
+        "  var s = document.documentElement.innerHTML;"
+        "  var m = s.match(/user_id[\"']?\\s*[:=]\\s*[\"'](\\d+)[\"']/);"
+        "  if (m) return m[1];"
+        "  m = s.match(/userId[\"']?\\s*[:=]\\s*[\"'](\\d+)[\"']/);"
+        "  if (m) return m[1];"
+        "  m = s.match(/\\\"userId\\\":\\\"(\\d+)\\\"/);"
+        "  if (m) return m[1];"
+        "  return '';"
+        "})()";
+
+      String id = '';
+      if (Platform.isWindows && _winController != null) {
+        final result = await _winController!.executeScript(js);
+        id = result?.toString().replaceAll('"', '').replaceAll("'", '') ?? '';
+      } else if (_mobileController != null) {
+        final result = await _mobileController!.runJavaScriptReturningResult(js);
+        id = result.toString().replaceAll('"', '').replaceAll("'", '');
+      }
+
+      if (id.isNotEmpty && id != 'null') {
+        print('[PixivLogin] User ID from login page: $id');
+        widget.onLoginSuccess(userId: id);
+      } else {
+        print('[PixivLogin] Could not extract user ID from login page');
+      }
+    } catch (e, st) {
+      print('[PixivLogin] Error extracting user ID: $e\n$st');
     }
   }
 

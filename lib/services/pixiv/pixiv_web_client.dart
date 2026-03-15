@@ -131,6 +131,7 @@ class PixivWebClient {
 
   String? _userId;
   String? get userId => _userId;
+  set userId(String? id) => _userId = id;
 
   /// ログイン状態を確認し、ユーザーIDを取得。
   Future<bool> checkLoginStatus() async {
