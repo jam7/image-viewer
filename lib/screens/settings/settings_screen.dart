@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../../models/server_config.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
+import '../../services/smb/smb_config_store.dart';
+import 'smb_connection_dialog.dart';
 
-/// キャッシュ・DL・お気に入り管理画面。
+/// キャッシュ・DL・お気に入り・接続先管理画面。
 class SettingsScreen extends StatefulWidget {
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
+  final SmbConfigStore smbConfigStore;
+  final void Function(ServerConfig config, String password)? onSmbConnect;
 
   const SettingsScreen({
     super.key,
     required this.cacheManager,
     required this.favoritesStore,
+    required this.smbConfigStore,
+    this.onSmbConnect,
   });
 
   @override
@@ -95,6 +102,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('設定')),
       body: ListView(
         children: [
+          const _SectionHeader('SMB接続'),
+          _buildSmbSection(),
+          const Divider(),
           const _SectionHeader('キャッシュ管理'),
           _buildL2Section(),
           const Divider(),
@@ -207,6 +217,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+  Widget _buildSmbSection() {
+    final configs = widget.smbConfigStore.listAll();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final config in configs)
+            ListTile(
+              leading: const Icon(Icons.folder_shared),
+              title: Text(config.name),
+              subtitle: Text('${config.host}/${config.shareName}'),
+              onTap: () => _connectSmb(config),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 20),
+                    onPressed: () => _editSmbConfig(config),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    onPressed: () => _deleteSmbConfig(config),
+                  ),
+                ],
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _addSmbConfig,
+              icon: const Icon(Icons.add),
+              label: const Text('追加'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addSmbConfig() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => const SmbConnectionDialog(),
+    );
+    if (result == null) return;
+    final config = result['config'] as ServerConfig;
+    final password = result['password'] as String;
+    await widget.smbConfigStore.save(config, password);
+    setState(() {});
+  }
+
+  Future<void> _editSmbConfig(ServerConfig config) async {
+    final password = await widget.smbConfigStore.getPassword(config.id);
+    if (!mounted) return;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => SmbConnectionDialog(
+        existing: config,
+        existingPassword: password,
+      ),
+    );
+    if (result == null) return;
+    final newConfig = result['config'] as ServerConfig;
+    final newPassword = result['password'] as String;
+    await widget.smbConfigStore.save(newConfig, newPassword);
+    setState(() {});
+  }
+
+  Future<void> _deleteSmbConfig(ServerConfig config) async {
+    final confirmed = await _showConfirmDialog('「${config.name}」を削除しますか？');
+    if (confirmed != true) return;
+    await widget.smbConfigStore.delete(config.id);
+    setState(() {});
+  }
+
+  Future<void> _connectSmb(ServerConfig config) async {
+    final password = await widget.smbConfigStore.getPassword(config.id);
+    print('[Settings] connectSmb: config=${config.id}, password=${password != null ? '***' : 'null'}, callback=${widget.onSmbConnect != null}');
+    if (password == null) {
+      print('[Settings] No password found for ${config.id}');
+      return;
+    }
+    widget.onSmbConnect?.call(config, password);
+    if (mounted) Navigator.of(context).pop();
   }
 }
 

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'models/server_config.dart';
 import 'screens/gallery/gallery_screen.dart';
+import 'screens/gallery/smb_gallery_screen.dart';
 import 'screens/pixiv/pixiv_login_screen.dart';
+import 'screens/settings/settings_screen.dart';
 import 'services/cache/cache_manager.dart';
 import 'services/cache/disk_cache.dart';
 import 'services/cache/download_store.dart';
@@ -9,7 +12,9 @@ import 'services/cache/memory_cache.dart';
 import 'services/favorites/favorites_store.dart';
 import 'services/pixiv/pixiv_api_client.dart';
 import 'services/pixiv/pixiv_web_client.dart';
+import 'services/smb/smb_config_store.dart';
 import 'services/sources/pixiv_source.dart';
+import 'services/sources/smb_source.dart';
 
 class ImageViewerApp extends StatelessWidget {
   const ImageViewerApp({super.key});
@@ -37,6 +42,7 @@ class _AppRoot extends StatefulWidget {
 
 class _AppRootState extends State<_AppRoot> {
   final _webClient = PixivWebClient();
+  final _smbConfigStore = SmbConfigStore();
   CacheManager? _cacheManager;
   FavoritesStore? _favoritesStore;
   bool _isLoggedIn = false;
@@ -60,6 +66,8 @@ class _AppRootState extends State<_AppRoot> {
     await favStore.init();
     _favoritesStore = favStore;
 
+    await _smbConfigStore.init();
+
     // API用WebViewの準備はバックグラウンドで進める（ログイン画面と並行）
     _webClient.initialize();
 
@@ -72,6 +80,33 @@ class _AppRootState extends State<_AppRoot> {
   void dispose() {
     _webClient.dispose();
     super.dispose();
+  }
+
+  void _openSmbGallery(ServerConfig config, String password) {
+    print('[App] Opening SMB gallery: ${config.host}/${config.shareName}');
+    final source = SmbSource(config: config, password: password);
+    // 設定画面のpop完了後にpushするため少し遅延
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => SmbGalleryScreen(
+          source: source,
+          cacheManager: _cacheManager!,
+          favoritesStore: _favoritesStore!,
+          initialPath: config.basePath ?? '/',
+        ),
+      ));
+    });
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SettingsScreen(
+        cacheManager: _cacheManager!,
+        favoritesStore: _favoritesStore!,
+        smbConfigStore: _smbConfigStore,
+        onSmbConnect: _openSmbGallery,
+      ),
+    ));
   }
 
   @override
@@ -90,7 +125,6 @@ class _AppRootState extends State<_AppRoot> {
           }
           if (!_isLoggedIn) {
             setState(() => _isLoggedIn = true);
-            // バックグラウンドでWebClientのログイン状態も確認
             _webClient.initialize().then((_) => _webClient.checkLoginStatus());
           }
         },
@@ -104,6 +138,8 @@ class _AppRootState extends State<_AppRoot> {
       source: pixivSource,
       cacheManager: _cacheManager!,
       favoritesStore: _favoritesStore!,
+      smbConfigStore: _smbConfigStore,
+      onSmbConnect: _openSmbGallery,
     );
   }
 }
