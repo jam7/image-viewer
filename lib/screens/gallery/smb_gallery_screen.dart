@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -193,35 +194,44 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     return KeyEventResult.ignored;
   }
 
+  void _onPointerDown(PointerDownEvent event) {
+    if (event.buttons == kBackMouseButton) {
+      if (!_goBack()) Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Focus(
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: _onKeyEvent,
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              if (!_goBack()) Navigator.of(context).pop();
-            },
+      child: Listener(
+        onPointerDown: _onPointerDown,
+        child: Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                if (!_goBack()) Navigator.of(context).pop();
+              },
+            ),
+            title: Text(
+              _currentPath,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ),
-          title: Text(
-            _currentPath,
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
+          body: Column(
+            children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                ),
+              Expanded(child: _buildGrid()),
+            ],
           ),
-        ),
-        body: Column(
-          children: [
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
-              ),
-            Expanded(child: _buildGrid()),
-          ],
         ),
       ),
     );
