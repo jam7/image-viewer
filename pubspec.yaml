@@ -41,6 +41,7 @@ dependencies:
   smb_connect: ^0.0.9
   webview_windows: ^0.4.0
   webview_flutter: ^4.13.1
+  exif: ^3.3.0
 
 dev_dependencies:
   flutter_test:
