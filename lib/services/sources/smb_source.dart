@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:exif/exif.dart';
 import 'package:smb_connect/smb_connect.dart';
 
 import '../../models/image_source.dart';
@@ -94,9 +95,44 @@ class SmbSource implements ImageSourceProvider {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) {
-    // SMBにはサムネイルAPIがないのでフル画像を返す
+  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+    // JPEG の EXIF サムネイルを抽出。なければフル画像にフォールバック。
+    final name = source.name.toLowerCase();
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+      try {
+        final header = await _readPartial(source.uri, 65536);
+        final exifData = await readExifFromBytes(header);
+        final thumbnail = exifData['JPEGThumbnail'];
+        if (thumbnail != null) {
+          final bytes = thumbnail.values.toList();
+          if (bytes.isNotEmpty) {
+            print('[SMB] EXIF thumbnail found for ${source.name} (${bytes.length} bytes)');
+            return Uint8List.fromList(bytes.cast<int>());
+          }
+        }
+        print('[SMB] Fallback to full image: no EXIF thumbnail (${source.name})');
+      } catch (e) {
+        print('[SMB] Fallback to full image: EXIF parse error (${source.name}): $e');
+      }
+    } else {
+      print('[SMB] Fallback to full image: not JPEG (${source.name})');
+    }
     return fetchFullImage(source);
+  }
+
+  /// ファイルの先頭 [length] バイトだけ読み込む。
+  Future<Uint8List> _readPartial(String path, int length) async {
+    final client = await _connect();
+    final file = await client.file(path);
+    final stream = await client.openRead(file, 0, length);
+
+    final chunks = <int>[];
+    await for (final chunk in stream) {
+      chunks.addAll(chunk);
+      if (chunks.length >= length) break;
+    }
+
+    return Uint8List.fromList(chunks);
   }
 
   @override
