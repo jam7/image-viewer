@@ -196,8 +196,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
-      if (!_goBack()) Navigator.of(context).pop();
+      _goBackOrPop();
     }
+  }
+
+  void _goBackOrPop() {
+    if (!_goBack()) Navigator.of(context).pop();
   }
 
   @override
@@ -208,31 +212,40 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       onKeyEvent: _onKeyEvent,
       child: Listener(
         onPointerDown: _onPointerDown,
-        child: Scaffold(
-          appBar: AppBar(
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                if (!_goBack()) Navigator.of(context).pop();
-              },
-            ),
-            title: Text(
-              _currentPath,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-          body: Column(
-            children: [
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
-                ),
-              Expanded(child: _buildGrid()),
-            ],
-          ),
+        child: GestureDetector(
+          onHorizontalDragEnd: (details) {
+            if ((details.primaryVelocity ?? 0) > 300) {
+              _goBackOrPop();
+            }
+          },
+          child: _buildScaffold(),
         ),
+      ),
+    );
+  }
+
+  Widget _buildScaffold() {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _goBackOrPop,
+        ),
+        title: Text(
+          _currentPath,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+      ),
+      body: Column(
+        children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+          Expanded(child: _buildGrid()),
+        ],
       ),
     );
   }
