@@ -79,29 +79,44 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
-    for (final image in images) {
-      if (_thumbnailData.containsKey(image.id)) continue;
-      final key = 'thumb:${image.id}';
-      try {
-        final cached = await widget.cacheManager.get(key);
-        if (cached != null) {
-          if (mounted) {
-            setState(() =>
-                _thumbnailData[image.id] = Uint8List.fromList(cached.data));
-          }
-        } else {
-          final result = await widget.cacheManager.fetchAndCache(
-            key,
-            () => widget.source.fetchThumbnail(image),
-          );
-          if (mounted) {
-            setState(() =>
-                _thumbnailData[image.id] = Uint8List.fromList(result.data));
-          }
-        }
-      } catch (e, st) {
-        print('[SmbGallery] thumbnail error: $e\n$st');
+    final queue = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
+    const concurrency = 3;
+    var index = 0;
+
+    Future<void> worker() async {
+      while (index < queue.length) {
+        final image = queue[index++];
+        await _loadOneThumbnail(image);
       }
+    }
+
+    await Future.wait(List.generate(
+      concurrency.clamp(0, queue.length),
+      (_) => worker(),
+    ));
+  }
+
+  Future<void> _loadOneThumbnail(ImageSource image) async {
+    final key = 'thumb:${image.id}';
+    try {
+      final cached = await widget.cacheManager.get(key);
+      if (cached != null) {
+        if (mounted) {
+          setState(() =>
+              _thumbnailData[image.id] = Uint8List.fromList(cached.data));
+        }
+      } else {
+        final result = await widget.cacheManager.fetchAndCache(
+          key,
+          () => widget.source.fetchThumbnail(image),
+        );
+        if (mounted) {
+          setState(() =>
+              _thumbnailData[image.id] = Uint8List.fromList(result.data));
+        }
+      }
+    } catch (e, st) {
+      print('[SmbGallery] thumbnail error: $e\n$st');
     }
   }
 
