@@ -8,14 +8,18 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
-import '../../services/sources/pixiv_source.dart';
+import '../../services/sources/image_source_provider.dart';
+
+/// ページ解決関数の型。Pixivは複数ページ作品を展開、SMBはそのまま返す。
+typedef PageResolver = Future<List<ImageSource>> Function(ImageSource source);
 
 /// 画像ビューア画面。
 /// - マウスホイール / 矢印キー / Page Up・Down: ページ送り
 /// - Ctrl + マウスホイール: 拡大縮小（画像中心起点）
 class ViewerScreen extends StatefulWidget {
   final ImageSource initialImage;
-  final PixivSource source;
+  final ImageSourceProvider source;
+  final PageResolver? resolvePages;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
 
@@ -23,6 +27,7 @@ class ViewerScreen extends StatefulWidget {
     super.key,
     required this.initialImage,
     required this.source,
+    this.resolvePages,
     required this.cacheManager,
     required this.favoritesStore,
   });
@@ -58,7 +63,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   Future<void> _resolvePages() async {
     try {
-      final pages = await widget.source.resolvePages(widget.initialImage);
+      final resolver = widget.resolvePages;
+      final pages = resolver != null
+          ? await resolver(widget.initialImage)
+          : [widget.initialImage];
       if (mounted) {
         setState(() {
           _pages = pages;
