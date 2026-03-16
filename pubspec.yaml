@@ -36,7 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   crypto: ^3.0.3
   dio: ^5.4.0
+  flutter_secure_storage: ^9.0.0
   path_provider: ^2.1.0
+  smb_connect: ^0.0.9
   webview_windows: ^0.4.0
   webview_flutter: ^4.13.1
 
