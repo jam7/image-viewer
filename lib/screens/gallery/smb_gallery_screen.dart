@@ -34,16 +34,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final Map<String, Uint8List> _thumbnailData = {};
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
-  final List<String> _pathStack = [];
-  String _currentPath = '/';
   bool _isLoading = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _currentPath = widget.initialPath;
-    _pathStack.add(_currentPath);
     _loadDirectory();
   }
 
@@ -63,7 +59,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     _thumbnailData.clear();
 
     try {
-      final items = await widget.source.listImages(path: _currentPath);
+      final items = await widget.source.listImages(path: widget.initialPath);
       setState(() {
         _items.addAll(items);
         _isLoading = false;
@@ -127,11 +123,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   void _onItemTap(ImageSource item) {
     if (item.metadata?['isDirectory'] == true) {
       final path = item.metadata?['path'] as String? ?? '/';
-      setState(() {
-        _currentPath = path;
-        _pathStack.add(path);
-      });
-      _loadDirectory();
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => SmbGalleryScreen(
+          source: widget.source,
+          cacheManager: widget.cacheManager,
+          favoritesStore: widget.favoritesStore,
+          initialPath: path,
+        ),
+      ));
     } else {
       // 画像のみフィルタしてビューアに渡す
       final imageItems =
@@ -157,15 +156,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     }
   }
 
-  bool _goBack() {
-    if (_pathStack.length > 1) {
-      _pathStack.removeLast();
-      setState(() => _currentPath = _pathStack.last);
-      _loadDirectory();
-      return true;
-    }
-    return false;
-  }
+
 
   void _scrollBy(double delta) {
     if (!_scrollController.hasClients) return;
@@ -205,7 +196,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.escape) {
-      if (_goBack()) return KeyEventResult.handled;
       Navigator.of(context).pop();
       return KeyEventResult.handled;
     }
@@ -215,12 +205,8 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
-      _goBackOrPop();
+      Navigator.of(context).pop();
     }
-  }
-
-  void _goBackOrPop() {
-    if (!_goBack()) Navigator.of(context).pop();
   }
 
   @override
@@ -231,14 +217,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       onKeyEvent: _onKeyEvent,
       child: Listener(
         onPointerDown: _onPointerDown,
-        child: GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if ((details.primaryVelocity ?? 0) > 300) {
-              _goBackOrPop();
-            }
-          },
-          child: _buildScaffold(),
-        ),
+        child: _buildScaffold(),
       ),
     );
   }
@@ -248,10 +227,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: _goBackOrPop,
+          onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          _currentPath,
+          widget.initialPath,
           overflow: TextOverflow.ellipsis,
           maxLines: 1,
         ),
