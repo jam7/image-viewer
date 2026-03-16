@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -399,101 +400,119 @@ class _GalleryScreenState extends State<GalleryScreen> {
     ));
   }
 
+  void _onBackNavigation() {
+    _clearUserPath();
+    _loadImages();
+  }
+
+  void _onPointerDown(PointerDownEvent event) {
+    if (event.buttons == kBackMouseButton && _userPath != null) {
+      _onBackNavigation();
+    }
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      leading: _userPath != null
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _onBackNavigation,
+            )
+          : null,
+      title: Text(
+        _userName != null ? '$_userName の作品' : 'Pixiv',
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.settings),
+          onPressed: _openSettings,
+        ),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(48),
+        child: Row(
+          children: [
+            _tabButton('おすすめ', _PixivTab.recommended),
+            _tabButton('ブックマーク', _PixivTab.bookmarks),
+            _tabButton('お気に入り', _PixivTab.favorites),
+            _tabButton('検索', _PixivTab.search),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        children: [
+          if (_currentTab == _PixivTab.search)
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'タグ or URL...',
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.search),
+                    onPressed: _onSearch,
+                  ),
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onSubmitted: (_) => _onSearch(),
+              ),
+            ),
+          if (_currentTab == _PixivTab.search)
+            const SizedBox(width: 8),
+          SizedBox(
+            width: 80,
+            child: TextField(
+              controller: _filterController,
+              decoration: const InputDecoration(
+                hintText: '>N',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 8),
+              ),
+              onSubmitted: (_) => _loadImages(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Focus(
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: _onKeyEvent,
-      child: GestureDetector(
-        onHorizontalDragEnd: _userPath != null
-            ? (details) {
-                if ((details.primaryVelocity ?? 0) > 300) {
-                  _clearUserPath();
-                  _loadImages();
+      child: Listener(
+        onPointerDown: _onPointerDown,
+        child: GestureDetector(
+          onHorizontalDragEnd: _userPath != null
+              ? (details) {
+                  if ((details.primaryVelocity ?? 0) > 300) {
+                    _onBackNavigation();
+                  }
                 }
-              }
-            : null,
-        child: Scaffold(
-          appBar: AppBar(
-            leading: _userPath != null
-                ? IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () {
-                      _clearUserPath();
-                      _loadImages();
-                    },
-                  )
-                : null,
-            title: Text(
-              _userName != null ? '$_userName の作品' : 'Pixiv',
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+              : null,
+          child: Scaffold(
+            appBar: _buildAppBar(),
+            body: Column(
+              children: [
+                _buildFilterBar(),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                  ),
+                Expanded(child: _buildGrid()),
+              ],
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.settings),
-                onPressed: _openSettings,
-              ),
-            ],
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(48),
-              child: Row(
-                children: [
-                  _tabButton('おすすめ', _PixivTab.recommended),
-                  _tabButton('ブックマーク', _PixivTab.bookmarks),
-                  _tabButton('お気に入り', _PixivTab.favorites),
-                  _tabButton('検索', _PixivTab.search),
-                ],
-              ),
-            ),
-          ),
-          body: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    if (_currentTab == _PixivTab.search)
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: 'タグ or URL...',
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.search),
-                              onPressed: _onSearch,
-                            ),
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                          onSubmitted: (_) => _onSearch(),
-                        ),
-                      ),
-                    if (_currentTab == _PixivTab.search)
-                      const SizedBox(width: 8),
-                    SizedBox(
-                      width: 80,
-                      child: TextField(
-                        controller: _filterController,
-                        decoration: const InputDecoration(
-                          hintText: '>N',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                        onSubmitted: (_) => _loadImages(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
-                ),
-              Expanded(child: _buildGrid()),
-            ],
           ),
         ),
       ),
