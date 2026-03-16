@@ -260,7 +260,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       controller: _scrollController,
       padding: const EdgeInsets.all(4),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 5,
+        crossAxisCount: 3,
         crossAxisSpacing: 4,
         mainAxisSpacing: 4,
       ),
