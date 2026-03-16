@@ -94,8 +94,13 @@ class SmbSource implements ImageSourceProvider {
     return sources;
   }
 
+  /// サムネイル取得結果。isFullImage が true の場合、フル画像でフォールバックした。
+  bool _lastThumbnailWasFullImage = false;
+  bool get lastThumbnailWasFullImage => _lastThumbnailWasFullImage;
+
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async {
+    _lastThumbnailWasFullImage = false;
     // JPEG の EXIF サムネイルを抽出。なければフル画像にフォールバック。
     final name = source.name.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
@@ -117,6 +122,7 @@ class SmbSource implements ImageSourceProvider {
     } else {
       print('[SMB] Fallback to full image: not JPEG (${source.name})');
     }
+    _lastThumbnailWasFullImage = true;
     return fetchFullImage(source);
   }
 

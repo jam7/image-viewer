@@ -97,22 +97,26 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _loadOneThumbnail(ImageSource image) async {
-    final key = 'thumb:${image.id}';
+    final thumbKey = 'thumb:${image.id}';
+    final fullKey = 'full:${image.id}';
     try {
-      final cached = await widget.cacheManager.get(key);
+      // thumb: → full: の順でキャッシュを探す
+      final cached = await widget.cacheManager.get(thumbKey)
+          ?? await widget.cacheManager.get(fullKey);
       if (cached != null) {
         if (mounted) {
           setState(() =>
               _thumbnailData[image.id] = Uint8List.fromList(cached.data));
         }
       } else {
-        final result = await widget.cacheManager.fetchAndCache(
-          key,
-          () => widget.source.fetchThumbnail(image),
-        );
+        // まずダウンロードして、フォールバックしたか判定してからキャッシュ
+        final data = await widget.source.fetchThumbnail(image);
+        final saveKey = widget.source.lastThumbnailWasFullImage
+            ? fullKey : thumbKey;
+        widget.cacheManager.l1.put(saveKey, data);
+        await widget.cacheManager.l2.put(saveKey, data);
         if (mounted) {
-          setState(() =>
-              _thumbnailData[image.id] = Uint8List.fromList(result.data));
+          setState(() => _thumbnailData[image.id] = data);
         }
       }
     } catch (e, st) {
