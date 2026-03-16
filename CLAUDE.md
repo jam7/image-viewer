@@ -133,6 +133,27 @@ BlurHash表示（即座、~30バイト）
 - ログイン画面で取得したユーザーIDは `onLoginSuccess` 経由で `PixivWebClient.userId` に設定
 - PixivWebClient → PixivApiClient → PixivSource の順に抽象化
 
+### SMB ファイルブラウズ
+
+- `smb_connect` パッケージで SMB 1.0/2.0/2.1 対応（自動ネゴシエーション）
+- 接続設定は JSON ファイルに保存（パスワード除外）
+- パスワードは `flutter_secure_storage`（iOS: Keychain、Windows: Credential Manager）に保存
+- ディレクトリ一覧→画像フィルタ→サムネイル/フル画像取得の流れ
+- ビューアでは同一ディレクトリ内の画像を連続閲覧可能（ホイール/キー操作）
+- プリロード: 現在 + 前方2枚 + 後方1枚（キャッシュヒット時はDL不要）
+
+### 認証情報の保存場所
+
+| プラットフォーム | Pixiv セッション | SMB パスワード |
+|---|---|---|
+| Windows | WebView2 ユーザーデータフォルダ（`%LOCALAPPDATA%`配下、平文SQLite、OSユーザー権限で保護） | Credential Manager |
+| iOS/macOS | WKWebView サンドボックス内（アプリ間アクセス不可） | Keychain |
+| Android | WebView サンドボックス内 | EncryptedSharedPreferences |
+
+- Pixiv パスワードはアプリ側で一切保存しない。WebView のログインページでユーザーが入力する
+- Pixiv の Cookie はブラウザと同等のセキュリティレベル（暗号化なし、OS権限で保護）
+- SMB パスワードはプラットフォームの暗号化ストレージを使用
+
 ### ビューア操作
 
 | 入力 | 動作 |
@@ -160,6 +181,8 @@ BlurHash表示（即座、~30バイト）
 
 - `webview_flutter`: iOS/Android 用 WebView（ログイン + API）
 - `webview_windows`: Windows 用 WebView2（ログイン + API）
+- `smb_connect`: SMB 1.0/2.0/2.1 クライアント
+- `flutter_secure_storage`: パスワード安全保管（Keychain/Credential Manager）
 - `dio`: HTTP通信（画像ダウンロード等）
 - `path_provider`: アプリ固有ディレクトリ取得
 - `crypto`: ハッシュ計算
