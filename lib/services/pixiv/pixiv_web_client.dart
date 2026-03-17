@@ -133,6 +133,27 @@ class PixivWebClient {
   String? get userId => _userId;
   set userId(String? id) => _userId = id;
 
+  /// userId が取得できるまで待機。既にあれば即返却。
+  /// initialize() 完了を待ち、checkLoginStatus() でリトライする。
+  Future<String> waitForUserId() async {
+    if (_userId != null) return _userId!;
+
+    // WebView の準備を待つ
+    await initialize();
+
+    for (var i = 0; i < 5; i++) {
+      await checkLoginStatus();
+      if (_userId != null) {
+        _log('waitForUserId: acquired $_userId (attempt ${i + 1})');
+        return _userId!;
+      }
+      _log('waitForUserId: retrying in 2s... (attempt ${i + 1})');
+      await Future.delayed(const Duration(seconds: 2));
+    }
+
+    throw Exception('userId を取得できませんでした');
+  }
+
   /// ログイン状態を確認し、ユーザーIDを取得。
   Future<bool> checkLoginStatus() async {
     try {

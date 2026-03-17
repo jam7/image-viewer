@@ -76,6 +76,16 @@ class _AppRootState extends State<_AppRoot> {
     });
   }
 
+  /// userId が取得できるまでバックグラウンドでリトライ。
+  Future<void> _ensureUserId() async {
+    try {
+      final id = await _webClient.waitForUserId();
+      print('[App] userId acquired: $id');
+    } catch (e) {
+      print('[App] Failed to acquire userId: $e');
+    }
+  }
+
   @override
   void dispose() {
     _webClient.dispose();
@@ -125,7 +135,7 @@ class _AppRootState extends State<_AppRoot> {
           }
           if (!_isLoggedIn) {
             setState(() => _isLoggedIn = true);
-            _webClient.initialize().then((_) => _webClient.checkLoginStatus());
+            _webClient.initialize().then((_) => _ensureUserId());
           }
         },
       );
