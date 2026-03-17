@@ -19,6 +19,27 @@ class SmbSource implements ImageSourceProvider {
 
   SmbSource({required this.config, required this.password});
 
+  void _logConnectionInfo(SmbConnect client) {
+    final transport = client.transport;
+    final isSMB2 = transport.isSMB2();
+    final negotiated = transport.getNegotiatedResponse();
+
+    print('[SMB] Connected: protocol=${isSMB2 ? "SMB2" : "SMB1"}');
+
+    if (negotiated != null) {
+      print('[SMB]   signing: enabled=${negotiated.isSigningEnabled()}, '
+          'required=${negotiated.isSigningRequired()}, '
+          'negotiated=${negotiated.isSigningNegotiated()}');
+      // SMB2の場合、追加情報をtoStringから取得
+      print('[SMB]   negotiated: $negotiated');
+    }
+
+    final cfg = client.configuration;
+    print('[SMB]   bufferSize: ${cfg.maximumBufferSize}, '
+        'sendBuf: ${cfg.sendBufferSize}, '
+        'recvBuf: ${cfg.receiveBufferSize}');
+  }
+
   Future<SmbConnect> _connect() async {
     if (_client != null) return _client!;
     print('[SMB] Connecting to ${config.host}/${config.shareName}...');
@@ -29,7 +50,7 @@ class SmbSource implements ImageSourceProvider {
         username: config.username ?? '',
         password: password,
       );
-      print('[SMB] Connected');
+      _logConnectionInfo(_client!);
       return _client!;
     } catch (e, st) {
       print('[SMB] Connection error: $e\n$st');
@@ -146,6 +167,7 @@ class SmbSource implements ImageSourceProvider {
     ImageSource source, {
     void Function(int received, int total)? onProgress,
   }) async {
+    final stopwatch = Stopwatch()..start();
     final client = await _connect();
     final file = await client.file(source.uri);
     final stream = await client.openRead(file);
@@ -157,6 +179,11 @@ class SmbSource implements ImageSourceProvider {
       received += chunk.length as int;
       onProgress?.call(received, -1);
     }
+
+    stopwatch.stop();
+    final seconds = stopwatch.elapsedMilliseconds / 1000;
+    final speed = seconds > 0 ? (received / 1024 / seconds).toStringAsFixed(0) : '?';
+    print('[SMB] Downloaded ${source.name}: ${(received / 1024).toStringAsFixed(0)} KB in ${seconds.toStringAsFixed(2)}s (${speed} KB/s)');
 
     return Uint8List.fromList(chunks);
   }
