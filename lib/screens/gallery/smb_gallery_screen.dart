@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/image_source.dart';
+import 'gallery_constants.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
@@ -34,12 +35,25 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final Map<String, Uint8List> _thumbnailData = {};
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
+  List<ImageSource> _imageFiles = []; // サムネイル読み込み対象（ディレクトリ除外）
+  int _thumbnailLoadedCount = 0; // サムネイル読み込み済みの数
   bool _isLoading = false;
+  bool _isLoadingThumbnails = false;
   String? _error;
+
+  /// 画面に表示される行数から2画面分のアイテム数を計算
+  int get _batchSize {
+    if (!_scrollController.hasClients) return galleryCrossAxisCount * 6; // 初回のフォールバック
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final itemHeight = (viewportHeight / galleryCrossAxisCount).ceilToDouble(); // 正方形グリッド
+    final rowsPerScreen = (viewportHeight / (itemHeight + gallerySpacing)).ceil();
+    return galleryCrossAxisCount * rowsPerScreen * 2; // 2画面分
+  }
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadDirectory();
   }
 
@@ -50,6 +64,16 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     super.dispose();
   }
 
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingThumbnails &&
+        _thumbnailLoadedCount < _imageFiles.length) {
+      _loadNextBatch();
+    }
+  }
+
   Future<void> _loadDirectory() async {
     setState(() {
       _isLoading = true;
@@ -57,14 +81,16 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     });
     _items.clear();
     _thumbnailData.clear();
+    _thumbnailLoadedCount = 0;
 
     try {
       final items = await widget.source.listImages(path: widget.initialPath);
+      _imageFiles = items.where((i) => i.metadata?['isDirectory'] != true).toList();
       setState(() {
         _items.addAll(items);
         _isLoading = false;
       });
-      _loadThumbnails(items.where((i) => i.metadata?['isDirectory'] != true));
+      _loadNextBatch();
     } catch (e, st) {
       print('[SmbGallery] loadDirectory error: $e\n$st');
       setState(() {
@@ -72,6 +98,31 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadNextBatch() async {
+    if (_isLoadingThumbnails || _thumbnailLoadedCount >= _imageFiles.length) return;
+    _isLoadingThumbnails = true;
+
+    final end = (_thumbnailLoadedCount + _batchSize).clamp(0, _imageFiles.length);
+    final batch = _imageFiles.sublist(_thumbnailLoadedCount, end);
+    _thumbnailLoadedCount = end;
+
+    await _loadThumbnails(batch);
+    _isLoadingThumbnails = false;
+
+    // 画面を埋めきれなければ追加読み込み
+    _loadMoreIfNeeded();
+  }
+
+  void _loadMoreIfNeeded() {
+    if (_thumbnailLoadedCount >= _imageFiles.length) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      if (_scrollController.position.maxScrollExtent <= 0) {
+        _loadNextBatch();
+      }
+    });
   }
 
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
@@ -259,11 +310,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     return GridView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(4),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
-      ),
+      gridDelegate: galleryGridDelegate,
       itemCount: _items.length,
       itemBuilder: (context, index) {
         final item = _items[index];
