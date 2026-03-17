@@ -118,7 +118,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
     final queue = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
-    const concurrency = 3;
+    const concurrency = galleryCrossAxisCount * 3;
     var index = 0;
 
     Future<void> worker() async {
