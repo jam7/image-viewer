@@ -19,6 +19,9 @@ class PixivApiClient {
 
   String? get userId => _webClient.userId;
 
+  /// userId が取得できるまで待機。
+  Future<String> waitForUserId() => _webClient.waitForUserId();
+
   PixivApiClient({required PixivWebClient webClient})
       : _webClient = webClient,
         _imageDio = Dio(BaseOptions(
