@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/image_source.dart';
+import 'gallery_constants.dart';
 import '../../models/server_config.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
@@ -562,11 +563,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     return GridView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(4),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
-      ),
+      gridDelegate: galleryGridDelegate,
       itemCount: _images.length + (_isLoading ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= _images.length) {
