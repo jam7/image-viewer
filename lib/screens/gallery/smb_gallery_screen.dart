@@ -53,7 +53,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _loadDirectory();
   }
 
@@ -64,15 +63,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent - 200 &&
-        !_isLoadingThumbnails &&
-        _thumbnailLoadedCount < _imageFiles.length) {
-      _loadNextBatch();
-    }
-  }
+
 
   Future<void> _loadDirectory() async {
     setState(() {
@@ -316,6 +307,11 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         final item = _items[index];
         final isDir = item.metadata?['isDirectory'] == true;
         final thumbnail = _thumbnailData[item.id];
+
+        // サムネイル未読み込みの画像が表示されようとしたら次バッチ開始
+        if (!isDir && thumbnail == null && !_isLoadingThumbnails) {
+          _loadNextBatch();
+        }
 
         return GestureDetector(
           onTap: () => _onItemTap(item),
