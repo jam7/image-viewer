@@ -104,10 +104,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
     _loadingStates[image.id] = true;
     final key = 'full:${image.id}';
+    print('[Viewer] Loading full image: ${image.name} key=$key');
 
     try {
       final cached = await widget.cacheManager.get(key);
       if (cached != null) {
+        print('[Viewer] Cache hit: ${image.name} (${cached.data.length} bytes, ${cached.source})');
         if (mounted) {
           setState(() {
             _fullImages[image.id] = Uint8List.fromList(cached.data);
