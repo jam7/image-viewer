@@ -117,21 +117,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
-    final queue = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
-    const concurrency = galleryCrossAxisCount * 3;
-    var index = 0;
-
-    Future<void> worker() async {
-      while (index < queue.length) {
-        final image = queue[index++];
-        await _loadOneThumbnail(image);
-      }
+    // smb_connect は sendrecv() を単一の mutex で保護しており、
+    // 並列 openRead しても実質直列化される。さらに並列数が多いと
+    // SocketReader の 3秒ポーリングタイムアウトに引っかかり
+    // StreamSink is closed エラーが発生する。
+    for (final image in images) {
+      if (_thumbnailData.containsKey(image.id)) continue;
+      await _loadOneThumbnail(image);
     }
-
-    await Future.wait(List.generate(
-      concurrency.clamp(0, queue.length),
-      (_) => worker(),
-    ));
   }
 
   Future<void> _loadOneThumbnail(ImageSource image) async {
