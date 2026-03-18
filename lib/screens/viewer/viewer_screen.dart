@@ -126,8 +126,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
           });
         }
       }
-    } catch (_) {
-      // ロード失敗
+    } catch (e, st) {
+      print('[Viewer] loadFullImage error (${image.name}): $e\n$st');
     } finally {
       _loadingStates[image.id] = false;
     }
