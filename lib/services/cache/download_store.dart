@@ -128,7 +128,8 @@ class DownloadStore {
           _totalSizeBytes += meta.sizeBytes;
         }
       }
-    } catch (_) {
+    } catch (e, st) {
+      print('[DownloadStore] load error: $e\n$st');
       _entries.clear();
       _totalSizeBytes = 0;
     }
