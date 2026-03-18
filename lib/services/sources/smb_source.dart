@@ -115,14 +115,9 @@ class SmbSource implements ImageSourceProvider {
     return sources;
   }
 
-  /// サムネイル取得結果。isFullImage が true の場合、フル画像でフォールバックした。
-  bool _lastThumbnailWasFullImage = false;
-  bool get lastThumbnailWasFullImage => _lastThumbnailWasFullImage;
-
-  @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
-    _lastThumbnailWasFullImage = false;
-    // JPEG の EXIF サムネイルを抽出。なければフル画像にフォールバック。
+  /// サムネイル取得。戻り値の `isFullImage` でフォールバックしたか判定。
+  /// 並行呼び出しに安全（インスタンス変数を使わない）。
+  Future<({Uint8List data, bool isFullImage})> fetchThumbnailWithInfo(ImageSource source) async {
     final name = source.name.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
       try {
@@ -133,7 +128,7 @@ class SmbSource implements ImageSourceProvider {
           final bytes = thumbnail.values.toList();
           if (bytes.isNotEmpty) {
             print('[SMB] EXIF thumbnail found for ${source.name} (${bytes.length} bytes)');
-            return Uint8List.fromList(bytes.cast<int>());
+            return (data: Uint8List.fromList(bytes.cast<int>()), isFullImage: false);
           }
         }
         print('[SMB] Fallback to full image: no EXIF thumbnail (${source.name})');
@@ -143,9 +138,15 @@ class SmbSource implements ImageSourceProvider {
     } else {
       print('[SMB] Fallback to full image: not JPEG (${source.name})');
     }
-    _lastThumbnailWasFullImage = true;
-    return fetchFullImage(source);
+    return (data: await fetchFullImage(source), isFullImage: true);
   }
+
+  @override
+  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+    final result = await fetchThumbnailWithInfo(source);
+    return result.data;
+  }
+
 
   /// ファイルの先頭 [length] バイトだけ読み込む。
   Future<Uint8List> _readPartial(String path, int length) async {
