@@ -117,15 +117,15 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
-    // dart_smb2 は MessageId ベースの多重化で並列読み取りが可能。
-    // in-flight 制限（32）がバックプレッシャーとして機能するため、
-    // 全サムネイルを並列にリクエストしても安全。
-    final futures = <Future<void>>[];
-    for (final image in images) {
-      if (_thumbnailData.containsKey(image.id)) continue;
-      futures.add(_loadOneThumbnail(image));
+    // 1行分（crossAxisCount枚）ずつ並列ダウンロード。
+    // 全部同時に投げると帯域を奪い合い単体速度が落ちるため、
+    // 行単位で区切って先に表示可能にする。
+    final list = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
+    for (int i = 0; i < list.length; i += galleryCrossAxisCount) {
+      final end = (i + galleryCrossAxisCount).clamp(0, list.length);
+      final row = list.sublist(i, end);
+      await Future.wait(row.map(_loadOneThumbnail));
     }
-    await Future.wait(futures);
   }
 
   Future<void> _loadOneThumbnail(ImageSource image) async {
