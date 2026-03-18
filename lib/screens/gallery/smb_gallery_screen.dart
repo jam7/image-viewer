@@ -117,14 +117,15 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
-    // smb_connect は sendrecv() を単一の mutex で保護しており、
-    // 並列 openRead しても実質直列化される。さらに並列数が多いと
-    // SocketReader の 3秒ポーリングタイムアウトに引っかかり
-    // StreamSink is closed エラーが発生する。
+    // dart_smb2 は MessageId ベースの多重化で並列読み取りが可能。
+    // in-flight 制限（32）がバックプレッシャーとして機能するため、
+    // 全サムネイルを並列にリクエストしても安全。
+    final futures = <Future<void>>[];
     for (final image in images) {
       if (_thumbnailData.containsKey(image.id)) continue;
-      await _loadOneThumbnail(image);
+      futures.add(_loadOneThumbnail(image));
     }
+    await Future.wait(futures);
   }
 
   Future<void> _loadOneThumbnail(ImageSource image) async {

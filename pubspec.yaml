@@ -38,7 +38,8 @@ dependencies:
   dio: ^5.4.0
   flutter_secure_storage: ^9.0.0
   path_provider: ^2.1.0
-  smb_connect: ^0.0.9
+  dart_smb2:
+    path: dart_smb2
   webview_windows: ^0.4.0
   webview_flutter: ^4.13.1
   exif: ^3.3.0

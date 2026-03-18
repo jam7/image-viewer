@@ -1,5 +1,5 @@
+import 'package:dart_smb2/dart_smb2.dart';
 import 'package:flutter/material.dart';
-import 'package:smb_connect/smb_connect.dart';
 
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
@@ -64,17 +64,22 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
     });
 
     try {
-      final client = await SmbConnect.connectAuth(
+      final client = await Smb2Client.connect(
         host: _hostController.text.trim(),
-        domain: '',
+        port: int.tryParse(_portController.text.trim()) ?? 445,
         username: _userController.text.trim(),
         password: _passwordController.text,
       );
-      final shares = await client.listShares();
-      await client.close();
-      setState(() {
-        _testResult = '接続成功 (${shares.length}個の共有を検出)';
-      });
+      try {
+        final share = _shareController.text.trim();
+        final tree = await client.connectTree(share);
+        final files = await tree.listDirectory('/');
+        setState(() {
+          _testResult = '接続成功 (${files.length}個のエントリを検出)';
+        });
+      } finally {
+        await client.disconnect();
+      }
     } catch (e, st) {
       print('[SMB] Test connection error: $e\n$st');
       final message = e is Exception ? e.toString() : e.runtimeType.toString();
