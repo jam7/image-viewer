@@ -5,6 +5,7 @@ import 'package:smb_connect/smb_connect.dart';
 
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
+import '../../utils/natural_sort.dart';
 import 'image_source_provider.dart';
 
 /// SMB2経由の画像取得。
@@ -104,12 +105,12 @@ class SmbSource implements ImageSourceProvider {
       }
     }
 
-    // ディレクトリを先、ファイルは名前順
+    // ディレクトリを先、ファイルは自然順ソート
     sources.sort((a, b) {
       final aDir = a.metadata?['isDirectory'] == true;
       final bDir = b.metadata?['isDirectory'] == true;
       if (aDir != bDir) return aDir ? -1 : 1;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      return naturalCompare(a.name, b.name);
     });
 
     return sources;
