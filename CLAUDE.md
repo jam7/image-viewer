@@ -17,8 +17,8 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/
 
 ### エラーハンドリング（必須）
 
-- catch ブロックでは必ず `print('[Component] error: $e\n$st')` でログ出力する。`catch (_)` で握りつぶさない
-- 画面に表示するエラーとログ出力の両方を行う
+- **アプリ（lib/ 以下）**: catch ブロックでは必ず `print('[Component] error: $e\n$st')` でログ出力する。`catch (_)` で握りつぶさない。画面に表示するエラーとログ出力の両方を行う
+- **ライブラリ（dart_smb2/ 等）**: print せず例外を throw/rethrow で呼び出し元に返す。フォールバック処理で catch する場合は具体的な型（`on FormatException` 等）でキャッチし、`catch (_)` で握りつぶさない
 
 ### 実装時の説明責任
 
