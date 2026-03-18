@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
-import 'package:smb_connect/smb_connect.dart';
 
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
@@ -12,7 +12,8 @@ import 'image_source_provider.dart';
 class SmbSource implements ImageSourceProvider {
   final ServerConfig config;
   final String password;
-  SmbConnect? _client;
+  Smb2Client? _client;
+  Smb2Tree? _tree;
 
   static const _imageExtensions = {
     '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
@@ -20,39 +21,21 @@ class SmbSource implements ImageSourceProvider {
 
   SmbSource({required this.config, required this.password});
 
-  void _logConnectionInfo(SmbConnect client) {
-    final transport = client.transport;
-    final isSMB2 = transport.isSMB2();
-    final negotiated = transport.getNegotiatedResponse();
-
-    print('[SMB] Connected: protocol=${isSMB2 ? "SMB2" : "SMB1"}');
-
-    if (negotiated != null) {
-      print('[SMB]   signing: enabled=${negotiated.isSigningEnabled()}, '
-          'required=${negotiated.isSigningRequired()}, '
-          'negotiated=${negotiated.isSigningNegotiated()}');
-      // SMB2の場合、追加情報をtoStringから取得
-      print('[SMB]   negotiated: $negotiated');
-    }
-
-    final cfg = client.configuration;
-    print('[SMB]   bufferSize: ${cfg.maximumBufferSize}, '
-        'sendBuf: ${cfg.sendBufferSize}, '
-        'recvBuf: ${cfg.receiveBufferSize}');
-  }
-
-  Future<SmbConnect> _connect() async {
-    if (_client != null) return _client!;
-    print('[SMB] Connecting to ${config.host}/${config.shareName}...');
+  Future<Smb2Tree> _connect() async {
+    if (_tree != null) return _tree!;
+    final share = config.shareName ?? '';
+    print('[SMB] Connecting to ${config.host}/$share...');
     try {
-      _client = await SmbConnect.connectAuth(
+      _client = await Smb2Client.connect(
         host: config.host,
-        domain: '',
+        port: config.port,
         username: config.username ?? '',
         password: password,
       );
-      _logConnectionInfo(_client!);
-      return _client!;
+      print('[SMB] Connected: dialect=${Smb2Dialect.describe(_client!.dialectRevision)}, '
+          'maxRead=${_client!.maxReadSize}');
+      _tree = await _client!.connectTree(share);
+      return _tree!;
     } catch (e, st) {
       print('[SMB] Connection error: $e\n$st');
       rethrow;
@@ -61,26 +44,20 @@ class SmbSource implements ImageSourceProvider {
 
   @override
   Future<List<ImageSource>> listImages({String? path}) async {
-    final client = await _connect();
-    final share = config.shareName ?? '';
+    final tree = await _connect();
     final dirPath = path ?? config.basePath ?? '/';
-    final fullPath = '/$share$dirPath';
 
-    print('[SMB] Listing: $fullPath');
-    final folder = await client.file(fullPath);
-    final files = await client.listFiles(folder);
+    print('[SMB] Listing: $dirPath');
+    final files = await tree.listDirectory(dirPath);
 
     final sources = <ImageSource>[];
     for (final file in files) {
-      final name = file.path.split('/').last;
-      if (name == '.' || name == '..') continue;
-
-      final isDir = file.isDirectory();
+      final name = file.name;
       final ext = name.contains('.')
           ? '.${name.split('.').last.toLowerCase()}'
           : '';
 
-      if (isDir) {
+      if (file.isDirectory) {
         sources.add(ImageSource(
           id: 'smb:${config.id}:${file.path}',
           name: name,
@@ -88,7 +65,7 @@ class SmbSource implements ImageSourceProvider {
           type: ImageSourceType.smb,
           metadata: {
             'isDirectory': true,
-            'path': file.path.replaceFirst('/$share', ''),
+            'path': file.path,
           },
         ));
       } else if (_imageExtensions.contains(ext)) {
@@ -133,8 +110,8 @@ class SmbSource implements ImageSourceProvider {
           }
         }
         print('[SMB] Fallback to full image: no EXIF thumbnail (${source.name})');
-      } catch (e) {
-        print('[SMB] Fallback to full image: EXIF parse error (${source.name}): $e');
+      } catch (e, st) {
+        print('[SMB] Fallback to full image: EXIF parse error (${source.name}): $e\n$st');
       }
     } else {
       print('[SMB] Fallback to full image: not JPEG (${source.name})');
@@ -148,20 +125,15 @@ class SmbSource implements ImageSourceProvider {
     return result.data;
   }
 
-
   /// ファイルの先頭 [length] バイトだけ読み込む。
   Future<Uint8List> _readPartial(String path, int length) async {
-    final client = await _connect();
-    final file = await client.file(path);
-    final stream = await client.openRead(file, 0, length);
-
-    final chunks = <int>[];
-    await for (final chunk in stream) {
-      chunks.addAll(chunk);
-      if (chunks.length >= length) break;
+    final tree = await _connect();
+    final reader = await tree.openRead(path);
+    try {
+      return await reader.readRange(0, length);
+    } finally {
+      await reader.close();
     }
-
-    return Uint8List.fromList(chunks);
   }
 
   @override
@@ -170,29 +142,40 @@ class SmbSource implements ImageSourceProvider {
     void Function(int received, int total)? onProgress,
   }) async {
     final stopwatch = Stopwatch()..start();
-    final client = await _connect();
-    final file = await client.file(source.uri);
-    final stream = await client.openRead(file);
+    final tree = await _connect();
+    final reader = await tree.openRead(source.uri);
+    try {
+      final chunks = <Uint8List>[];
+      int received = 0;
+      await for (final chunk in reader.readStream()) {
+        chunks.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, reader.fileSize);
+      }
 
-    final chunks = <int>[];
-    int received = 0;
-    await for (final chunk in stream) {
-      chunks.addAll(chunk);
-      received += chunk.length as int;
-      onProgress?.call(received, -1);
+      stopwatch.stop();
+      final seconds = stopwatch.elapsedMilliseconds / 1000;
+      final speed = seconds > 0 ? (received / 1024 / seconds).toStringAsFixed(0) : '?';
+      print('[SMB] Downloaded ${source.name}: ${(received / 1024).toStringAsFixed(0)} KB in ${seconds.toStringAsFixed(2)}s ($speed KB/s)');
+
+      final result = Uint8List(received);
+      int offset = 0;
+      for (final chunk in chunks) {
+        result.setRange(offset, offset + chunk.length, chunk);
+        offset += chunk.length;
+      }
+      return result;
+    } finally {
+      await reader.close();
     }
-
-    stopwatch.stop();
-    final seconds = stopwatch.elapsedMilliseconds / 1000;
-    final speed = seconds > 0 ? (received / 1024 / seconds).toStringAsFixed(0) : '?';
-    print('[SMB] Downloaded ${source.name}: ${(received / 1024).toStringAsFixed(0)} KB in ${seconds.toStringAsFixed(2)}s (${speed} KB/s)');
-
-    return Uint8List.fromList(chunks);
   }
 
   @override
   Future<void> dispose() async {
-    await _client?.close();
-    _client = null;
+    if (_client != null) {
+      await _client!.disconnect();
+      _client = null;
+      _tree = null;
+    }
   }
 }
