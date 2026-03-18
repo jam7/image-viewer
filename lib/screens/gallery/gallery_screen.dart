@@ -325,8 +325,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 _thumbnailData[image.id] = Uint8List.fromList(result.data));
           }
         }
-      } catch (_) {
-        // サムネイル取得失敗は無視
+      } catch (e, st) {
+        print('[Gallery] thumbnail error (${image.name}): $e\n$st');
       }
     }
   }
