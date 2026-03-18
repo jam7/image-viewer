@@ -89,7 +89,8 @@ class FavoritesStore {
           entry.value as Map<String, dynamic>,
         );
       }
-    } catch (_) {
+    } catch (e, st) {
+      print('[FavoritesStore] load error: $e\n$st');
       _entries.clear();
     }
   }

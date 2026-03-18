@@ -190,8 +190,8 @@ class DiskCache {
           _totalSizeBytes += meta.sizeBytes;
         }
       }
-    } catch (_) {
-      // メタデータ破損時はリセット
+    } catch (e, st) {
+      print('[DiskCache] metadata load error: $e\n$st');
       _entries.clear();
       _totalSizeBytes = 0;
     }
