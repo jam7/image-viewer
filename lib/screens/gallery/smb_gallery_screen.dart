@@ -147,14 +147,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
               _thumbnailData[image.id] = Uint8List.fromList(cached.data));
         }
       } else {
-        // まずダウンロードして、フォールバックしたか判定してからキャッシュ
-        final data = await widget.source.fetchThumbnail(image);
-        final saveKey = widget.source.lastThumbnailWasFullImage
-            ? fullKey : thumbKey;
-        widget.cacheManager.l1.put(saveKey, data);
-        await widget.cacheManager.l2.put(saveKey, data);
+        final result = await widget.source.fetchThumbnailWithInfo(image);
+        final saveKey = result.isFullImage ? fullKey : thumbKey;
+        widget.cacheManager.l1.put(saveKey, result.data);
+        await widget.cacheManager.l2.put(saveKey, result.data);
         if (mounted) {
-          setState(() => _thumbnailData[image.id] = data);
+          setState(() => _thumbnailData[image.id] = result.data);
         }
       }
     } catch (e, st) {
