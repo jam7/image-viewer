@@ -10,6 +10,10 @@
 - [ ] SMBダウンロード・EXIF解析をIsolateに逃がす（UIスレッドのカクつき改善）
 - [ ] SMB代替としてWebDAV対応を検討（QNAPは対応済み、HTTP経由で高速化の可能性）
 
+## dart_smb2
+- [ ] ライブラリ内の print をロギング機構に置き換え
+- [ ] listShares() 実装 → 接続設定UIで共有フォルダ一覧から選択できるようにする（共有名の手入力を不要にする）
+
 ## ネットワーク
 - [ ] Range Request対応（ZIPファイル内の個別画像取得に必要）
 - [ ] ZIPファイル対応（Pixiv ugoira等）
