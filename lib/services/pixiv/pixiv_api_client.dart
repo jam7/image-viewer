@@ -62,6 +62,13 @@ class PixivApiClient {
     _checkError(data);
     final body = data['body'] as Map<String, dynamic>;
     final thumbnails = body['thumbnails']?['illust'] as List<dynamic>? ?? [];
+    // Log entries with missing/null id for debugging
+    for (final t in thumbnails) {
+      final m = t as Map<String, dynamic>;
+      if (m['id'] == null || m['id'] == 0 || m['id'] == '0') {
+        print('[PixivAPI] WARNING: thumbnail with invalid id: ${m.keys.toList()}, id=${m['id']}, title=${m['title']}');
+      }
+    }
     final illusts = thumbnails
         .map((t) => PixivArtwork.fromThumbnailJson(t as Map<String, dynamic>))
         .toList();
@@ -108,6 +115,12 @@ class PixivApiClient {
     final illustManga = body['illustManga'] as Map<String, dynamic>? ?? {};
     final artworks = illustManga['data'] as List<dynamic>? ?? [];
     final total = illustManga['total'] as int? ?? 0;
+    for (final d in artworks) {
+      final m = d as Map<String, dynamic>;
+      if (m['id'] == null || m['id'] == 0 || m['id'] == '0') {
+        print('[PixivAPI] WARNING: search result with invalid id: ${m.keys.toList()}, id=${m['id']}, title=${m['title']}');
+      }
+    }
     return PixivIllustList(
       illusts: artworks
           .map((d) => PixivArtwork.fromThumbnailJson(d as Map<String, dynamic>))

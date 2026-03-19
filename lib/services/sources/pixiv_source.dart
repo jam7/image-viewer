@@ -114,6 +114,7 @@ class PixivSource extends ImageSourceProvider {
     final sources = <ImageSource>[];
 
     for (final artwork in artworks) {
+      if (artwork.id == 0) continue; // Skip invalid entries
       sources.add(ImageSource(
         id: '${artwork.id}',
         name: artwork.title,
