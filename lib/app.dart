@@ -75,9 +75,21 @@ class _AppRootState extends State<_AppRoot> {
     });
   }
 
+  PixivSource _createPixivSource() {
+    final apiClient = PixivApiClient(webClient: _webClient);
+    _pixivSource = PixivSource(client: apiClient);
+    _registry.setPixivSource(_pixivSource!);
+    return _pixivSource!;
+  }
+
   /// Lazy Pixiv login: called when user taps Pixiv or opens a Pixiv favorite.
   Future<PixivSource?> _handlePixivLogin(BuildContext context) async {
     if (_pixivSource != null) return _pixivSource;
+
+    // Check if already logged in (cookies still valid)
+    if (_webClient.isReady) {
+      return _createPixivSource();
+    }
 
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => PixivLoginScreen(
@@ -93,17 +105,17 @@ class _AppRootState extends State<_AppRoot> {
               print('[App] Failed to acquire userId: $e');
             }
           });
-          Navigator.of(context).pop(true);
+          // Delay pop to avoid calling during navigation lock
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.of(context).pop(true);
+          });
         },
       ),
     ));
 
     if (result != true) return null;
 
-    final apiClient = PixivApiClient(webClient: _webClient);
-    _pixivSource = PixivSource(client: apiClient);
-    _registry.setPixivSource(_pixivSource!);
-    return _pixivSource;
+    return _createPixivSource();
   }
 
   @override
