@@ -4,6 +4,7 @@ import '../../models/server_config.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/smb/smb_config_store.dart';
+import '../../services/pixiv/pixiv_api_client.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
@@ -15,7 +16,7 @@ import 'favorites_tab.dart';
 
 /// ランディングページ。下部タブバーでホームとお気に入りを切り替え。
 class HomeScreen extends StatefulWidget {
-  final PixivSource pixivSource;
+  final PixivApiClient pixivApiClient;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SmbConfigStore smbConfigStore;
@@ -23,7 +24,7 @@ class HomeScreen extends StatefulWidget {
 
   const HomeScreen({
     super.key,
-    required this.pixivSource,
+    required this.pixivApiClient,
     required this.cacheManager,
     required this.favoritesStore,
     required this.smbConfigStore,
@@ -188,9 +189,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openPixiv() {
+    final source = PixivSource(client: widget.pixivApiClient);
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => GalleryScreen(
-        source: widget.pixivSource,
+        source: source,
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
         registry: widget.registry,
