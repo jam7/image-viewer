@@ -6,6 +6,7 @@ import '../../services/favorites/favorites_store.dart';
 import '../../services/smb/smb_config_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/smb_source.dart';
+import '../../services/sources/source_registry.dart';
 import '../gallery/gallery_screen.dart';
 import '../gallery/smb_gallery_screen.dart';
 import '../settings/settings_screen.dart';
@@ -18,6 +19,7 @@ class HomeScreen extends StatefulWidget {
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SmbConfigStore smbConfigStore;
+  final SourceRegistry registry;
 
   const HomeScreen({
     super.key,
@@ -25,6 +27,7 @@ class HomeScreen extends StatefulWidget {
     required this.cacheManager,
     required this.favoritesStore,
     required this.smbConfigStore,
+    required this.registry,
   });
 
   @override
@@ -40,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _currentTab == 0 ? _buildHomeTab() : FavoritesTab(
         favoritesStore: widget.favoritesStore,
         cacheManager: widget.cacheManager,
+        registry: widget.registry,
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentTab,
@@ -197,6 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (password == null) return;
     if (!mounted) return;
     final source = SmbSource(config: config, password: password);
+    widget.registry.register(SourceRegistry.keyForSmb(config), source);
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SmbGalleryScreen(
         source: source,

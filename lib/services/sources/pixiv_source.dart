@@ -74,6 +74,7 @@ class PixivSource implements ImageSourceProvider {
         name: pageName,
         uri: page.originalUrl,
         type: ImageSourceType.pixiv,
+        sourceKey: 'pixiv:default',
         metadata: {
           ...?source.metadata,
           'illustId': illustId,
@@ -118,6 +119,7 @@ class PixivSource implements ImageSourceProvider {
         name: artwork.title,
         uri: artwork.thumbnailUrl,
         type: ImageSourceType.pixiv,
+        sourceKey: 'pixiv:default',
         metadata: {
           'illustId': artwork.id,
           'thumbnailUrl': artwork.thumbnailUrl,
