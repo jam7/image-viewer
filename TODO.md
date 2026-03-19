@@ -1,6 +1,7 @@
 # TODO
 
 ## ナビゲーション
+- [ ] GalleryScreen のナビゲーション再設計: 現在は作者一覧・検索結果が同じ画面内の状態変更なので戻れない。showUserWorks や検索で新しい GalleryScreen を push し、Navigator の履歴として残す。deactivate で画像データを解放すればメモリは問題ない
 - [ ] ブラウザ風の履歴ジャンプ: 戻るボタン長押しで画面履歴一覧を表示し、popUntil で数段飛ばして戻れるようにする。各画面に RouteSettings(name) を付けて自前の履歴リストを管理
 
 ## ビューア
