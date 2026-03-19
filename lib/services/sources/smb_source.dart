@@ -9,7 +9,7 @@ import '../../utils/natural_sort.dart';
 import 'image_source_provider.dart';
 
 /// SMB2経由の画像取得。
-class SmbSource implements ImageSourceProvider {
+class SmbSource extends ImageSourceProvider {
   final ServerConfig config;
   final String password;
   Smb2Client? _client;

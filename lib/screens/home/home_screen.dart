@@ -192,6 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
         source: widget.pixivSource,
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
+        registry: widget.registry,
       ),
     ));
   }
@@ -207,6 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
         source: source,
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
+        registry: widget.registry,
         initialPath: config.basePath ?? '/',
       ),
     ));

@@ -18,6 +18,10 @@ abstract class ImageSourceProvider {
     void Function(int received, int total)? onProgress,
   });
 
+  /// 作品のページ一覧を解決する。
+  /// Pixiv: 複数ページ作品を展開。SMB: そのまま返す。
+  Future<List<ImageSource>> resolvePages(ImageSource source) async => [source];
+
   /// リソースを解放する。
   Future<void> dispose();
 }

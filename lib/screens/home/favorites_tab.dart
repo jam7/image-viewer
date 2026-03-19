@@ -6,7 +6,6 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
-import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../viewer/viewer_screen.dart';
 
@@ -71,24 +70,14 @@ class _FavoritesTabState extends State<FavoritesTab> {
     );
   }
 
-  void _onItemTap(FavoriteEntry item, int index) async {
-    final image = _toImageSource(item);
-
-    // Resolve source for page expansion (Pixiv needs API call for multi-page works)
-    final provider = await widget.registry.resolve(item.sourceKey, context);
-    if (!mounted) return;
-
-    PageResolver? resolver;
-    if (provider is PixivSource) {
-      resolver = provider.resolvePages;
-    }
-
+  void _onItemTap(FavoriteEntry item, int index) {
+    final allFavs = _favorites;
+    final imageItems = allFavs.map(_toImageSource).toList();
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ViewerScreen(
-        initialImage: image,
-        source: provider,
+        items: imageItems,
+        initialIndex: index,
         registry: widget.registry,
-        resolvePages: resolver,
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
       ),

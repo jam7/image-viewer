@@ -9,6 +9,7 @@ import 'gallery_constants.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
+import '../../services/sources/source_registry.dart';
 import '../viewer/viewer_screen.dart';
 
 /// サムネイル一覧画面。
@@ -16,12 +17,14 @@ class GalleryScreen extends StatefulWidget {
   final PixivSource source;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
+  final SourceRegistry registry;
 
   const GalleryScreen({
     super.key,
     required this.source,
     required this.cacheManager,
     required this.favoritesStore,
+    required this.registry,
   });
 
   @override
@@ -346,13 +349,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
         name: 'Artwork $id',
         uri: '',
         type: ImageSourceType.pixiv,
+        sourceKey: 'pixiv:default',
         metadata: {'illustId': int.parse(id)},
       );
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => ViewerScreen(
-          initialImage: source,
-          source: widget.source,
-          resolvePages: widget.source.resolvePages,
+          items: [source],
+          registry: widget.registry,
           cacheManager: widget.cacheManager,
           favoritesStore: widget.favoritesStore,
         ),
@@ -367,9 +370,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => ViewerScreen(
-          initialImage: _images[index],
-          source: widget.source,
-          resolvePages: widget.source.resolvePages,
+          items: _images,
+          initialIndex: index,
+          registry: widget.registry,
           cacheManager: widget.cacheManager,
           favoritesStore: widget.favoritesStore,
         ),
