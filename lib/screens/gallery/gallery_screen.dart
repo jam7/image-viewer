@@ -42,6 +42,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
   final Map<String, Uint8List> _thumbnailData = {};
   bool _isLoading = false;
   String? _error;
+  /// Incremented in _loadImages() to invalidate in-progress thumbnail loops.
+  /// Any async loop (_loadThumbnails, _reloadThumbnailsFromCache) must capture
+  /// this value at start and abort if it changes, preventing stale thumbnails
+  /// from being written into _thumbnailData after a tab switch or search.
+  int _loadGeneration = 0;
   _PixivTab _currentTab = _PixivTab.recommended;
   final _searchController = TextEditingController();
   final _filterController = TextEditingController();
@@ -92,8 +97,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _reloadThumbnailsFromCache() async {
+    final generation = _loadGeneration;
     for (final image in _images) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}')
@@ -259,6 +265,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<void> _loadImages() async {
     if (!mounted) return;
+    _loadGeneration++;
     _applyFilter();
     setState(() {
       _isLoading = true;
@@ -345,8 +352,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _loadThumbnails(List<ImageSource> images) async {
+    final generation = _loadGeneration;
     for (final image in images) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       final key = 'thumb:${image.id}';
       try {
