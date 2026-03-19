@@ -43,6 +43,7 @@ class FavoriteEntry {
   final String imageId;
   final String name;
   final String uri;
+  final String sourceKey; // e.g. "pixiv:default", "smb:1773662275240"
   final String? thumbnailUrl;
   final Map<String, dynamic> sourceInfo;
   final DateTime addedAt;
@@ -51,6 +52,7 @@ class FavoriteEntry {
     required this.imageId,
     required this.name,
     required this.uri,
+    this.sourceKey = 'pixiv:default',
     this.thumbnailUrl,
     required this.sourceInfo,
     required this.addedAt,
@@ -59,6 +61,7 @@ class FavoriteEntry {
   Map<String, dynamic> toJson() => {
         'name': name,
         'uri': uri,
+        'sourceKey': sourceKey,
         'thumbnailUrl': thumbnailUrl,
         'sourceInfo': sourceInfo,
         'addedAt': addedAt.toIso8601String(),
@@ -69,6 +72,7 @@ class FavoriteEntry {
       imageId: imageId,
       name: json['name'] as String? ?? '',
       uri: json['uri'] as String? ?? '',
+      sourceKey: json['sourceKey'] as String? ?? 'pixiv:default',
       thumbnailUrl: json['thumbnailUrl'] as String?,
       sourceInfo: (json['sourceInfo'] as Map<String, dynamic>?) ?? {},
       addedAt: DateTime.parse(json['addedAt'] as String),

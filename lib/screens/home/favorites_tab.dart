@@ -6,17 +6,20 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
+import '../../services/sources/source_registry.dart';
 import '../viewer/viewer_screen.dart';
 
 /// お気に入り一覧タブ。全ソース横断で表示。
 class FavoritesTab extends StatefulWidget {
   final FavoritesStore favoritesStore;
   final CacheManager cacheManager;
+  final SourceRegistry registry;
 
   const FavoritesTab({
     super.key,
     required this.favoritesStore,
     required this.cacheManager,
+    required this.registry,
   });
 
   @override
@@ -44,8 +47,6 @@ class _FavoritesTabState extends State<FavoritesTab> {
             ?? await widget.cacheManager.get('full:${fav.imageId}');
         if (cached != null && mounted) {
           setState(() => _thumbnailData[fav.imageId] = Uint8List.fromList(cached.data));
-        } else {
-          print('[FavoritesTab] No cached thumbnail for ${fav.imageId} (${fav.name})');
         }
       } catch (e, st) {
         print('[FavoritesTab] thumbnail error: $e\n$st');
@@ -64,15 +65,13 @@ class _FavoritesTabState extends State<FavoritesTab> {
       name: entry.name,
       uri: entry.uri,
       type: type,
+      sourceKey: entry.sourceKey,
       metadata: entry.sourceInfo,
     );
   }
 
-  void _onItemTap(FavoriteEntry item) {
+  void _onItemTap(FavoriteEntry item, int index) {
     final allFavs = _favorites;
-    final index = allFavs.indexWhere((f) => f.imageId == item.imageId);
-    if (index < 0) return;
-
     final imageItems = allFavs.map(_toImageSource).toList();
     final reordered = [
       ...imageItems.sublist(index),
@@ -81,6 +80,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ViewerScreen(
         initialImage: imageItems[index],
+        registry: widget.registry,
         resolvePages: (_) async => reordered,
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
@@ -109,7 +109,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
                 final item = favorites[index];
                 final thumbnail = _thumbnailData[item.imageId];
                 return GestureDetector(
-                  onTap: () => _onItemTap(item),
+                  onTap: () => _onItemTap(item, index),
                   child: thumbnail != null
                       ? Image.memory(thumbnail, fit: BoxFit.cover)
                       : Container(

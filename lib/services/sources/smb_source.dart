@@ -57,12 +57,14 @@ class SmbSource implements ImageSourceProvider {
           ? '.${name.split('.').last.toLowerCase()}'
           : '';
 
+      final smbSourceKey = 'smb:${config.id}';
       if (file.isDirectory) {
         sources.add(ImageSource(
           id: 'smb:${config.id}:${file.path}',
           name: name,
           uri: file.path,
           type: ImageSourceType.smb,
+          sourceKey: smbSourceKey,
           metadata: {
             'isDirectory': true,
             'path': file.path,
@@ -74,6 +76,7 @@ class SmbSource implements ImageSourceProvider {
           name: name,
           uri: file.path,
           type: ImageSourceType.smb,
+          sourceKey: smbSourceKey,
           metadata: {
             'isDirectory': false,
             'path': file.path,

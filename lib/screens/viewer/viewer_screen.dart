@@ -9,6 +9,7 @@ import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/image_source_provider.dart';
+import '../../services/sources/source_registry.dart';
 
 /// ページ解決関数の型。Pixivは複数ページ作品を展開、SMBはそのまま返す。
 typedef PageResolver = Future<List<ImageSource>> Function(ImageSource source);
@@ -19,6 +20,7 @@ typedef PageResolver = Future<List<ImageSource>> Function(ImageSource source);
 class ViewerScreen extends StatefulWidget {
   final ImageSource initialImage;
   final ImageSourceProvider? source;
+  final SourceRegistry? registry;
   final PageResolver? resolvePages;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
@@ -27,6 +29,7 @@ class ViewerScreen extends StatefulWidget {
     super.key,
     required this.initialImage,
     this.source,
+    this.registry,
     this.resolvePages,
     required this.cacheManager,
     required this.favoritesStore,
@@ -116,10 +119,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
             _cacheSources[image.id] = cached.source;
           });
         }
-      } else if (widget.source != null) {
+      } else {
+        final provider = widget.source ?? (widget.registry != null && image.sourceKey != null
+            ? await widget.registry!.resolve(image.sourceKey!, context)
+            : null);
+        if (provider == null) return;
         final result = await widget.cacheManager.fetchAndCache(
           key,
-          () => widget.source!.fetchFullImage(image),
+          () => provider.fetchFullImage(image),
         );
         if (mounted) {
           setState(() {
@@ -219,6 +226,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final meta = {
       'name': image.name,
       'uri': image.uri,
+      'sourceKey': image.sourceKey ?? 'pixiv:default',
       'thumbnailUrl': image.metadata?['thumbnailUrl'],
       ...?image.metadata,
     };
