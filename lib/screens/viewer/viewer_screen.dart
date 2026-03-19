@@ -61,6 +61,25 @@ class _ViewerScreenState extends State<ViewerScreen> {
   }
 
   @override
+  void deactivate() {
+    // Release image data when pushed behind another screen.
+    // Data will be reloaded when this screen becomes visible again.
+    _fullImages.clear();
+    _cacheSources.clear();
+    _loadingStates.clear();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    // Reload images when returning to this screen
+    if (_pages != null) {
+      _preloadAround(_pageIndex);
+    }
+  }
+
+  @override
   void dispose() {
     _focusNode.dispose();
     super.dispose();
