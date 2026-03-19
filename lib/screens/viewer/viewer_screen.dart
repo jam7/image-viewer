@@ -67,12 +67,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
     _fullImages.clear();
     _cacheSources.clear();
     _loadingStates.clear();
+    print('[Viewer] deactivate: cleared image data');
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
+    print('[Viewer] activate: reloading images');
     // Reload images when returning to this screen
     if (_pages != null) {
       _preloadAround(_pageIndex);
@@ -87,6 +89,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   /// 作品を開く: resolvePages でページ展開してプリロード開始。
   Future<void> _openItem(int itemIndex) async {
+    print('[Viewer] openItem: index=$itemIndex/${widget.items.length}, name=${widget.items[itemIndex].name}');
     setState(() {
       _isResolvingPages = true;
       _error = null;
@@ -215,6 +218,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
+      print('[Viewer] pop via mouse back button');
       Navigator.of(context).pop();
     }
   }
@@ -276,6 +280,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
+      print('[Viewer] pop via ESC');
       Navigator.of(context).pop();
       return KeyEventResult.handled;
     }
@@ -459,6 +464,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                                   final authorId = currentImage.metadata?['authorId'];
                                   final authorName = currentImage.metadata?['author'] as String? ?? '';
                                   if (authorId != null) {
+                                    print('[Viewer] pop with showUser: authorId=$authorId, authorName=$authorName');
                                     Navigator.of(context).pop({
                                       'action': 'showUser',
                                       'userId': authorId,

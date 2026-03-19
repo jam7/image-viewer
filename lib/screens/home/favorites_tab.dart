@@ -73,6 +73,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
   }
 
   void _onItemTap(FavoriteEntry item, int index) async {
+    print('[FavoritesTab] onItemTap: index=$index, name=${item.name}, sourceKey=${item.sourceKey}');
     final allFavs = _favorites;
     final imageItems = allFavs.map(_toImageSource).toList();
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
@@ -89,7 +90,9 @@ class _FavoritesTabState extends State<FavoritesTab> {
 
     if (!mounted) return;
 
+    print('[FavoritesTab] viewer returned: result=$result, mounted=$mounted');
     if (result != null && result['action'] == 'showUser') {
+      print('[FavoritesTab] opening user works: ${result['userId']}');
       await _openUserWorks(result['userId'] as int, result['userName'] as String);
     }
 
@@ -101,6 +104,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
   }
 
   Future<void> _openUserWorks(int userId, String userName) async {
+    print('[FavoritesTab] _openUserWorks: resolving pixiv source');
     final provider = await widget.registry.resolve('pixiv:default', context);
     if (provider == null || provider is! PixivSource) return;
     if (!mounted) return;
