@@ -6,7 +6,9 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
+import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../gallery/gallery_screen.dart';
 import '../viewer/viewer_screen.dart';
 
 /// お気に入り一覧タブ。全ソース横断で表示。
@@ -73,20 +75,46 @@ class _FavoritesTabState extends State<FavoritesTab> {
   void _onItemTap(FavoriteEntry item, int index) async {
     final allFavs = _favorites;
     final imageItems = allFavs.map(_toImageSource).toList();
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ViewerScreen(
-        items: imageItems,
-        initialIndex: index,
-        registry: widget.registry,
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => ViewerScreen(
+          items: imageItems,
+          initialIndex: index,
+          registry: widget.registry,
+          cacheManager: widget.cacheManager,
+          favoritesStore: widget.favoritesStore,
+        ),
       ),
-    ));
-    // Refresh after returning from viewer (favorites may have changed)
+    );
+
+    if (!mounted) return;
+
+    if (result != null && result['action'] == 'showUser') {
+      await _openUserWorks(result['userId'] as int, result['userName'] as String);
+    }
+
+    // Refresh after returning (favorites may have changed)
     if (mounted) {
       setState(() {});
       _loadThumbnails();
     }
+  }
+
+  Future<void> _openUserWorks(int userId, String userName) async {
+    final provider = await widget.registry.resolve('pixiv:default', context);
+    if (provider == null || provider is! PixivSource) return;
+    if (!mounted) return;
+
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryScreen(
+        source: provider,
+        cacheManager: widget.cacheManager,
+        favoritesStore: widget.favoritesStore,
+        registry: widget.registry,
+        initialUserPath: '/user/$userId',
+        initialUserName: userName,
+      ),
+    ));
   }
 
   @override
