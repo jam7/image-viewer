@@ -68,8 +68,23 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   @override
   void activate() {
     super.activate();
-    if (_imageFiles.isNotEmpty) {
-      _loadThumbnails(_imageFiles);
+    if (_imageFiles.isNotEmpty && _thumbnailData.isEmpty) {
+      _reloadThumbnailsFromCache();
+    }
+  }
+
+  Future<void> _reloadThumbnailsFromCache() async {
+    for (final image in _imageFiles) {
+      if (_thumbnailData.containsKey(image.id)) continue;
+      try {
+        final cached = await widget.cacheManager.get('thumb:${image.id}')
+            ?? await widget.cacheManager.get('full:${image.id}');
+        if (cached != null && mounted) {
+          setState(() => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
+        }
+      } catch (e, st) {
+        print('[SmbGallery] reloadThumbnail error: $e\n$st');
+      }
     }
   }
 

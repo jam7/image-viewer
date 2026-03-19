@@ -83,12 +83,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void activate() {
     super.activate();
-    _reloadThumbnails();
+    // Reload thumbnails from cache only (deactivate cleared them)
+    if (_images.isNotEmpty && _thumbnailData.isEmpty) {
+      _reloadThumbnailsFromCache();
+    }
   }
 
-  void _reloadThumbnails() {
-    if (_images.isNotEmpty) {
-      _loadThumbnails(_images);
+  Future<void> _reloadThumbnailsFromCache() async {
+    for (final image in _images) {
+      if (_thumbnailData.containsKey(image.id)) continue;
+      try {
+        final cached = await widget.cacheManager.get('thumb:${image.id}')
+            ?? await widget.cacheManager.get('full:${image.id}');
+        if (cached != null && mounted) {
+          setState(() => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
+        }
+      } catch (e, st) {
+        print('[Gallery] reloadThumbnail error: $e\n$st');
+      }
     }
   }
 
