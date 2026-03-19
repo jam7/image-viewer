@@ -60,6 +60,20 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   @override
+  void deactivate() {
+    _thumbnailData.clear();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    if (_imageFiles.isNotEmpty) {
+      _loadThumbnails(_imageFiles);
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     _focusNode.dispose();
