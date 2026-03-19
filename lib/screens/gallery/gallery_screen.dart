@@ -75,6 +75,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   @override
+  void deactivate() {
+    _thumbnailData.clear();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    _reloadThumbnails();
+  }
+
+  void _reloadThumbnails() {
+    if (_images.isNotEmpty) {
+      _loadThumbnails(_images);
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     _filterController.dispose();
