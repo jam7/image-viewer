@@ -91,6 +91,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<void> _reloadThumbnailsFromCache() async {
     for (final image in _images) {
+      if (!mounted) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}')
@@ -416,8 +417,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
         ),
       ),
     );
+    if (!mounted) return;
     if (result != null && result['action'] == 'showUser') {
-      showUserWorks(result['userId'] as int, result['userName'] as String);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) showUserWorks(result['userId'] as int, result['userName'] as String);
+      });
     } else if (_currentTab == _PixivTab.favorites) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み
       _loadImages();
