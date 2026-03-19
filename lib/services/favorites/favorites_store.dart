@@ -40,6 +40,7 @@ class FavoritesStore {
         imageId: imageId,
         name: meta['name'] as String? ?? '',
         uri: meta['uri'] as String? ?? '',
+        sourceKey: meta['sourceKey'] as String? ?? 'pixiv:default',
         thumbnailUrl: meta['thumbnailUrl'] as String?,
         sourceInfo: meta,
         addedAt: DateTime.now(),
