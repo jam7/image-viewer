@@ -18,6 +18,8 @@ class GalleryScreen extends StatefulWidget {
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
+  final String? initialUserPath;
+  final String? initialUserName;
 
   const GalleryScreen({
     super.key,
@@ -25,6 +27,8 @@ class GalleryScreen extends StatefulWidget {
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
+    this.initialUserPath,
+    this.initialUserName,
   });
 
   @override
@@ -63,6 +67,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    if (widget.initialUserPath != null) {
+      _userPath = widget.initialUserPath;
+      _userName = widget.initialUserName;
+    }
     _loadImages();
   }
 
