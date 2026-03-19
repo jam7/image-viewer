@@ -9,6 +9,7 @@ import 'gallery_constants.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
+import '../../services/sources/source_registry.dart';
 import '../viewer/viewer_screen.dart';
 
 /// SMBディレクトリブラウズ画面。
@@ -16,6 +17,7 @@ class SmbGalleryScreen extends StatefulWidget {
   final SmbSource source;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
+  final SourceRegistry registry;
   final String initialPath;
 
   const SmbGalleryScreen({
@@ -23,6 +25,7 @@ class SmbGalleryScreen extends StatefulWidget {
     required this.source,
     required this.cacheManager,
     required this.favoritesStore,
+    required this.registry,
     this.initialPath = '/',
   });
 
@@ -162,6 +165,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           source: widget.source,
           cacheManager: widget.cacheManager,
           favoritesStore: widget.favoritesStore,
+          registry: widget.registry,
           initialPath: path,
         ),
       ));
@@ -171,17 +175,11 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           _items.where((i) => i.metadata?['isDirectory'] != true).toList();
       final index = imageItems.indexWhere((i) => i.id == item.id);
       if (index >= 0) {
-        // ディレクトリ内の全画像をページとして渡す
-        // クリックした画像を先頭に、以降を順番に並べる
-        final reordered = [
-          ...imageItems.sublist(index),
-          ...imageItems.sublist(0, index),
-        ];
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ViewerScreen(
-            initialImage: imageItems[index],
-            source: widget.source,
-            resolvePages: (_) async => reordered,
+            items: imageItems,
+            initialIndex: index,
+            registry: widget.registry,
             cacheManager: widget.cacheManager,
             favoritesStore: widget.favoritesStore,
           ),

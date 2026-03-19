@@ -6,7 +6,7 @@ import '../pixiv/pixiv_api_client.dart';
 import 'image_source_provider.dart';
 
 /// Pixiv を ImageSourceProvider として実装。
-class PixivSource implements ImageSourceProvider {
+class PixivSource extends ImageSourceProvider {
   final PixivApiClient _client;
 
   int? _nextOffset;

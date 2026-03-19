@@ -8,29 +8,25 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
-import '../../services/sources/image_source_provider.dart';
 import '../../services/sources/source_registry.dart';
 
-/// ページ解決関数の型。Pixivは複数ページ作品を展開、SMBはそのまま返す。
-typedef PageResolver = Future<List<ImageSource>> Function(ImageSource source);
-
 /// 画像ビューア画面。
-/// - マウスホイール / 矢印キー / Page Up・Down: ページ送り
-/// - Ctrl + マウスホイール: 拡大縮小（画像中心起点）
+/// - 上下スワイプ / マウスホイール / 上下キー / Page Up・Down: ページ送り（作品内）
+/// - 左右スワイプ / 左右キー: 作品送り（リスト内）
+/// - Ctrl + マウスホイール: 拡大縮小
+/// - ESC / マウスバック / 左端外スワイプ: 一覧に戻る
 class ViewerScreen extends StatefulWidget {
-  final ImageSource initialImage;
-  final ImageSourceProvider? source;
-  final SourceRegistry? registry;
-  final PageResolver? resolvePages;
+  final List<ImageSource> items; // 作品リスト
+  final int initialIndex; // 最初に表示する作品
+  final SourceRegistry registry;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
 
   const ViewerScreen({
     super.key,
-    required this.initialImage,
-    this.source,
-    this.registry,
-    this.resolvePages,
+    required this.items,
+    this.initialIndex = 0,
+    required this.registry,
     required this.cacheManager,
     required this.favoritesStore,
   });
@@ -40,22 +36,28 @@ class ViewerScreen extends StatefulWidget {
 }
 
 class _ViewerScreenState extends State<ViewerScreen> {
+  // 作品リスト内の位置
+  late int _itemIndex;
+  // 現在の作品のページリスト
   List<ImageSource>? _pages;
-  int _currentIndex = 0;
+  int _pageIndex = 0;
+  bool _isResolvingPages = true;
+  String? _error;
+
+  // 表示状態
   double _scale = 1.0;
   Offset _offset = Offset.zero;
   final Map<String, Uint8List> _fullImages = {};
   final Map<String, CacheSource> _cacheSources = {};
   final Map<String, bool> _loadingStates = {};
   bool _showOverlay = true;
-  bool _isResolvingPages = true;
-  String? _error;
   final _focusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _resolvePages();
+    _itemIndex = widget.initialIndex;
+    _openItem(_itemIndex);
   }
 
   @override
@@ -64,12 +66,30 @@ class _ViewerScreenState extends State<ViewerScreen> {
     super.dispose();
   }
 
-  Future<void> _resolvePages() async {
+  /// 作品を開く: resolvePages でページ展開してプリロード開始。
+  Future<void> _openItem(int itemIndex) async {
+    setState(() {
+      _isResolvingPages = true;
+      _error = null;
+      _pageIndex = 0;
+      _scale = 1.0;
+      _offset = Offset.zero;
+    });
+
     try {
-      final resolver = widget.resolvePages;
-      final pages = resolver != null
-          ? await resolver(widget.initialImage)
-          : [widget.initialImage];
+      final item = widget.items[itemIndex];
+      final provider = item.sourceKey != null
+          ? await widget.registry.resolve(item.sourceKey!, context)
+          : null;
+      if (!mounted) return;
+
+      List<ImageSource> pages;
+      if (provider != null) {
+        pages = await provider.resolvePages(item);
+      } else {
+        pages = [item];
+      }
+
       if (mounted) {
         setState(() {
           _pages = pages;
@@ -77,7 +97,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
         });
         _preloadAround(0);
       }
-    } catch (e) {
+    } catch (e, st) {
+      print('[Viewer] resolvePages error: $e\n$st');
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -92,14 +113,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
     if (pages == null) return;
     for (var i = index - 1; i <= index + 2; i++) {
       if (i >= 0 && i < pages.length) {
-        _loadFullImage(i);
+        _loadFullImage(pages[i]);
       }
     }
   }
 
-  Future<void> _loadFullImage(int index) async {
-    final pages = _pages!;
-    final image = pages[index];
+  Future<void> _loadFullImage(ImageSource image) async {
     if (_fullImages.containsKey(image.id) ||
         _loadingStates[image.id] == true) {
       return;
@@ -120,9 +139,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
           });
         }
       } else {
-        final provider = widget.source ?? (widget.registry != null && image.sourceKey != null
-            ? await widget.registry!.resolve(image.sourceKey!, context)
-            : null);
+        final provider = image.sourceKey != null
+            ? await widget.registry.resolve(image.sourceKey!, context)
+            : null;
         if (provider == null) return;
         final result = await widget.cacheManager.fetchAndCache(
           key,
@@ -142,23 +161,40 @@ class _ViewerScreenState extends State<ViewerScreen> {
     }
   }
 
+  // --- ページ送り（作品内、上下） ---
+
   void _goToPage(int index) {
     final pages = _pages;
     if (pages == null) return;
     if (index < 0 || index >= pages.length) return;
     setState(() {
-      _currentIndex = index;
+      _pageIndex = index;
       _scale = 1.0;
       _offset = Offset.zero;
     });
     _preloadAround(index);
   }
 
-  void _nextPage() => _goToPage(_currentIndex + 1);
-  void _prevPage() => _goToPage(_currentIndex - 1);
+  void _nextPage() => _goToPage(_pageIndex + 1);
+  void _prevPage() => _goToPage(_pageIndex - 1);
+
+  // --- 作品送り（リスト内、左右） ---
+
+  void _nextItem() {
+    if (_itemIndex + 1 >= widget.items.length) return;
+    _itemIndex++;
+    _openItem(_itemIndex);
+  }
+
+  void _prevItem() {
+    if (_itemIndex <= 0) return;
+    _itemIndex--;
+    _openItem(_itemIndex);
+  }
+
+  // --- 入力ハンドリング ---
 
   void _onPointerDown(PointerDownEvent event) {
-    // マウスの戻るボタン（ボタン4）で一覧に戻る
     if (event.buttons == kBackMouseButton) {
       Navigator.of(context).pop();
     }
@@ -167,17 +203,15 @@ class _ViewerScreenState extends State<ViewerScreen> {
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is PointerScrollEvent) {
       if (HardwareKeyboard.instance.logicalKeysPressed
-          .contains(LogicalKeyboardKey.controlLeft) ||
+              .contains(LogicalKeyboardKey.controlLeft) ||
           HardwareKeyboard.instance.logicalKeysPressed
               .contains(LogicalKeyboardKey.controlRight)) {
-        // Ctrl + ホイール: 拡大縮小（画像中心起点）
         setState(() {
           final delta = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
           _scale = (_scale * delta).clamp(0.5, 8.0);
           if (_scale == 1.0) _offset = Offset.zero;
         });
       } else {
-        // ホイールのみ: ページ送り
         if (event.scrollDelta.dy > 0) {
           _nextPage();
         } else if (event.scrollDelta.dy < 0) {
@@ -193,17 +227,25 @@ class _ViewerScreenState extends State<ViewerScreen> {
     }
 
     final key = event.logicalKey;
-    if (key == LogicalKeyboardKey.arrowRight ||
-        key == LogicalKeyboardKey.arrowDown ||
+    // 上下: ページ送り
+    if (key == LogicalKeyboardKey.arrowDown ||
         key == LogicalKeyboardKey.pageDown ||
         key == LogicalKeyboardKey.space) {
       _nextPage();
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.arrowLeft ||
-        key == LogicalKeyboardKey.arrowUp ||
+    if (key == LogicalKeyboardKey.arrowUp ||
         key == LogicalKeyboardKey.pageUp) {
       _prevPage();
+      return KeyEventResult.handled;
+    }
+    // 左右: 作品送り
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _nextItem();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _prevItem();
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.home) {
@@ -221,6 +263,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
     return KeyEventResult.ignored;
   }
+
+  // --- お気に入り / ダウンロード ---
 
   Future<void> _toggleFavorite(ImageSource image) async {
     final meta = {
@@ -243,6 +287,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
     });
     setState(() {});
   }
+
+  // --- UI ---
 
   @override
   Widget build(BuildContext context) {
@@ -279,7 +325,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     }
 
     final pages = _pages!;
-    final currentImage = pages[_currentIndex];
+    final currentImage = pages[_pageIndex];
     final data = _fullImages[currentImage.id];
     final isFav = widget.favoritesStore.isFavorite(currentImage.id);
     final isDl =
@@ -295,9 +341,17 @@ class _ViewerScreenState extends State<ViewerScreen> {
         onVerticalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0;
           if (velocity < -300) {
-            _nextPage(); // 上スワイプ → 次
+            _nextPage();
           } else if (velocity > 300) {
-            _prevPage(); // 下スワイプ → 前
+            _prevPage();
+          }
+        },
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          if (velocity < -300) {
+            _nextItem(); // 左スワイプ → 次の作品
+          } else if (velocity > 300) {
+            _prevItem(); // 右スワイプ → 前の作品
           }
         },
         child: Listener(
@@ -307,7 +361,6 @@ class _ViewerScreenState extends State<ViewerScreen> {
             backgroundColor: Colors.black,
             body: Stack(
               children: [
-                // 画像表示
                 Center(
                   child: data != null
                       ? Transform(
@@ -319,7 +372,6 @@ class _ViewerScreenState extends State<ViewerScreen> {
                         )
                       : const CircularProgressIndicator(),
                 ),
-                // オーバーレイ
                 if (_showOverlay) ...[
                   Positioned(
                     top: 0,
@@ -434,9 +486,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                               tooltip: 'ダウンロード',
                             ),
                             Text(
-                              pages.length > 1
-                                  ? '${_currentIndex + 1} / ${pages.length}'
-                                  : '',
+                              _buildPositionText(pages),
                               style: const TextStyle(
                                   color: Colors.white70, fontSize: 12),
                             ),
@@ -452,5 +502,16 @@ class _ViewerScreenState extends State<ViewerScreen> {
         ),
       ),
     );
+  }
+
+  String _buildPositionText(List<ImageSource> pages) {
+    final parts = <String>[];
+    if (pages.length > 1) {
+      parts.add('${_pageIndex + 1}/${pages.length}');
+    }
+    if (widget.items.length > 1) {
+      parts.add('[${_itemIndex + 1}/${widget.items.length}]');
+    }
+    return parts.join(' ');
   }
 }
