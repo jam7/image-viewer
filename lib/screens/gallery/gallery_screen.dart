@@ -258,6 +258,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _loadImages() async {
+    if (!mounted) return;
     _applyFilter();
     setState(() {
       _isLoading = true;
@@ -276,6 +277,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         name: e.name,
         uri: e.uri,
         type: ImageSourceType.pixiv,
+        sourceKey: e.sourceKey,
         metadata: {
           ...e.sourceInfo,
           'thumbnailUrl': e.thumbnailUrl,
