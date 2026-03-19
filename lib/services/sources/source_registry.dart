@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/server_config.dart';
+import '../pixiv/pixiv_api_client.dart';
 import '../smb/smb_config_store.dart';
 import 'image_source_provider.dart';
 import 'pixiv_source.dart';
@@ -12,40 +13,40 @@ import 'smb_source.dart';
 ///
 /// Handles lazy initialization: Pixiv requires login, SMB requires
 /// password retrieval and connection establishment.
+///
+/// For Pixiv, each resolve() returns a new PixivSource instance so that
+/// each screen has its own pagination state (like a file descriptor).
+/// The underlying PixivApiClient (authentication/WebView) is shared.
 class SourceRegistry {
-  final Map<String, ImageSourceProvider> _sources = {};
+  final Map<String, ImageSourceProvider> _smbSources = {};
   final SmbConfigStore _smbConfigStore;
 
-  // Pixiv setup: set externally after login
-  PixivSource? _pixivSource;
+  PixivApiClient? _pixivApiClient;
 
   // Callback for lazy Pixiv login
-  Future<PixivSource?> Function(BuildContext context)? onPixivLoginRequired;
+  Future<PixivApiClient?> Function(BuildContext context)? onPixivLoginRequired;
 
   SourceRegistry({required SmbConfigStore smbConfigStore})
       : _smbConfigStore = smbConfigStore;
 
-  /// Register a source for a given key.
+  /// Register an SMB source for a given key.
   void register(String key, ImageSourceProvider provider) {
-    _sources[key] = provider;
+    _smbSources[key] = provider;
   }
 
-  /// Set the Pixiv source (after login).
-  void setPixivSource(PixivSource source) {
-    _pixivSource = source;
-    _sources['pixiv:default'] = source;
+  /// Set the Pixiv API client (shared across all PixivSource instances).
+  void setPixivApiClient(PixivApiClient client) {
+    _pixivApiClient = client;
   }
 
-  bool get isPixivAvailable => _pixivSource != null;
+  bool get isPixivAvailable => _pixivApiClient != null;
 
   /// Resolve a sourceKey to a provider. May trigger login or connection.
   /// Returns null if the source cannot be resolved (e.g. login cancelled).
+  ///
+  /// For Pixiv, a new PixivSource is returned each time so each caller
+  /// gets independent pagination state.
   Future<ImageSourceProvider?> resolve(String sourceKey, BuildContext context) async {
-    // Already registered
-    if (_sources.containsKey(sourceKey)) {
-      return _sources[sourceKey];
-    }
-
     // Parse key
     final parts = sourceKey.split(':');
     if (parts.length < 2) return null;
@@ -54,20 +55,7 @@ class SourceRegistry {
 
     switch (type) {
       case 'pixiv':
-        if (_pixivSource != null) {
-          _sources[sourceKey] = _pixivSource!;
-          return _pixivSource;
-        }
-        // Lazy login
-        if (onPixivLoginRequired != null) {
-          final source = await onPixivLoginRequired!(context);
-          if (source != null) {
-            _pixivSource = source;
-            _sources[sourceKey] = source;
-          }
-          return source;
-        }
-        return null;
+        return _resolvePixiv(context);
 
       case 'smb':
         return _resolveSmb(id);
@@ -77,7 +65,27 @@ class SourceRegistry {
     }
   }
 
+  Future<ImageSourceProvider?> _resolvePixiv(BuildContext context) async {
+    if (_pixivApiClient != null) {
+      return PixivSource(client: _pixivApiClient!);
+    }
+    // Lazy login
+    if (onPixivLoginRequired != null) {
+      final client = await onPixivLoginRequired!(context);
+      if (client != null) {
+        _pixivApiClient = client;
+        return PixivSource(client: client);
+      }
+    }
+    return null;
+  }
+
   Future<ImageSourceProvider?> _resolveSmb(String configId) async {
+    final key = 'smb:$configId';
+    if (_smbSources.containsKey(key)) {
+      return _smbSources[key];
+    }
+
     final configs = _smbConfigStore.listAll();
     final config = configs.where((c) => c.id == configId).firstOrNull;
     if (config == null) return null;
@@ -86,8 +94,7 @@ class SourceRegistry {
     if (password == null) return null;
 
     final source = SmbSource(config: config, password: password);
-    final key = 'smb:$configId';
-    _sources[key] = source;
+    _smbSources[key] = source;
     return source;
   }
 
@@ -95,16 +102,23 @@ class SourceRegistry {
   static String keyForSmb(ServerConfig config) => 'smb:${config.id}';
   static const String keyForPixiv = 'pixiv:default';
 
+  /// Create a new PixivSource with the shared API client.
+  /// Returns null if not logged in.
+  PixivSource? createPixivSource() {
+    if (_pixivApiClient == null) return null;
+    return PixivSource(client: _pixivApiClient!);
+  }
+
   /// Dispose all sources.
   Future<void> disposeAll() async {
-    for (final source in _sources.values) {
+    for (final source in _smbSources.values) {
       try {
         await source.dispose();
       } catch (e, st) {
         print('[SourceRegistry] dispose error: $e\n$st');
       }
     }
-    _sources.clear();
-    _pixivSource = null;
+    _smbSources.clear();
+    _pixivApiClient = null;
   }
 }
