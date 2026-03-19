@@ -158,8 +158,9 @@ class DiskCache {
       final tmpFile = File('${metaFile.path}.tmp');
       await tmpFile.writeAsString(jsonEncode(data), flush: true);
       await tmpFile.rename(metaFile.path);
-    } catch (_) {
+    } catch (e, st) {
       // rename失敗時は次回のflushで再試行
+      print('[DiskCache] flushMetadata error: $e\n$st');
       _needsFlush = true;
     } finally {
       _isFlushing = false;
