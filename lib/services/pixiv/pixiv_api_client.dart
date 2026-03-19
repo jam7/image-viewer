@@ -61,14 +61,10 @@ class PixivApiClient {
     );
     _checkError(data);
     final body = data['body'] as Map<String, dynamic>;
-    final thumbnails = body['thumbnails']?['illust'] as List<dynamic>? ?? [];
-    // Log entries with missing/null id for debugging
-    for (final t in thumbnails) {
-      final m = t as Map<String, dynamic>;
-      if (m['id'] == null || m['id'] == 0 || m['id'] == '0') {
-        print('[PixivAPI] WARNING: thumbnail with invalid id: ${m.keys.toList()}, id=${m['id']}, title=${m['title']}');
-      }
-    }
+    // Filter out non-artwork entries (ads, promos) that lack an id field
+    final thumbnails = (body['thumbnails']?['illust'] as List<dynamic>? ?? [])
+        .where((t) => t is Map<String, dynamic> && t['id'] != null)
+        .toList();
     final illusts = thumbnails
         .map((t) => PixivArtwork.fromThumbnailJson(t as Map<String, dynamic>))
         .toList();
@@ -113,14 +109,11 @@ class PixivApiClient {
     _checkError(data);
     final body = data['body'] as Map<String, dynamic>;
     final illustManga = body['illustManga'] as Map<String, dynamic>? ?? {};
-    final artworks = illustManga['data'] as List<dynamic>? ?? [];
+    // Filter out ad containers ({isAdContainer: true}) mixed into results
+    final artworks = (illustManga['data'] as List<dynamic>? ?? [])
+        .where((d) => d is Map<String, dynamic> && d['id'] != null)
+        .toList();
     final total = illustManga['total'] as int? ?? 0;
-    for (final d in artworks) {
-      final m = d as Map<String, dynamic>;
-      if (m['id'] == null || m['id'] == 0 || m['id'] == '0') {
-        print('[PixivAPI] WARNING: search result with invalid id: ${m.keys.toList()}, id=${m['id']}, title=${m['title']}');
-      }
-    }
     return PixivIllustList(
       illusts: artworks
           .map((d) => PixivArtwork.fromThumbnailJson(d as Map<String, dynamic>))
