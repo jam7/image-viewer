@@ -21,6 +21,7 @@ class PixivWebClient {
 
   Future<void>? _readyFuture;
   bool _isReady = false;
+  bool get isReady => _isReady;
   int _requestId = 0;
 
   /// WebView を作成し pixiv.net を読み込む。
