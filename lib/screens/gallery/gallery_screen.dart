@@ -6,12 +6,9 @@ import 'package:flutter/services.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
-import '../../models/server_config.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
-import '../../services/smb/smb_config_store.dart';
 import '../../services/sources/pixiv_source.dart';
-import '../settings/settings_screen.dart';
 import '../viewer/viewer_screen.dart';
 
 /// サムネイル一覧画面。
@@ -19,16 +16,12 @@ class GalleryScreen extends StatefulWidget {
   final PixivSource source;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
-  final SmbConfigStore? smbConfigStore;
-  final void Function(ServerConfig config, String password)? onSmbConnect;
 
   const GalleryScreen({
     super.key,
     required this.source,
     required this.cacheManager,
     required this.favoritesStore,
-    this.smbConfigStore,
-    this.onSmbConnect,
   });
 
   @override
@@ -391,14 +384,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   void _openSettings() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => SettingsScreen(
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        smbConfigStore: widget.smbConfigStore ?? SmbConfigStore(),
-        onSmbConnect: widget.onSmbConnect,
-      ),
-    ));
+    Navigator.of(context).pop(); // Back to home
   }
 
   void _onBackNavigation() {
