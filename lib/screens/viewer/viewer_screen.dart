@@ -18,7 +18,7 @@ typedef PageResolver = Future<List<ImageSource>> Function(ImageSource source);
 /// - Ctrl + マウスホイール: 拡大縮小（画像中心起点）
 class ViewerScreen extends StatefulWidget {
   final ImageSource initialImage;
-  final ImageSourceProvider source;
+  final ImageSourceProvider? source;
   final PageResolver? resolvePages;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
@@ -26,7 +26,7 @@ class ViewerScreen extends StatefulWidget {
   const ViewerScreen({
     super.key,
     required this.initialImage,
-    required this.source,
+    this.source,
     this.resolvePages,
     required this.cacheManager,
     required this.favoritesStore,
@@ -116,10 +116,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
             _cacheSources[image.id] = cached.source;
           });
         }
-      } else {
+      } else if (widget.source != null) {
         final result = await widget.cacheManager.fetchAndCache(
           key,
-          () => widget.source.fetchFullImage(image),
+          () => widget.source!.fetchFullImage(image),
         );
         if (mounted) {
           setState(() {
