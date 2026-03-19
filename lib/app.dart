@@ -10,7 +10,6 @@ import 'services/favorites/favorites_store.dart';
 import 'services/pixiv/pixiv_api_client.dart';
 import 'services/pixiv/pixiv_web_client.dart';
 import 'services/smb/smb_config_store.dart';
-import 'services/sources/pixiv_source.dart';
 import 'services/sources/source_registry.dart';
 
 class ImageViewerApp extends StatelessWidget {
@@ -42,7 +41,7 @@ class _AppRootState extends State<_AppRoot> {
   late final SourceRegistry _registry;
   CacheManager? _cacheManager;
   FavoritesStore? _favoritesStore;
-  PixivSource? _pixivSource;
+  PixivApiClient? _pixivApiClient;
   bool _isLoading = true;
 
   @override
@@ -70,25 +69,28 @@ class _AppRootState extends State<_AppRoot> {
     // Try background Pixiv init (may succeed if cookies are still valid)
     _webClient.initialize();
 
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
-  PixivSource _createPixivSource() {
-    final apiClient = PixivApiClient(webClient: _webClient);
-    _pixivSource = PixivSource(client: apiClient);
-    _registry.setPixivSource(_pixivSource!);
-    return _pixivSource!;
+  PixivApiClient _ensureApiClient() {
+    _pixivApiClient ??= PixivApiClient(webClient: _webClient);
+    _registry.setPixivApiClient(_pixivApiClient!);
+    return _pixivApiClient!;
   }
 
   /// Lazy Pixiv login: called when user taps Pixiv or opens a Pixiv favorite.
-  Future<PixivSource?> _handlePixivLogin(BuildContext context) async {
-    if (_pixivSource != null) return _pixivSource;
+  Future<PixivApiClient?> _handlePixivLogin(BuildContext context) async {
+    if (_pixivApiClient != null && _webClient.isReady) {
+      return _pixivApiClient;
+    }
 
     // Check if already logged in (cookies still valid)
     if (_webClient.isReady) {
-      return _createPixivSource();
+      return _ensureApiClient();
     }
 
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
@@ -101,8 +103,8 @@ class _AppRootState extends State<_AppRoot> {
             try {
               final id = await _webClient.waitForUserId();
               print('[App] userId acquired: $id');
-            } catch (e) {
-              print('[App] Failed to acquire userId: $e');
+            } catch (e, st) {
+              print('[App] Failed to acquire userId: $e\n$st');
             }
           });
           // Delay pop to avoid calling during navigation lock
@@ -115,7 +117,7 @@ class _AppRootState extends State<_AppRoot> {
 
     if (result != true) return null;
 
-    return _createPixivSource();
+    return _ensureApiClient();
   }
 
   @override
@@ -133,13 +135,8 @@ class _AppRootState extends State<_AppRoot> {
       );
     }
 
-    // If Pixiv source not yet created, create a placeholder that will be
-    // replaced after login. Gallery won't load data until login succeeds.
-    final pixivSource = _pixivSource ??
-        PixivSource(client: PixivApiClient(webClient: _webClient));
-
     return HomeScreen(
-      pixivSource: pixivSource,
+      pixivApiClient: _ensureApiClient(),
       cacheManager: _cacheManager!,
       favoritesStore: _favoritesStore!,
       smbConfigStore: _smbConfigStore,
