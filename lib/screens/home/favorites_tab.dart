@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
+import '../gallery/gallery_constants.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
@@ -132,11 +133,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
           ? const Center(child: Text('お気に入りはまだありません'))
           : GridView.builder(
               padding: const EdgeInsets.all(4),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 4,
-                mainAxisSpacing: 4,
-              ),
+              gridDelegate: galleryGridDelegate,
               itemCount: favorites.length,
               itemBuilder: (context, index) {
                 final item = favorites[index];

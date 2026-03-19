@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-const galleryCrossAxisCount = 3;
+const galleryCrossAxisCount = 5;
 const gallerySpacing = 4.0;
 
 const galleryGridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
