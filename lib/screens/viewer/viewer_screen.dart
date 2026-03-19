@@ -57,7 +57,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
   void initState() {
     super.initState();
     _itemIndex = widget.initialIndex;
-    _openItem(_itemIndex);
+    // Defer to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openItem(_itemIndex);
+    });
   }
 
   @override
