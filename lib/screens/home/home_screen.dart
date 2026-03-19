@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _currentTab == 0 ? _buildHomeTab() : FavoritesTab(
+        key: ValueKey(widget.favoritesStore.count),
         favoritesStore: widget.favoritesStore,
         cacheManager: widget.cacheManager,
         registry: widget.registry,

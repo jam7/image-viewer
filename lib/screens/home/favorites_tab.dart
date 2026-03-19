@@ -70,10 +70,10 @@ class _FavoritesTabState extends State<FavoritesTab> {
     );
   }
 
-  void _onItemTap(FavoriteEntry item, int index) {
+  void _onItemTap(FavoriteEntry item, int index) async {
     final allFavs = _favorites;
     final imageItems = allFavs.map(_toImageSource).toList();
-    Navigator.of(context).push(MaterialPageRoute(
+    await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ViewerScreen(
         items: imageItems,
         initialIndex: index,
@@ -82,6 +82,11 @@ class _FavoritesTabState extends State<FavoritesTab> {
         favoritesStore: widget.favoritesStore,
       ),
     ));
+    // Refresh after returning from viewer (favorites may have changed)
+    if (mounted) {
+      setState(() {});
+      _loadThumbnails();
+    }
   }
 
   @override
