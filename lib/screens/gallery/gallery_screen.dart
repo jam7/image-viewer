@@ -76,6 +76,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   void deactivate() {
+    print('[Gallery] deactivate: clearing ${_thumbnailData.length} thumbnails');
     _thumbnailData.clear();
     super.deactivate();
   }
@@ -83,6 +84,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void activate() {
     super.activate();
+    print('[Gallery] activate: ${_images.length} images, ${_thumbnailData.length} thumbnails cached');
     // Reload thumbnails from cache only (deactivate cleared them)
     if (_images.isNotEmpty && _thumbnailData.isEmpty) {
       _reloadThumbnailsFromCache();
@@ -235,6 +237,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   /// 作者ページをギャラリーで表示。
   void showUserWorks(int userId, String userName) {
+    print('[Gallery] showUserWorks: userId=$userId, userName=$userName');
     setState(() {
       _userPath = '/user/$userId';
       _userName = userName;
@@ -341,6 +344,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<void> _loadThumbnails(List<ImageSource> images) async {
     for (final image in images) {
+      if (!mounted) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       final key = 'thumb:${image.id}';
       try {
@@ -361,7 +365,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           }
         }
       } catch (e, st) {
-        print('[Gallery] thumbnail error (${image.name}): $e\n$st');
+        print('[Gallery] thumbnail error (id=${image.id}, name=${image.name}, uri=${image.uri}): $e\n$st');
       }
     }
   }
@@ -406,6 +410,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   void _openViewer(int index) async {
+    print('[Gallery] openViewer: index=$index, image=${_images[index].name}');
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => ViewerScreen(
@@ -417,6 +422,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         ),
       ),
     );
+    print('[Gallery] viewer returned: result=$result, mounted=$mounted');
     if (!mounted) return;
     if (result != null && result['action'] == 'showUser') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
