@@ -4,7 +4,7 @@ import '../../models/image_source.dart';
 import 'image_source_provider.dart';
 
 /// HTTP/HTTPS経由の画像取得。
-class HttpSource implements ImageSourceProvider {
+class HttpSource extends ImageSourceProvider {
   @override
   Future<List<ImageSource>> listImages({String? path}) async {
     // TODO: 実装
