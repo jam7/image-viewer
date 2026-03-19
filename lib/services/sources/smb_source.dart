@@ -19,10 +19,15 @@ class SmbSource extends ImageSourceProvider {
     '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
   };
 
+  Future<Smb2Tree>? _connectFuture;
+
   SmbSource({required this.config, required this.password});
 
-  Future<Smb2Tree> _connect() async {
-    if (_tree != null) return _tree!;
+  Future<Smb2Tree> _connect() {
+    return _connectFuture ??= _doConnect();
+  }
+
+  Future<Smb2Tree> _doConnect() async {
     final share = config.shareName ?? '';
     print('[SMB] Connecting to ${config.host}/$share...');
     try {
@@ -38,6 +43,7 @@ class SmbSource extends ImageSourceProvider {
       return _tree!;
     } catch (e, st) {
       print('[SMB] Connection error: $e\n$st');
+      _connectFuture = null; // Allow retry on failure
       rethrow;
     }
   }
