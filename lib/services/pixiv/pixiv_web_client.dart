@@ -152,7 +152,9 @@ class PixivWebClient {
     try {
       final currentUrl = await _evaluateScript("window.location.href");
       _log('fetchJson TIMEOUT: $url (current page: $currentUrl)');
-    } catch (_) {}
+    } catch (e) {
+      _log('fetchJson TIMEOUT: $url (could not get current page: $e)');
+    }
     throw Exception('Pixiv API timeout: $url');
   }
 
