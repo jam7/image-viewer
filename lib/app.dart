@@ -92,14 +92,11 @@ class _AppRootState extends State<_AppRoot> {
           if (userId != null) {
             _webClient.userId = userId;
           }
-          _webClient.initialize().then((_) async {
-            try {
-              final id = await _webClient.waitForUserId();
-              print('[App] userId acquired: $id');
-            } catch (e, st) {
-              print('[App] Failed to acquire userId: $e\n$st');
-            }
-          });
+          // userId is set by PixivLoginScreen._extractUserIdAsync
+          // and verified by checkLoginStatus after login completes.
+          // No need to call waitForUserId here (it would run fetchJson
+          // in the background, interfering with gallery API calls).
+
           // Delay pop to avoid calling during navigation lock
           WidgetsBinding.instance.addPostFrameCallback((_) {
             Navigator.of(context).pop(true);
