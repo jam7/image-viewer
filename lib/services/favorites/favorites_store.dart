@@ -65,15 +65,36 @@ class FavoritesStore {
 
   // --- 内部メソッド ---
 
+  bool _isFlushing = false;
+  bool _needsFlush = false;
+
+  /// Atomic write with _isFlushing guard to prevent concurrent tmp file access
+  /// when toggle() is called rapidly (e.g. double-tap).
   Future<void> _flush() async {
-    final data = {
-      'entries': {
-        for (final e in _entries.entries) e.key: e.value.toJson(),
-      },
-    };
-    final tmpFile = File('${_file.path}.tmp');
-    await tmpFile.writeAsString(jsonEncode(data), flush: true);
-    await tmpFile.rename(_file.path);
+    if (_isFlushing) {
+      _needsFlush = true;
+      return;
+    }
+    _isFlushing = true;
+    try {
+      final data = {
+        'entries': {
+          for (final e in _entries.entries) e.key: e.value.toJson(),
+        },
+      };
+      final tmpFile = File('${_file.path}.tmp');
+      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.rename(_file.path);
+    } catch (e, st) {
+      print('[FavoritesStore] flush error: $e\n$st');
+      _needsFlush = true;
+    } finally {
+      _isFlushing = false;
+      if (_needsFlush) {
+        _needsFlush = false;
+        _flush();
+      }
+    }
   }
 
   Future<void> _load() async {
