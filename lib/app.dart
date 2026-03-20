@@ -83,9 +83,10 @@ class _AppRootState extends State<_AppRoot> {
     // Ensure API WebView controller is created
     await _webClient.initialize();
 
-    // Login screen handles both cases:
-    // - Already logged in: instant redirect to www.pixiv.net → pop
-    // - Not logged in: user logs in → www.pixiv.net → pop
+    // about:blank からの fetch は Cookie が付かない（Origin=null）ため
+    // ログイン状態の事前確認はできない。常にログイン画面を push する。
+    // Cookie 有効時は pixiv が www.pixiv.net に即リダイレクトするので
+    // ログイン画面側でフォームを見せずにローディング表示で済ませる。
     print('[App] Pushing login screen');
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => PixivLoginScreen(
