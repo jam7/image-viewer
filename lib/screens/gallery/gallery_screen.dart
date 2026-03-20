@@ -180,6 +180,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
           _scrollController.offset);
       return KeyEventResult.handled;
     }
+    if (key == LogicalKeyboardKey.escape) {
+      _goBack();
+      return KeyEventResult.handled;
+    }
 
     return KeyEventResult.ignored;
   }
@@ -456,9 +460,17 @@ class _GalleryScreenState extends State<GalleryScreen> {
     _loadImages();
   }
 
-  void _onPointerDown(PointerDownEvent event) {
-    if (event.buttons == kBackMouseButton && _userPath != null) {
+  void _goBack() {
+    if (_userPath != null) {
       _onBackNavigation();
+    } else {
+      _backToHome();
+    }
+  }
+
+  void _onPointerDown(PointerDownEvent event) {
+    if (event.buttons == kBackMouseButton) {
+      _goBack();
     }
   }
 
@@ -544,13 +556,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
       child: Listener(
         onPointerDown: _onPointerDown,
         child: GestureDetector(
-          onHorizontalDragEnd: _userPath != null
-              ? (details) {
-                  if ((details.primaryVelocity ?? 0) > 300) {
-                    _onBackNavigation();
-                  }
-                }
-              : null,
+          onHorizontalDragEnd: (details) {
+            if ((details.primaryVelocity ?? 0) > 300) {
+              _goBack();
+            }
+          },
           child: Scaffold(
             appBar: _buildAppBar(),
             body: Column(
