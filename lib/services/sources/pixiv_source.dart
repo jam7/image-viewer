@@ -108,7 +108,8 @@ class PixivSource extends ImageSourceProvider {
 
   @override
   Future<void> dispose() async {
-    _client.dispose();
+    // PixivApiClient is shared across all PixivSource instances.
+    // Its lifecycle is managed by SourceRegistry / _AppRoot, not here.
   }
 
   List<ImageSource> _expandArtworks(List<PixivArtwork> artworks) {
