@@ -47,7 +47,9 @@ class SmbSource extends ImageSourceProvider {
       if (_client != null) {
         try {
           await _client!.disconnect();
-        } catch (_) {}
+        } catch (disconnectErr, disconnectSt) {
+          print('[SMB] disconnect error during cleanup: $disconnectErr\n$disconnectSt');
+        }
         _client = null;
       }
       _connectFuture = null; // Allow retry on failure
