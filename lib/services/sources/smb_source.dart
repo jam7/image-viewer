@@ -43,6 +43,13 @@ class SmbSource extends ImageSourceProvider {
       return _tree!;
     } catch (e, st) {
       print('[SMB] Connection error: $e\n$st');
+      // Clean up partial connection to avoid leaking _client
+      if (_client != null) {
+        try {
+          await _client!.disconnect();
+        } catch (_) {}
+        _client = null;
+      }
       _connectFuture = null; // Allow retry on failure
       rethrow;
     }
