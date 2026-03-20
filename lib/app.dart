@@ -93,9 +93,7 @@ class _AppRootState extends State<_AppRoot> {
           if (userId != null) {
             _webClient.userId = userId;
           }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.of(context).pop(true);
-          });
+          // Pop is handled by PixivLoginScreen itself using its own context
         },
       ),
     ));
