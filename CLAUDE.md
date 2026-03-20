@@ -144,7 +144,7 @@ BlurHash表示（即座、~30バイト）
 
 ### SMB ファイルブラウズ
 
-- `smb_connect` パッケージで SMB 1.0/2.0/2.1 対応（自動ネゴシエーション）
+- `dart_smb2`（自作ライブラリ）で SMB 2.0/2.1 対応
 - 接続設定は JSON ファイルに保存（パスワード除外）
 - パスワードは `flutter_secure_storage`（iOS: Keychain、Windows: Credential Manager）に保存
 - ディレクトリ一覧→画像フィルタ→サムネイル/フル画像取得の流れ
@@ -190,7 +190,7 @@ BlurHash表示（即座、~30バイト）
 
 - `webview_flutter`: iOS/Android 用 WebView（ログイン + API）
 - `webview_windows`: Windows 用 WebView2（ログイン + API）
-- `smb_connect`: SMB 1.0/2.0/2.1 クライアント
+- `dart_smb2`: SMB 2.0/2.1 クライアント（自作、dart_smb2/ ディレクトリ）
 - `flutter_secure_storage`: パスワード安全保管（Keychain/Credential Manager）
 - `dio`: HTTP通信（画像ダウンロード等）
 - `path_provider`: アプリ固有ディレクトリ取得
