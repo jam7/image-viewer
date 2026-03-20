@@ -48,9 +48,13 @@ class SourceRegistry {
   /// For Pixiv, a new PixivSource is returned each time so each caller
   /// gets independent pagination state.
   Future<ImageSourceProvider?> resolve(String sourceKey, BuildContext context) async {
+    print('[SourceRegistry] resolve: $sourceKey');
     // Parse key
     final parts = sourceKey.split(':');
-    if (parts.length < 2) return null;
+    if (parts.length < 2) {
+      print('[SourceRegistry] resolve: invalid key format');
+      return null;
+    }
     final type = parts[0];
     final id = parts.sublist(1).join(':');
 
@@ -62,6 +66,7 @@ class SourceRegistry {
         return _resolveSmb(id);
 
       default:
+        print('[SourceRegistry] resolve: unknown type "$type"');
         return null;
     }
   }
@@ -69,17 +74,21 @@ class SourceRegistry {
   Future<ImageSourceProvider?> _resolvePixiv(BuildContext context) async {
     // Already logged in and verified
     if (_pixivApiClient != null && _pixivLoginVerified) {
+      print('[SourceRegistry] _resolvePixiv: already verified, returning new PixivSource');
       return PixivSource(client: _pixivApiClient!);
     }
     // Trigger login (checks cookies, shows login screen if needed)
     if (onPixivLoginRequired != null) {
+      print('[SourceRegistry] _resolvePixiv: calling onPixivLoginRequired');
       final client = await onPixivLoginRequired!(context);
+      print('[SourceRegistry] _resolvePixiv: login returned client=${client != null}');
       if (client != null) {
         _pixivApiClient = client;
         _pixivLoginVerified = true;
         return PixivSource(client: client);
       }
     }
+    print('[SourceRegistry] _resolvePixiv: failed to resolve');
     return null;
   }
 
