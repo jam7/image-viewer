@@ -94,3 +94,4 @@ app.dart (_AppRootState)
 2. **`PixivApiClient` の存在 ≠ ログイン済み**。Cookie の有効性は `checkLoginStatus()` で確認する
 3. **`PixivSource` は画面ごとに新規作成**。ページネーション状態の共有を避ける
 4. **ログイン画面は `www.pixiv.net` 到達で完了判定**。中間ページ（追加認証等）は無視
+5. **API 用 WebView で `fetchJson` を並行実行しない**。`fetchJson` は WebView 上で JavaScript の fetch() を実行し、結果を `window['_pixiv_result_N']` に格納してポーリングで取得する。同じ WebView で別の fetchJson や checkLoginStatus が並行して走ると、ページ遷移や JavaScript 実行が干渉して結果が消える（タイムアウトの原因）。`onLoginSuccess` 内で `waitForUserId` を呼ぶと、ギャラリーの API 呼び出しと干渉するため削除した
