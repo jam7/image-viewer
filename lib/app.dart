@@ -84,13 +84,12 @@ class _AppRootState extends State<_AppRoot> {
 
   /// Lazy Pixiv login: called when user taps Pixiv or opens a Pixiv favorite.
   Future<PixivApiClient?> _handlePixivLogin(BuildContext context) async {
-    if (_pixivApiClient != null && _webClient.isReady) {
-      return _pixivApiClient;
-    }
-
     // Check if already logged in (cookies still valid)
     if (_webClient.isReady) {
-      return _ensureApiClient();
+      final loggedIn = await _webClient.checkLoginStatus();
+      if (loggedIn) {
+        return _ensureApiClient();
+      }
     }
 
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
