@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/pixiv_artwork.dart';
 import 'pixiv_web_client.dart';
+
+final _log = Logger('PixivAPI');
 
 /// Pixiv Web Ajax API クライアント。
 /// WebViewのfetch()経由でリクエストし、httpOnly cookieを自動送信する。
@@ -146,7 +149,7 @@ class PixivApiClient {
         .where((id) => int.tryParse(id) != null)
         .toList()
       ..sort((a, b) => int.parse(b).compareTo(int.parse(a)));
-    print('[PixivAPI] userIllusts: total IDs=${uniqueIds.length}');
+    _log.info('userIllusts: total IDs=${uniqueIds.length}');
 
     if (uniqueIds.isEmpty) {
       return const PixivIllustList(illusts: [], nextOffset: null);
@@ -163,7 +166,7 @@ class PixivApiClient {
     // 作品詳細を一括取得
     final idsParam = pageIds.map((id) => 'ids%5B%5D=$id').join('&');
     final url = '$_baseUrl/ajax/user/$userId/profile/illusts?$idsParam&work_category=illustManga&is_first_page=0&lang=ja';
-    print('[PixivAPI] userIllusts: ${pageIds.length} ids, offset=$offset, total=${uniqueIds.length}');
+    _log.info('userIllusts: ${pageIds.length} ids, offset=$offset, total=${uniqueIds.length}');
     final worksData = await _webClient.fetchJson(url);
     _checkError(worksData);
     final worksBody = worksData['body'] as Map<String, dynamic>? ?? {};
@@ -195,7 +198,7 @@ class PixivApiClient {
   void _checkError(Map<String, dynamic> data) {
     if (data['error'] == true) {
       final message = data['message'] ?? 'Unknown error';
-      print('[PixivAPI] Error: $message');
+      _log.warning('Error: $message');
       throw Exception('Pixiv API error: $message');
     }
   }

@@ -2,10 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:logging/logging.dart';
 import 'package:webview_flutter/webview_flutter.dart' as mobile;
 import 'package:webview_windows/webview_windows.dart' as win;
 
-void _log(String msg) => print('[PixivWebClient] $msg');
+final _log = Logger('PixivWebClient');
 
 /// Pixiv API呼び出し用の非表示WebView。
 /// fetch() でAPIを呼び、結果をJSONで返す。Cookie共有でログイン済みを前提とする。
@@ -29,7 +30,7 @@ class PixivWebClient {
   }
 
   Future<void> _doInitialize() async {
-    _log('Initializing WebView...');
+    _log.info('Initializing WebView...');
     try {
       if (Platform.isWindows) {
         final controller = win.WebviewController();
@@ -40,11 +41,11 @@ class PixivWebClient {
           ..setJavaScriptMode(mobile.JavaScriptMode.unrestricted);
         _mobileController = controller;
       }
-      _log('WebView controller created');
+      _log.info('WebView controller created');
     } catch (e, st) {
       // Clear cached future so next initialize() call retries
       _readyFuture = null;
-      _log('WebView initialization failed: $e\n$st');
+      _log.severe('WebView initialization failed', e, st);
       rethrow;
     }
   }
@@ -53,23 +54,23 @@ class PixivWebClient {
   /// Call after login is confirmed (cookies must be valid).
   Future<void> loadPixivPage() async {
     await initialize();
-    _log('Loading pixiv.net...');
+    _log.info('Loading pixiv.net...');
     if (Platform.isWindows && _winController != null) {
       await _loadPageWindows('https://www.pixiv.net/');
     } else if (_mobileController != null) {
       await _loadPageMobile('https://www.pixiv.net/');
     }
     _isReady = true;
-    _log('pixiv.net loaded, ready for API calls');
+    _log.info('pixiv.net loaded, ready for API calls');
   }
 
   Future<void> _loadPageWindows(String url) async {
     final completer = Completer<void>();
     late final StreamSubscription sub;
     sub = _winController!.loadingState.listen((state) {
-      _log('loadingState: $state (waiting for navigationCompleted)');
+      _log.info('loadingState: $state (waiting for navigationCompleted)');
       if (state == win.LoadingState.navigationCompleted) {
-        _log('Page load complete: $url');
+        _log.info('Page load complete: $url');
         sub.cancel();
         if (!completer.isCompleted) completer.complete();
       }
@@ -78,7 +79,7 @@ class PixivWebClient {
     await completer.future.timeout(
       const Duration(seconds: 10),
       onTimeout: () {
-        _log('Page load timeout: $url');
+        _log.warning('Page load timeout: $url');
         sub.cancel();
       },
     );
@@ -89,7 +90,7 @@ class PixivWebClient {
     _mobileController!.setNavigationDelegate(
       mobile.NavigationDelegate(
         onPageFinished: (finishedUrl) {
-          _log('Page load complete: $finishedUrl');
+          _log.info('Page load complete: $finishedUrl');
           if (!completer.isCompleted) completer.complete();
         },
       ),
@@ -97,7 +98,7 @@ class PixivWebClient {
     await _mobileController!.loadRequest(Uri.parse(url));
     await completer.future.timeout(
       const Duration(seconds: 10),
-      onTimeout: () => _log('Page load timeout: $url'),
+      onTimeout: () => _log.warning('Page load timeout: $url'),
     );
   }
 
@@ -107,7 +108,7 @@ class PixivWebClient {
       throw Exception('PixivWebClient: pixiv.net not loaded. Call loadPixivPage() first.');
     }
 
-    _log('fetchJson: $url');
+    _log.info('fetchJson: $url');
     final reqId = '_pixiv_result_${_requestId++}';
 
     final js = '''
@@ -141,19 +142,19 @@ class PixivWebClient {
           jsonStr = jsonDecode(jsonStr) as String;
         }
 
-        _log('Result (first 300): ${jsonStr.substring(0, jsonStr.length > 300 ? 300 : jsonStr.length)}');
+        _log.info('Result (first 300): ${jsonStr.substring(0, jsonStr.length > 300 ? 300 : jsonStr.length)}');
 
         final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
-        _log('error: ${decoded['error']}, message: ${decoded['message']}');
+        _log.info('error: ${decoded['error']}, message: ${decoded['message']}');
         return decoded;
       }
     }
 
     try {
       final currentUrl = await _evaluateScript("window.location.href");
-      _log('fetchJson TIMEOUT: $url (current page: $currentUrl)');
+      _log.warning('fetchJson TIMEOUT: $url (current page: $currentUrl)');
     } catch (e) {
-      _log('fetchJson TIMEOUT: $url (could not get current page: $e)');
+      _log.warning('fetchJson TIMEOUT: $url (could not get current page: $e)');
     }
     throw Exception('Pixiv API timeout: $url');
   }

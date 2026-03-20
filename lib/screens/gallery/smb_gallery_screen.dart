@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
@@ -11,6 +12,8 @@ import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../viewer/viewer_screen.dart';
+
+final _log = Logger('SmbGallery');
 
 /// SMBディレクトリブラウズ画面。
 class SmbGalleryScreen extends StatefulWidget {
@@ -89,7 +92,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           setState(() => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
         }
       } catch (e, st) {
-        print('[SmbGallery] reloadThumbnail error: $e\n$st');
+        _log.warning('reloadThumbnail error', e, st);
       }
     }
   }
@@ -122,7 +125,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       });
       _loadNextBatch();
     } catch (e, st) {
-      print('[SmbGallery] loadDirectory error: $e\n$st');
+      _log.warning('loadDirectory error', e, st);
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -191,7 +194,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         }
       }
     } catch (e, st) {
-      print('[SmbGallery] thumbnail error: $e\n$st');
+      _log.warning('thumbnail error', e, st);
     }
   }
 

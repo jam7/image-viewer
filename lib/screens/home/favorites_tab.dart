@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
@@ -11,6 +12,8 @@ import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../gallery/gallery_screen.dart';
 import '../viewer/viewer_screen.dart';
+
+final _log = Logger('FavoritesTab');
 
 /// お気に入り一覧タブ。全ソース横断で表示。
 class FavoritesTab extends StatefulWidget {
@@ -42,7 +45,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
 
   Future<void> _loadThumbnails() async {
     final favorites = _favorites;
-    print('[FavoritesTab] Loading thumbnails for ${favorites.length} favorites');
+    _log.info('Loading thumbnails for ${favorites.length} favorites');
     for (final fav in favorites) {
       if (_thumbnailData.containsKey(fav.imageId)) continue;
       try {
@@ -52,7 +55,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
           setState(() => _thumbnailData[fav.imageId] = Uint8List.fromList(cached.data));
         }
       } catch (e, st) {
-        print('[FavoritesTab] thumbnail error: $e\n$st');
+        _log.warning('thumbnail error', e, st);
       }
     }
   }
@@ -74,7 +77,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
   }
 
   void _onItemTap(FavoriteEntry item, int index) async {
-    print('[FavoritesTab] onItemTap: index=$index, name=${item.name}, sourceKey=${item.sourceKey}');
+    _log.info('onItemTap: index=$index, name=${item.name}, sourceKey=${item.sourceKey}');
     final allFavs = _favorites;
     final imageItems = allFavs.map(_toImageSource).toList();
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
@@ -91,9 +94,9 @@ class _FavoritesTabState extends State<FavoritesTab> {
 
     if (!mounted) return;
 
-    print('[FavoritesTab] viewer returned: result=$result, mounted=$mounted');
+    _log.info('viewer returned: result=$result, mounted=$mounted');
     if (result != null && result['action'] == 'showUser') {
-      print('[FavoritesTab] opening user works: ${result['userId']}');
+      _log.info('opening user works: ${result['userId']}');
       await _openUserWorks(result['userId'] as int, result['userName'] as String);
     }
 
@@ -105,7 +108,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
   }
 
   Future<void> _openUserWorks(int userId, String userName) async {
-    print('[FavoritesTab] _openUserWorks: resolving pixiv source');
+    _log.info('_openUserWorks: resolving pixiv source');
     final provider = await widget.registry.resolve('pixiv:default', context);
     if (provider == null || provider is! PixivSource) return;
     if (!mounted) return;
