@@ -21,6 +21,8 @@ class PixivWebClient {
   bool _isReady = false;
   bool get isReady => _isReady;
   int _requestId = 0;
+  String? _csrfToken;
+  set csrfToken(String token) => _csrfToken = token;
 
   /// Create the WebView controller (no page load).
   /// Call loadPixivPage() after login to load pixiv.net.
@@ -102,7 +104,37 @@ class PixivWebClient {
     );
   }
 
-  /// fetch()でAPIを呼び出し、JSONを返す。
+  /// Execute a fetch() in the WebView and poll for the JSON result.
+  Future<Map<String, dynamic>> _fetchViaWebView(String fetchJs, String reqId, String label) async {
+    await _executeScript(fetchJs);
+
+    // Poll for result (max 10 seconds)
+    for (var i = 0; i < 100; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      final check = await _evaluateScript("window['$reqId']");
+      final checkStr = check.toString();
+      if (checkStr != 'null' && checkStr != '<null>' && checkStr.isNotEmpty) {
+        await _executeScript("delete window['$reqId'];");
+
+        // WebView's evaluateScript wraps JSON strings in extra quotes.
+        // Double jsonDecode separates the outer unescaping from JSON parsing.
+        String jsonStr = checkStr;
+        if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
+          jsonStr = jsonDecode(jsonStr) as String;
+        }
+
+        _log.info('$label result (first 300): ${jsonStr.substring(0, jsonStr.length > 300 ? 300 : jsonStr.length)}');
+
+        final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+        _log.info('error: ${decoded['error']}, message: ${decoded['message']}');
+        return decoded;
+      }
+    }
+
+    throw Exception('Pixiv $label timeout');
+  }
+
+  /// GET request via fetch().
   Future<Map<String, dynamic>> fetchJson(String url) async {
     if (!_isReady) {
       throw Exception('PixivWebClient: pixiv.net not loaded. Call loadPixivPage() first.');
@@ -125,38 +157,44 @@ class PixivWebClient {
       .catch(e => { window['$reqId'] = JSON.stringify({error: true, message: e.toString()}); });
     ''';
 
-    await _executeScript(js);
+    return _fetchViaWebView(js, reqId, 'fetchJson');
+  }
 
-    // ポーリングで結果を待つ（最大10秒）
-    for (var i = 0; i < 100; i++) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      final check = await _evaluateScript("window['$reqId']");
-      final checkStr = check.toString();
-      if (checkStr != 'null' && checkStr != '<null>' && checkStr.isNotEmpty) {
-        await _executeScript("delete window['$reqId'];");
-
-        // WebView の evaluateScript は JSON 文字列をさらに引用符で囲んで返す。
-        // jsonDecode を2回呼ぶことで、外側のエスケープ解除と JSON パースを分離。
-        String jsonStr = checkStr;
-        if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
-          jsonStr = jsonDecode(jsonStr) as String;
-        }
-
-        _log.info('Result (first 300): ${jsonStr.substring(0, jsonStr.length > 300 ? 300 : jsonStr.length)}');
-
-        final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
-        _log.info('error: ${decoded['error']}, message: ${decoded['message']}');
-        return decoded;
-      }
+  /// POST request with JSON body via fetch(). Requires CSRF token.
+  Future<Map<String, dynamic>> postJson(
+    String url,
+    Map<String, dynamic> body,
+  ) async {
+    if (!_isReady) {
+      throw Exception('PixivWebClient: pixiv.net not loaded. Call loadPixivPage() first.');
+    }
+    if (_csrfToken == null) {
+      throw Exception('PixivWebClient: CSRF token not available.');
     }
 
-    try {
-      final currentUrl = await _evaluateScript("window.location.href");
-      _log.warning('fetchJson TIMEOUT: $url (current page: $currentUrl)');
-    } catch (e) {
-      _log.warning('fetchJson TIMEOUT: $url (could not get current page: $e)');
-    }
-    throw Exception('Pixiv API timeout: $url');
+    _log.info('postJson: $url body=$body');
+    final reqId = '_pixiv_result_${_requestId++}';
+    final bodyJson = jsonEncode(body).replaceAll("'", "\\'");
+
+    final js = '''
+      window['$reqId'] = null;
+      fetch('$url', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'x-csrf-token': '$_csrfToken'
+        },
+        body: '$bodyJson'
+      })
+      .then(r => r.text())
+      .then(t => { window['$reqId'] = t; })
+      .catch(e => { window['$reqId'] = JSON.stringify({error: true, message: e.toString()}); });
+    ''';
+
+    return _fetchViaWebView(js, reqId, 'postJson');
   }
 
   String? _userId;

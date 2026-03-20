@@ -9,6 +9,7 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
+import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
 
 final _log = Logger('Viewer');
@@ -339,8 +340,23 @@ class _ViewerScreenState extends State<ViewerScreen> {
       'thumbnailUrl': image.metadata?['thumbnailUrl'],
       ...?image.metadata,
     };
-    await widget.favoritesStore.toggle(image.id, meta);
+    final wasAdded = await widget.favoritesStore.toggle(image.id, meta);
     setState(() {});
+
+    // Pixiv bookmark: add when favorited (best-effort, don't block UI)
+    if (wasAdded && image.sourceKey?.startsWith('pixiv:') == true) {
+      final illustId = image.metadata?['illustId'] as int?;
+      if (illustId != null) {
+        try {
+          final provider = await widget.registry.resolve(image.sourceKey!, context);
+          if (provider is PixivSource) {
+            await provider.client.bookmarkAdd(illustId);
+          }
+        } catch (e, st) {
+          _log.warning('Pixiv bookmark failed', e, st);
+        }
+      }
+    }
   }
 
   Future<void> _toggleDownload(ImageSource image) async {
