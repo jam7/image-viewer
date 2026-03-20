@@ -6,8 +6,13 @@ import 'package:webview_windows/webview_windows.dart' as win;
 
 /// Pixiv ログイン画面。Windows は WebView2、iOS/Android は WKWebView/Android WebView。
 /// ログイン専用。API 呼び出しには PixivWebClient の別 WebView を使う。
+///
+/// Cookie が有効な場合: accounts.pixiv.net/login → 即リダイレクト → www.pixiv.net
+/// に到達 → pop。WebView は見せずにローディング表示のみ。
+///
+/// Cookie が無効な場合: accounts.pixiv.net/login にとどまる → WebView を表示して
+/// ユーザーがログイン → www.pixiv.net に到達 → pop。
 class PixivLoginScreen extends StatefulWidget {
-  /// ログイン成功時に呼ばれる。ユーザーIDが取得できた場合は渡す。
   final void Function({String? userId}) onLoginSuccess;
 
   const PixivLoginScreen({
@@ -28,6 +33,9 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
 
   bool _isInitialized = false;
   bool _loginHandled = false;
+  // Cookie 有効で即リダイレクトされる場合は WebView を見せない。
+  // accounts.pixiv.net にとどまった（= ログインが必要）場合のみ true にする。
+  bool _showWebView = false;
 
   @override
   void initState() {
@@ -70,24 +78,29 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
 
   void _onUrlChanged(String url) {
     if (_loginHandled) return;
+    print('[PixivLogin] URL: $url');
 
     // www.pixiv.net に到達したらログイン完了。
-    // accounts.pixiv.net の別ページ（reCAPTCHA、追加認証等）は
-    // まだログイン完了ではないので無視する。
     if (url.startsWith('https://www.pixiv.net')) {
       _loginHandled = true;
       print('[PixivLogin] Login complete, URL: $url');
       _extractUserIdAsync();
-      // Pop using login screen's own context to avoid popping the wrong route
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           Navigator.of(context).pop(true);
         }
       });
+      return;
+    }
+
+    // accounts.pixiv.net のログインページにとどまった = ログインが必要。
+    // WebView を表示してユーザーに入力してもらう。
+    if (url.contains('accounts.pixiv.net') && !_showWebView) {
+      print('[PixivLogin] Login required, showing WebView');
+      if (mounted) setState(() => _showWebView = true);
     }
   }
 
-  /// ログイン後のページHTMLからユーザーIDを非同期で取得
   Future<void> _extractUserIdAsync() async {
     try {
       final js =
@@ -131,8 +144,29 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pixiv ログイン')),
-      body: _isInitialized ? _buildWebView() : const Center(child: Text('読み込み中...')),
+      // AppBar を見せるのはログインが必要な場合のみ
+      appBar: _showWebView ? AppBar(title: const Text('Pixiv ログイン')) : null,
+      backgroundColor: _showWebView ? null : Colors.white,
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    // ログインが必要な場合: WebView を表示
+    if (_showWebView && _isInitialized) {
+      return _buildWebView();
+    }
+
+    // Cookie チェック中（即リダイレクトを待っている）
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('Pixiv に接続中...'),
+        ],
+      ),
     );
   }
 
