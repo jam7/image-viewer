@@ -85,7 +85,7 @@ class PixivWebClient {
       throw Exception('PixivWebClient が初期化されていません');
     }
 
-    _log('fetchJson: $url');
+    _log('fetchJson: $url (isReady=$_isReady, hasFuture=${_readyFuture != null})');
     final reqId = '_pixiv_result_${_requestId++}';
 
     final js = '''
@@ -103,12 +103,16 @@ class PixivWebClient {
     ''';
 
     await _executeScript(js);
+    _log('fetchJson: script executed, polling for result ($reqId)');
 
     // ポーリングで結果を待つ（最大10秒）
     for (var i = 0; i < 100; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       final check = await _evaluateScript("window['$reqId']");
       final checkStr = check.toString();
+      if (i == 10 || i == 50) {
+        _log('fetchJson: polling $reqId, attempt=$i, value=${checkStr.substring(0, checkStr.length > 50 ? 50 : checkStr.length)}');
+      }
       if (checkStr != 'null' && checkStr != '<null>' && checkStr.isNotEmpty) {
         await _executeScript("delete window['$reqId'];");
 
@@ -127,6 +131,11 @@ class PixivWebClient {
       }
     }
 
+    // Log current page URL to diagnose if WebView navigated away
+    try {
+      final currentUrl = await _evaluateScript("window.location.href");
+      _log('fetchJson TIMEOUT: $url (current page: $currentUrl)');
+    } catch (_) {}
     throw Exception('Pixiv API timeout: $url');
   }
 
