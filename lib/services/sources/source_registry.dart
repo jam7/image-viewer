@@ -23,6 +23,9 @@ class SourceRegistry {
 
   PixivApiClient? _pixivApiClient;
   bool _pixivLoginVerified = false;
+  /// Guards against concurrent _resolvePixiv calls (e.g. FavoritesTab and
+  /// HomeScreen both calling resolve at the same time).
+  Future<ImageSourceProvider?>? _pixivResolveFuture;
 
   // Callback for lazy Pixiv login
   Future<PixivApiClient?> Function(BuildContext context)? onPixivLoginRequired;
@@ -71,13 +74,19 @@ class SourceRegistry {
     }
   }
 
-  Future<ImageSourceProvider?> _resolvePixiv(BuildContext context) async {
-    // Already logged in and verified
+  Future<ImageSourceProvider?> _resolvePixiv(BuildContext context) {
+    // Already logged in and verified — no need for serialization
     if (_pixivApiClient != null && _pixivLoginVerified) {
       print('[SourceRegistry] _resolvePixiv: already verified, returning new PixivSource');
-      return PixivSource(client: _pixivApiClient!);
+      return Future.value(PixivSource(client: _pixivApiClient!));
     }
-    // Trigger login (checks cookies, shows login screen if needed)
+    // Serialize login attempts to prevent double login screen
+    return _pixivResolveFuture ??= _doResolvePixiv(context).whenComplete(() {
+      _pixivResolveFuture = null;
+    });
+  }
+
+  Future<ImageSourceProvider?> _doResolvePixiv(BuildContext context) async {
     if (onPixivLoginRequired != null) {
       print('[SourceRegistry] _resolvePixiv: calling onPixivLoginRequired');
       final client = await onPixivLoginRequired!(context);
