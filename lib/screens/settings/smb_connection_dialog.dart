@@ -30,6 +30,9 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
   late final TextEditingController _basePathController;
   String? _testResult;
   bool _isTesting = false;
+  bool _isBenchmarking = false;
+  bool _benchmarkCancelled = false;
+  final List<String> _benchLines = [];
 
   @override
   void initState() {
@@ -88,6 +91,116 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
       });
     } finally {
       setState(() => _isTesting = false);
+    }
+  }
+
+  Future<void> _runBenchmark() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isBenchmarking = true;
+      _benchmarkCancelled = false;
+      _benchLines.clear();
+      _testResult = null;
+    });
+
+    void log(String line) {
+      if (!mounted || _benchmarkCancelled) return;
+      setState(() => _benchLines.add(line));
+    }
+
+    Smb2Client? client;
+    try {
+      client = await Smb2Client.connect(
+        host: _hostController.text.trim(),
+        port: int.tryParse(_portController.text.trim()) ?? 445,
+        username: _userController.text.trim(),
+        password: _passwordController.text,
+      );
+      final tree = await client.connectTree(_shareController.text.trim());
+      final basePath = _basePathController.text.trim().isEmpty
+          ? '/' : _basePathController.text.trim();
+
+      // Find files in basePath
+      final files = await tree.listDirectory(basePath);
+      final readableFiles = files
+          .where((f) => !f.isDirectory && f.size > 0)
+          .toList()
+        ..sort((a, b) => b.size.compareTo(a.size));
+
+      if (readableFiles.isEmpty) {
+        log('ファイルが見つかりません: $basePath');
+        return;
+      }
+
+      // --- Single file benchmark (largest file) ---
+      final target = readableFiles.first;
+      log('=== Single file: ${target.name} (${(target.size / 1024).toStringAsFixed(0)} KB) ===');
+
+      for (final ra in [1, 2, 3, 5, 8]) {
+        if (_benchmarkCancelled) break;
+        final sw = Stopwatch()..start();
+        final reader = await tree.openRead(target.path);
+        int totalBytes = 0;
+        try {
+          await for (final chunk in reader.readStream(readAhead: ra)) {
+            totalBytes += chunk.length;
+            if (_benchmarkCancelled) break;
+          }
+        } finally {
+          await reader.close();
+        }
+        sw.stop();
+        final sec = sw.elapsedMilliseconds / 1000;
+        final speed = sec > 0 ? (totalBytes / 1024 / sec).toStringAsFixed(0) : '?';
+        log('readAhead=$ra: ${sec.toStringAsFixed(2)}s  $speed KB/s');
+      }
+
+      if (_benchmarkCancelled) return;
+
+      // --- Parallel directory benchmark ---
+      final benchFiles = readableFiles.take(20).toList();
+      final totalSize = benchFiles.fold<int>(0, (s, f) => s + f.size);
+      log('');
+      log('=== Parallel: ${benchFiles.length} files (${(totalSize / 1024).toStringAsFixed(0)} KB) ===');
+
+      for (final par in [1, 2, 3, 5, 8]) {
+        if (_benchmarkCancelled) break;
+        final sw = Stopwatch()..start();
+        int downloaded = 0;
+
+        for (int i = 0; i < benchFiles.length; i += par) {
+          if (_benchmarkCancelled) break;
+          final end = (i + par).clamp(0, benchFiles.length);
+          final batch = benchFiles.sublist(i, end);
+          await Future.wait(batch.map((f) async {
+            final reader = await tree.openRead(f.path);
+            try {
+              await for (final chunk in reader.readStream(readAhead: 3)) {
+                downloaded += chunk.length;
+                if (_benchmarkCancelled) break;
+              }
+            } finally {
+              await reader.close();
+            }
+          }));
+        }
+
+        sw.stop();
+        final sec = sw.elapsedMilliseconds / 1000;
+        final speed = sec > 0 ? (downloaded / 1024 / sec).toStringAsFixed(0) : '?';
+        log('parallel=$par: ${sec.toStringAsFixed(2)}s  $speed KB/s');
+      }
+
+      if (!_benchmarkCancelled) log('');
+      if (!_benchmarkCancelled) log('完了');
+    } catch (e, st) {
+      print('[SMB] Benchmark error: $e\n$st');
+      log('エラー: $e');
+    } finally {
+      try {
+        await client?.disconnect();
+      } catch (_) {}
+      if (mounted) setState(() => _isBenchmarking = false);
     }
   }
 
@@ -183,6 +296,28 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
                       ),
                     ),
                   ),
+                if (_benchLines.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade900,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      child: Text(
+                        _benchLines.join('\n'),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: Colors.greenAccent,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -190,7 +325,7 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _isTesting ? null : _testConnection,
+          onPressed: _isTesting || _isBenchmarking ? null : _testConnection,
           child: _isTesting
               ? const SizedBox(
                   width: 16,
@@ -200,11 +335,21 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
               : const Text('テスト接続'),
         ),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _isTesting
+              ? null
+              : _isBenchmarking
+                  ? () => setState(() => _benchmarkCancelled = true)
+                  : _runBenchmark,
+          child: _isBenchmarking
+              ? const Text('中止')
+              : const Text('性能確認'),
+        ),
+        TextButton(
+          onPressed: _isBenchmarking ? null : () => Navigator.of(context).pop(),
           child: const Text('キャンセル'),
         ),
         ElevatedButton(
-          onPressed: _save,
+          onPressed: _isBenchmarking ? null : _save,
           child: const Text('保存'),
         ),
       ],
