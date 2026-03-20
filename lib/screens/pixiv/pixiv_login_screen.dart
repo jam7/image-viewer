@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
 
   bool _isInitialized = false;
   bool _loginHandled = false;
+  Completer<void>? _pageFinishCompleter;
   // Cookie 有効で即リダイレクトされる場合は WebView を見せない。
   // accounts.pixiv.net にとどまった（= ログインが必要）場合のみ true にする。
   bool _showWebView = false;
@@ -75,6 +77,12 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
       ..setNavigationDelegate(
         mobile.NavigationDelegate(
           onUrlChange: (change) => _onUrlChanged(change.url ?? ''),
+          onPageFinished: (url) {
+            _log.info('Page finished: $url');
+            if (_pageFinishCompleter != null && !_pageFinishCompleter!.isCompleted) {
+              _pageFinishCompleter!.complete();
+            }
+          },
         ),
       )
       ..loadRequest(Uri.parse('https://accounts.pixiv.net/login'));
@@ -109,6 +117,17 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
   /// ホーム画面が露出しないよう、API WebView の準備完了まで
   /// ローディング表示を維持してから pop する。
   Future<void> _completeLogin() async {
+    // iOS: onUrlChange はナビゲーション開始時に発火するため、
+    // HTML がまだ空の状態で userId 抽出すると失敗する。
+    // onPageFinished を待ってから抽出する。
+    if (_mobileController != null) {
+      _pageFinishCompleter = Completer<void>();
+      _log.info('Waiting for page finish before extracting userId...');
+      await _pageFinishCompleter!.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => _log.warning('Page finish timeout, proceeding anyway'),
+      );
+    }
     await _extractUserIdAsync();
     try {
       _log.info('Loading API WebView before pop...');
