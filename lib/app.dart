@@ -65,8 +65,8 @@ class _AppRootState extends State<_AppRoot> {
 
     await _smbConfigStore.init();
 
-    // Try background Pixiv init (may succeed if cookies are still valid)
-    _webClient.initialize();
+    // Pixiv WebView is initialized lazily when user first accesses Pixiv
+    // (via _handlePixivLogin). No need to start it here.
 
     if (mounted) {
       setState(() {
@@ -78,12 +78,13 @@ class _AppRootState extends State<_AppRoot> {
   /// Lazy Pixiv login: called by SourceRegistry when Pixiv source is needed.
   /// Returns PixivApiClient if login succeeds, null if cancelled.
   Future<PixivApiClient?> _handlePixivLogin(BuildContext context) async {
+    // Initialize API WebView on first Pixiv access
+    await _webClient.initialize();
+
     // Check if already logged in (cookies still valid)
-    if (_webClient.isReady) {
-      final loggedIn = await _webClient.checkLoginStatus();
-      if (loggedIn) {
-        return PixivApiClient(webClient: _webClient);
-      }
+    final loggedIn = await _webClient.checkLoginStatus();
+    if (loggedIn) {
+      return PixivApiClient(webClient: _webClient);
     }
 
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
