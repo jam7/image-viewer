@@ -71,11 +71,11 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
   void _onUrlChanged(String url) {
     if (_loginHandled) return;
 
-    // ログイン画面から離れた = ログイン成功
-    if (url.contains('pixiv.net') &&
-        !url.contains('accounts.pixiv.net/login')) {
+    // www.pixiv.net に到達したらログイン完了。
+    // accounts.pixiv.net の別ページ（reCAPTCHA、追加認証等）は
+    // まだログイン完了ではないので無視する。
+    if (url.startsWith('https://www.pixiv.net')) {
       _loginHandled = true;
-      // 即座に画面遷移、ユーザーID取得はバックグラウンド
       widget.onLoginSuccess(userId: null);
       _extractUserIdAsync();
     }
