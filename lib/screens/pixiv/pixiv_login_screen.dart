@@ -154,9 +154,49 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
       } else {
         _log.info('Could not extract user ID from login page');
       }
+
+      // Extract CSRF token from the same page for bookmark API
+      await _extractCsrfToken();
     } catch (e, st) {
       _log.warning('Error extracting user ID', e, st);
     }
+  }
+
+  Future<void> _extractCsrfToken() async {
+    // Token is in escaped JSON in innerHTML: token\":\"hex...\"
+    final tokenJs =
+      "(function() {"
+      "  var s = document.documentElement.innerHTML;"
+      "  var m = s.match(/token\\\\\":\\\\\"([0-9a-f]+)\\\\\"/);"
+      "  if (m) return m[1];"
+      "  return '';"
+      "})()";
+
+    // Wait for SPA render — the token is injected by React, not in
+    // the initial HTML. Retry up to 5 seconds.
+    for (var i = 0; i < 50; i++) {
+      try {
+        String token = '';
+        if (Platform.isWindows && _winController != null) {
+          final result = await _winController!.executeScript(tokenJs);
+          token = result?.toString().replaceAll('"', '').replaceAll("'", '') ?? '';
+        } else if (_mobileController != null) {
+          final result = await _mobileController!.runJavaScriptReturningResult(tokenJs);
+          token = result.toString().replaceAll('"', '').replaceAll("'", '');
+        }
+
+        if (token.isNotEmpty && token != 'null') {
+          _log.info('CSRF token from login page: ${token.length} chars (attempt ${i + 1})');
+          widget.webClient.csrfToken = token;
+          return;
+        }
+      } catch (e, st) {
+        _log.warning('CSRF extraction error (attempt ${i + 1})', e, st);
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    _log.warning('Could not extract CSRF token from login page after retries');
   }
 
   @override

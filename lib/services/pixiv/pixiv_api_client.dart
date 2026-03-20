@@ -195,6 +195,23 @@ class PixivApiClient {
     return Uint8List.fromList(response.data!);
   }
 
+  /// Add a bookmark for the given illustration.
+  /// [restrict]: 0 = public, 1 = private.
+  Future<void> bookmarkAdd(int illustId, {int restrict = 0}) async {
+    _log.info('bookmarkAdd: illustId=$illustId, restrict=$restrict');
+    final data = await _webClient.postJson(
+      '$_baseUrl/ajax/illusts/bookmarks/add',
+      {
+        'illust_id': '$illustId',
+        'restrict': restrict,
+        'comment': '',
+        'tags': <String>[],
+      },
+    );
+    _checkError(data);
+    _log.info('bookmarkAdd: success');
+  }
+
   void _checkError(Map<String, dynamic> data) {
     if (data['error'] == true) {
       final message = data['message'] ?? 'Unknown error';
