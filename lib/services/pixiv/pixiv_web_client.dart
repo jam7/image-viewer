@@ -60,6 +60,7 @@ class PixivWebClient {
     final completer = Completer<void>();
     late final StreamSubscription sub;
     sub = _winController!.loadingState.listen((state) {
+      _log('loadingState: $state (waiting for navigationCompleted)');
       if (state == win.LoadingState.navigationCompleted) {
         _log('Page load complete: $url');
         sub.cancel();
