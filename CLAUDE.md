@@ -127,29 +127,11 @@ BlurHash表示（即座、~30バイト）
 
 ### Pixiv 認証 & API（WebView 2台構成）
 
-```
-┌─────────────────────┐    ┌─────────────────────┐
-│  ログイン用 WebView   │    │   API用 WebView      │
-│  (pixiv_login_screen)│    │  (pixiv_web_client)  │
-│                     │    │                     │
-│  ユーザーがログイン   │    │  非表示・バックグラウンド│
-│  操作する画面       │    │  fetch() でAPI呼び出し │
-└─────────┬───────────┘    └─────────┬───────────┘
-          │                          │
-          └──── Cookie 共有 ─────────┘
-            (WKWebsiteDataStore /
-             WebView2 ユーザーデータ)
-```
-
-- 2つの WebView は Cookie ストアを共有。ログイン用でログインすれば API 用も認証済みになる
-- API 用 WebView はアプリ起動時に pixiv.net を読み込み、ログイン画面と並行で準備
-- ログイン用: Windows は `webview_windows`（WebView2）、iOS は `webview_flutter`（WKWebView）
-- API 用: iOS は `webview_flutter`、Windows は `webview_windows`（`webview_flutter` は Windows 非対応のため）
-- **重要**: `webview_flutter` は Windows をサポートしていない。Windows 向けは必ず `webview_windows` を使うこと
-- ログイン成功検知: URL変化時点で即座に遷移（iOS は `onUrlChange`、Windows は `url.listen`）。ページ読み込み完了を待たない
-- `fetchJson` は `initialize()` の完了を await するため、API用WebView未準備でも安全に呼べる
-- ログイン画面で取得したユーザーIDは `onLoginSuccess` 経由で `PixivWebClient.userId` に設定
+- ログイン用 WebView（PixivLoginScreen）と API 用 WebView（PixivWebClient）の2台構成
+- Cookie ストアを共有。ログイン用でログインすれば API 用も認証済みになる
+- **重要**: `webview_flutter` は Windows 非対応。Windows は `webview_windows` を使う
 - PixivWebClient → PixivApiClient → PixivSource の順に抽象化
+- 認証フローの詳細は [docs/pixiv_auth.md](docs/pixiv_auth.md) を参照
 
 ### SMB ファイルブラウズ
 
