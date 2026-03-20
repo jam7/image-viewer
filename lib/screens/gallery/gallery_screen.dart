@@ -71,14 +71,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }).toList();
   }
 
+  bool get _isUserWorksPage => widget.initialUserPath != null;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    if (widget.initialUserPath != null) {
-      _userPath = widget.initialUserPath;
-      _userName = widget.initialUserName;
-    }
     _loadImages();
   }
 
@@ -181,7 +179,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
-      _goBack();
+      Navigator.of(context).pop();
       return KeyEventResult.handled;
     }
 
@@ -197,17 +195,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  String? _userPath; // /user/{id} で作者ページを表示中の場合
-
   String get _currentPath {
-    if (_userPath != null) return _userPath!;
+    if (_isUserWorksPage) return widget.initialUserPath!;
     switch (_currentTab) {
       case _PixivTab.recommended:
         return '/recommended';
       case _PixivTab.bookmarks:
         return '/bookmarks';
       case _PixivTab.favorites:
-        return '/favorites'; // ローカル処理、APIは呼ばない
+        return '/favorites'; // Local only, no API call
       case _PixivTab.search:
         final word = _searchController.text.trim();
         if (word.isEmpty) return '/recommended';
@@ -246,28 +242,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
     return null;
   }
 
-  String? _userName;
-
-  /// 作者ページをギャラリーで表示。
-  void showUserWorks(int userId, String userName) {
-    _log.info('showUserWorks: userId=$userId, userName=$userName');
-    setState(() {
-      _userPath = '/user/$userId';
-      _userName = userName;
-      _images.clear();
-      _thumbnailData.clear();
-    });
-    widget.source.resetPagination();
-    _loadImages();
-  }
-
-  void _clearUserPath() {
-    if (_userPath != null) {
-      setState(() {
-        _userPath = null;
-        _userName = null;
-      });
-    }
+  void _pushUserWorks(int userId, String userName) {
+    _log.info('pushUserWorks: userId=$userId, userName=$userName');
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryScreen(
+        source: PixivSource(client: widget.source.client),
+        cacheManager: widget.cacheManager,
+        favoritesStore: widget.favoritesStore,
+        registry: widget.registry,
+        initialUserPath: '/user/$userId',
+        initialUserName: userName,
+      ),
+    ));
   }
 
   Future<void> _loadImages() async {
@@ -284,7 +270,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     _thumbnailData.clear();
 
     // お気に入りタブはローカルデータから読み込み
-    if (_currentTab == _PixivTab.favorites && _userPath == null) {
+    if (_currentTab == _PixivTab.favorites && !_isUserWorksPage) {
       final entries = widget.favoritesStore.listAll();
       final images = _filterImages(entries.map((e) => ImageSource(
         id: e.imageId,
@@ -388,14 +374,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   void _onTabChanged(_PixivTab tab) {
-    if (_currentTab == tab && _userPath == null) return;
+    if (_currentTab == tab) return;
     _currentTab = tab;
-    _clearUserPath();
     _loadImages();
   }
 
   void _onSearch() {
-    _clearUserPath();
     _currentTab = _PixivTab.search;
 
     final input = _searchController.text.trim();
@@ -443,7 +427,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (!mounted) return;
     if (result != null && result['action'] == 'showUser') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) showUserWorks(result['userId'] as int, result['userName'] as String);
+        if (mounted) _pushUserWorks(result['userId'] as int, result['userName'] as String);
       });
     } else if (_currentTab == _PixivTab.favorites) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み
@@ -451,49 +435,23 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  void _backToHome() {
-    Navigator.of(context).pop();
-  }
-
-  void _onBackNavigation() {
-    _clearUserPath();
-    _loadImages();
-  }
-
-  void _goBack() {
-    if (_userPath != null) {
-      _onBackNavigation();
-    } else {
-      _backToHome();
-    }
-  }
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
-      _goBack();
+      Navigator.of(context).pop();
     }
   }
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      leading: _userPath != null
-          ? IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: _onBackNavigation,
-            )
-          : null,
       title: Text(
-        _userName != null ? '$_userName の作品' : 'Pixiv',
+        _isUserWorksPage
+            ? '${widget.initialUserName ?? ""} の作品'
+            : 'Pixiv',
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _backToHome,
-        ),
-      ],
-      bottom: PreferredSize(
+      bottom: _isUserWorksPage ? null : PreferredSize(
         preferredSize: const Size.fromHeight(48),
         child: Row(
           children: [
@@ -558,7 +516,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         child: GestureDetector(
           onHorizontalDragEnd: (details) {
             if ((details.primaryVelocity ?? 0) > 300) {
-              _goBack();
+              Navigator.of(context).pop();
             }
           },
           child: Scaffold(
