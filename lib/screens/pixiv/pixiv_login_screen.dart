@@ -35,6 +35,7 @@ class PixivLoginScreen extends StatefulWidget {
 class _PixivLoginScreenState extends State<PixivLoginScreen> {
   // Windows
   win.WebviewController? _winController;
+  StreamSubscription<String>? _urlSubscription;
 
   // iOS / Android
   mobile.WebViewController? _mobileController;
@@ -64,7 +65,7 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
     final controller = win.WebviewController();
     await controller.initialize();
 
-    controller.url.listen((url) => _onUrlChanged(url));
+    _urlSubscription = controller.url.listen((url) => _onUrlChanged(url));
     await controller.loadUrl('https://accounts.pixiv.net/login');
 
     _winController = controller;
@@ -219,7 +220,9 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
   }
 
   @override
+  @override
   void dispose() {
+    _urlSubscription?.cancel();
     _winController?.dispose();
     super.dispose();
   }

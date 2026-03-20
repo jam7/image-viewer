@@ -131,6 +131,8 @@ class PixivWebClient {
       }
     }
 
+    // Clean up the window property to prevent memory leak
+    await _executeScript("delete window['$reqId'];");
     throw Exception('Pixiv $label timeout');
   }
 
