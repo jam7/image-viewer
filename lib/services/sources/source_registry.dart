@@ -22,6 +22,7 @@ class SourceRegistry {
   final SmbConfigStore _smbConfigStore;
 
   PixivApiClient? _pixivApiClient;
+  bool _pixivLoginVerified = false;
 
   // Callback for lazy Pixiv login
   Future<PixivApiClient?> Function(BuildContext context)? onPixivLoginRequired;
@@ -66,14 +67,16 @@ class SourceRegistry {
   }
 
   Future<ImageSourceProvider?> _resolvePixiv(BuildContext context) async {
-    if (_pixivApiClient != null) {
+    // Already logged in and verified
+    if (_pixivApiClient != null && _pixivLoginVerified) {
       return PixivSource(client: _pixivApiClient!);
     }
-    // Lazy login
+    // Trigger login (checks cookies, shows login screen if needed)
     if (onPixivLoginRequired != null) {
       final client = await onPixivLoginRequired!(context);
       if (client != null) {
         _pixivApiClient = client;
+        _pixivLoginVerified = true;
         return PixivSource(client: client);
       }
     }
@@ -120,5 +123,6 @@ class SourceRegistry {
     }
     _smbSources.clear();
     _pixivApiClient = null;
+    _pixivLoginVerified = false;
   }
 }
