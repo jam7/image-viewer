@@ -108,8 +108,9 @@ class _AppRootState extends State<_AppRoot> {
 
     if (result != true) return null;
 
-    // Ensure API WebView is ready after login
+    // Reload API WebView to pick up cookies from login WebView
     await _webClient.initialize();
+    await _webClient.reload();
     return PixivApiClient(webClient: _webClient);
   }
 
