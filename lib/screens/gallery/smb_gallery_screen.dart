@@ -43,6 +43,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   bool _isLoading = false;
   bool _isLoadingThumbnails = false;
   String? _error;
+  bool _isPopping = false;
   /// Incremented in _loadDirectory() to invalidate in-progress thumbnail loops.
   /// Thumbnail loading must capture this at start and abort if it changes.
   int _loadGeneration = 0;
@@ -265,7 +266,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.escape) {
-      Navigator.of(context).pop();
+      _popOnce();
       return KeyEventResult.handled;
     }
 
@@ -274,8 +275,16 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
-      Navigator.of(context).pop();
+      _popOnce();
     }
+  }
+
+  /// Guard against multiple pop calls in the same frame
+  /// (e.g. ESC key and mouse back button firing simultaneously).
+  void _popOnce() {
+    if (_isPopping) return;
+    _isPopping = true;
+    Navigator.of(context).pop();
   }
 
   @override
