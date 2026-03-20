@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../models/server_config.dart';
+
+final _log = Logger('SmbConfigStore');
 
 /// SMB接続設定の永続化。
 /// 接続情報はJSONファイル、パスワードはflutter_secure_storageに保存。
@@ -66,7 +69,7 @@ class SmbConfigStore {
     try {
       await tmpFile.rename(_file.path);
     } catch (e, st) {
-      print('[SmbConfigStore] flush error: $e\n$st');
+      _log.warning('flush error', e, st);
     }
   }
 
@@ -83,7 +86,7 @@ class SmbConfigStore {
         );
       }
     } catch (e, st) {
-      print('[SmbConfigStore] load error: $e\n$st');
+      _log.warning('load error', e, st);
       _configs.clear();
     }
   }

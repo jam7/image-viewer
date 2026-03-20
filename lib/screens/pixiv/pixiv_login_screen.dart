@@ -1,8 +1,11 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 import 'package:webview_flutter/webview_flutter.dart' as mobile;
 import 'package:webview_windows/webview_windows.dart' as win;
+
+final _log = Logger('PixivLogin');
 
 /// Pixiv ログイン画面。Windows は WebView2、iOS/Android は WKWebView/Android WebView。
 /// ログイン専用。API 呼び出しには PixivWebClient の別 WebView を使う。
@@ -78,12 +81,12 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
 
   void _onUrlChanged(String url) {
     if (_loginHandled) return;
-    print('[PixivLogin] URL: $url');
+    _log.info('URL: $url');
 
     // www.pixiv.net に到達したらログイン完了。
     if (url.startsWith('https://www.pixiv.net')) {
       _loginHandled = true;
-      print('[PixivLogin] Login complete, URL: $url');
+      _log.info('Login complete, URL: $url');
       // WebView を隠してローディング表示に切り替え（pixiv ホームが見えないように）
       if (mounted) setState(() => _showWebView = false);
       _completeLogin();
@@ -93,7 +96,7 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
     // accounts.pixiv.net のログインページにとどまった = ログインが必要。
     // WebView を表示してユーザーに入力してもらう。
     if (url.contains('accounts.pixiv.net') && !_showWebView) {
-      print('[PixivLogin] Login required, showing WebView');
+      _log.info('Login required, showing WebView');
       if (mounted) setState(() => _showWebView = true);
     }
   }
@@ -132,13 +135,13 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
       }
 
       if (id.isNotEmpty && id != 'null') {
-        print('[PixivLogin] User ID from login page: $id');
+        _log.info('User ID from login page: $id');
         widget.onLoginSuccess(userId: id);
       } else {
-        print('[PixivLogin] Could not extract user ID from login page');
+        _log.info('Could not extract user ID from login page');
       }
     } catch (e, st) {
-      print('[PixivLogin] Error extracting user ID: $e\n$st');
+      _log.warning('Error extracting user ID', e, st);
     }
   }
 

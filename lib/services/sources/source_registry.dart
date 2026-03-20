@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/server_config.dart';
 import '../pixiv/pixiv_api_client.dart';
@@ -6,6 +7,8 @@ import '../smb/smb_config_store.dart';
 import 'image_source_provider.dart';
 import 'pixiv_source.dart';
 import 'smb_source.dart';
+
+final _log = Logger('SourceRegistry');
 
 /// Resolves sourceKey to ImageSourceProvider.
 ///
@@ -51,11 +54,11 @@ class SourceRegistry {
   /// For Pixiv, a new PixivSource is returned each time so each caller
   /// gets independent pagination state.
   Future<ImageSourceProvider?> resolve(String sourceKey, BuildContext context) async {
-    print('[SourceRegistry] resolve: $sourceKey');
+    _log.info('resolve: $sourceKey');
     // Parse key
     final parts = sourceKey.split(':');
     if (parts.length < 2) {
-      print('[SourceRegistry] resolve: invalid key format');
+      _log.info('resolve: invalid key format');
       return null;
     }
     final type = parts[0];
@@ -69,7 +72,7 @@ class SourceRegistry {
         return _resolveSmb(id);
 
       default:
-        print('[SourceRegistry] resolve: unknown type "$type"');
+        _log.info('resolve: unknown type "$type"');
         return null;
     }
   }
@@ -77,7 +80,7 @@ class SourceRegistry {
   Future<ImageSourceProvider?> _resolvePixiv(BuildContext context) {
     // Already logged in and verified — no need for serialization
     if (_pixivApiClient != null && _pixivLoginVerified) {
-      print('[SourceRegistry] _resolvePixiv: already verified, returning new PixivSource');
+      _log.info('_resolvePixiv: already verified, returning new PixivSource');
       return Future.value(PixivSource(client: _pixivApiClient!));
     }
     // Serialize login attempts to prevent double login screen
@@ -88,16 +91,16 @@ class SourceRegistry {
 
   Future<ImageSourceProvider?> _doResolvePixiv(BuildContext context) async {
     if (onPixivLoginRequired != null) {
-      print('[SourceRegistry] _resolvePixiv: calling onPixivLoginRequired');
+      _log.info('_resolvePixiv: calling onPixivLoginRequired');
       final client = await onPixivLoginRequired!(context);
-      print('[SourceRegistry] _resolvePixiv: login returned client=${client != null}');
+      _log.info('_resolvePixiv: login returned client=${client != null}');
       if (client != null) {
         _pixivApiClient = client;
         _pixivLoginVerified = true;
         return PixivSource(client: client);
       }
     }
-    print('[SourceRegistry] _resolvePixiv: failed to resolve');
+    _log.info('_resolvePixiv: failed to resolve');
     return null;
   }
 
@@ -136,7 +139,7 @@ class SourceRegistry {
       try {
         await source.dispose();
       } catch (e, st) {
-        print('[SourceRegistry] dispose error: $e\n$st');
+        _log.warning('dispose error', e, st);
       }
     }
     _smbSources.clear();
