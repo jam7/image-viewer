@@ -189,8 +189,15 @@ class _HomeScreenState extends State<HomeScreen> {
     print('[HomeScreen] _openPixiv: resolving pixiv source');
     final provider = await widget.registry.resolve('pixiv:default', context);
     print('[HomeScreen] _openPixiv: resolved=${provider != null}');
-    if (provider == null || provider is! PixivSource) return;
-    if (!mounted) return;
+    if (provider == null || provider is! PixivSource) {
+      print('[HomeScreen] _openPixiv: provider is null or not PixivSource');
+      return;
+    }
+    if (!mounted) {
+      print('[HomeScreen] _openPixiv: not mounted, aborting');
+      return;
+    }
+    print('[HomeScreen] _openPixiv: pushing GalleryScreen');
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => GalleryScreen(
         source: provider,
