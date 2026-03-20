@@ -99,6 +99,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
       _pageIndex = 0;
       _scale = 1.0;
       _offset = Offset.zero;
+      // Release previous work's image data to prevent memory accumulation
+      _fullImages.clear();
+      _cacheSources.clear();
+      _loadingStates.clear();
     });
 
     try {
