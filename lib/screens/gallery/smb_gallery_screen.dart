@@ -344,9 +344,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         final isDir = item.metadata?['isDirectory'] == true;
         final thumbnail = _thumbnailData[item.id];
 
-        // サムネイル未読み込みの画像が表示されようとしたら次バッチ開始
+        // サムネイル未読み込みの画像が表示されようとしたら次バッチ開始。
+        // build 中に async を直接起動しないよう addPostFrameCallback で遅延。
         if (!isDir && thumbnail == null && !_isLoadingThumbnails) {
-          _loadNextBatch();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_isLoadingThumbnails) _loadNextBatch();
+          });
         }
 
         return GestureDetector(
