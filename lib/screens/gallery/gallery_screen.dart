@@ -444,8 +444,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  void _openSettings() {
-    Navigator.of(context).pop(); // Back to home
+  void _backToHome() {
+    Navigator.of(context).pop();
   }
 
   void _onBackNavigation() {
@@ -474,8 +474,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.settings),
-          onPressed: _openSettings,
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _backToHome,
         ),
       ],
       bottom: PreferredSize(
