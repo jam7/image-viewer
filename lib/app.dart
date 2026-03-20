@@ -106,11 +106,13 @@ class _AppRootState extends State<_AppRoot> {
       ),
     ));
 
+    print('[App] login screen returned: result=$result');
     if (result != true) return null;
 
     // Reload API WebView to pick up cookies from login WebView
     await _webClient.initialize();
     await _webClient.reload();
+    print('[App] WebView reloaded, returning PixivApiClient');
     return PixivApiClient(webClient: _webClient);
   }
 

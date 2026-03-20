@@ -186,7 +186,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openPixiv() async {
+    print('[HomeScreen] _openPixiv: resolving pixiv source');
     final provider = await widget.registry.resolve('pixiv:default', context);
+    print('[HomeScreen] _openPixiv: resolved=${provider != null}');
     if (provider == null || provider is! PixivSource) return;
     if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(
