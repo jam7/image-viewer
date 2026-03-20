@@ -107,6 +107,8 @@ class _AppRootState extends State<_AppRoot> {
 
     if (result != true) return null;
 
+    // Ensure API WebView is ready after login
+    await _webClient.initialize();
     return PixivApiClient(webClient: _webClient);
   }
 
