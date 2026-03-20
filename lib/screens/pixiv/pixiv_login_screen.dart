@@ -76,8 +76,14 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
     // まだログイン完了ではないので無視する。
     if (url.startsWith('https://www.pixiv.net')) {
       _loginHandled = true;
-      widget.onLoginSuccess(userId: null);
+      print('[PixivLogin] Login complete, URL: $url');
       _extractUserIdAsync();
+      // Pop using login screen's own context to avoid popping the wrong route
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pop(true);
+        }
+      });
     }
   }
 
