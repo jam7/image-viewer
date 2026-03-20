@@ -22,7 +22,8 @@ class PixivSource extends ImageSourceProvider {
     final effectivePath = path ?? '/recommended';
 
     if (effectivePath.startsWith('/bookmarks')) {
-      final userId = _client.userId ?? await _client.waitForUserId();
+      final userId = _client.userId;
+      if (userId == null) throw Exception('Pixiv userId not available');
       result = await _client.userBookmarksIllust(
         int.parse(userId),
         offset: _nextOffset ?? 0,
