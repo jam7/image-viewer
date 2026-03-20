@@ -84,6 +84,8 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
     if (url.startsWith('https://www.pixiv.net')) {
       _loginHandled = true;
       print('[PixivLogin] Login complete, URL: $url');
+      // WebView を隠してローディング表示に切り替え（pixiv ホームが見えないように）
+      if (mounted) setState(() => _showWebView = false);
       _extractUserIdAsync();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
