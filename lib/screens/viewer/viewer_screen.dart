@@ -96,6 +96,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     setState(() {
       _isResolvingPages = true;
       _error = null;
+      _pages = null; // Prevent _goToPage from using stale pages during resolve
       _pageIndex = 0;
       _scale = 1.0;
       _offset = Offset.zero;
@@ -210,12 +211,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
   // --- 作品送り（リスト内、左右） ---
 
   void _nextItem() {
+    if (_isResolvingPages) return; // Prevent concurrent _openItem
     if (_itemIndex + 1 >= widget.items.length) return;
     _itemIndex++;
     _openItem(_itemIndex);
   }
 
   void _prevItem() {
+    if (_isResolvingPages) return; // Prevent concurrent _openItem
     if (_itemIndex <= 0) return;
     _itemIndex--;
     _openItem(_itemIndex);
