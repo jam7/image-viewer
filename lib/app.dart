@@ -61,6 +61,7 @@ class _AppRootState extends State<_AppRoot> {
     final l3 = DownloadStore();
     await l3.init();
     _cacheManager = CacheManager(l1: l1, l2: l2, l3: l3);
+    _registry.cacheManager = _cacheManager;
 
     final favStore = FavoritesStore();
     await favStore.init();

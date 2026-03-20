@@ -215,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final password = await widget.smbConfigStore.getPassword(config.id);
     if (password == null) return;
     if (!mounted) return;
-    final source = SmbSource(config: config, password: password);
+    final source = SmbSource(config: config, password: password, cacheManager: widget.cacheManager);
     widget.registry.register(SourceRegistry.keyForSmb(config), source);
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SmbGalleryScreen(
