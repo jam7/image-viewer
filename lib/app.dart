@@ -93,6 +93,7 @@ class _AppRootState extends State<_AppRoot> {
     _log.info('Pushing login screen');
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => PixivLoginScreen(
+        webClient: _webClient,
         onLoginSuccess: ({String? userId}) {
           if (userId != null) {
             _webClient.userId = userId;
@@ -105,8 +106,7 @@ class _AppRootState extends State<_AppRoot> {
 
     if (result != true) return null;
 
-    // Now cookies are valid. Load pixiv.net in API WebView.
-    await _webClient.loadPixivPage();
+    // API WebView はログイン画面側で loadPixivPage() 済み
     _log.info('API WebView ready, returning PixivApiClient');
     return PixivApiClient(webClient: _webClient);
   }

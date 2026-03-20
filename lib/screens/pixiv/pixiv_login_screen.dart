@@ -5,22 +5,26 @@ import 'package:logging/logging.dart';
 import 'package:webview_flutter/webview_flutter.dart' as mobile;
 import 'package:webview_windows/webview_windows.dart' as win;
 
+import '../../services/pixiv/pixiv_web_client.dart';
+
 final _log = Logger('PixivLogin');
 
 /// Pixiv ログイン画面。Windows は WebView2、iOS/Android は WKWebView/Android WebView。
 /// ログイン専用。API 呼び出しには PixivWebClient の別 WebView を使う。
 ///
 /// Cookie が有効な場合: accounts.pixiv.net/login → 即リダイレクト → www.pixiv.net
-/// に到達 → pop。WebView は見せずにローディング表示のみ。
+/// に到達 → API WebView ロード → pop。WebView は見せずにローディング表示のみ。
 ///
 /// Cookie が無効な場合: accounts.pixiv.net/login にとどまる → WebView を表示して
-/// ユーザーがログイン → www.pixiv.net に到達 → pop。
+/// ユーザーがログイン → www.pixiv.net に到達 → API WebView ロード → pop。
 class PixivLoginScreen extends StatefulWidget {
   final void Function({String? userId}) onLoginSuccess;
+  final PixivWebClient webClient;
 
   const PixivLoginScreen({
     super.key,
     required this.onLoginSuccess,
+    required this.webClient,
   });
 
   @override
@@ -101,9 +105,19 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
     }
   }
 
-  /// Extract userId then pop. Ensures userId is set before pop returns.
+  /// Extract userId, load API WebView, then pop.
+  /// ホーム画面が露出しないよう、API WebView の準備完了まで
+  /// ローディング表示を維持してから pop する。
   Future<void> _completeLogin() async {
     await _extractUserIdAsync();
+    try {
+      _log.info('Loading API WebView before pop...');
+      await widget.webClient.loadPixivPage();
+      _log.info('API WebView ready');
+    } catch (e, st) {
+      _log.warning('Failed to load API WebView', e, st);
+      // API WebView のロード失敗でもログイン自体は成功しているので pop する
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         Navigator.of(context).pop(true);
