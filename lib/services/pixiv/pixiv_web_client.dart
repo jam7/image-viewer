@@ -30,16 +30,23 @@ class PixivWebClient {
 
   Future<void> _doInitialize() async {
     _log('Initializing WebView...');
-    if (Platform.isWindows) {
-      final controller = win.WebviewController();
-      await controller.initialize();
-      _winController = controller;
-    } else {
-      final controller = mobile.WebViewController()
-        ..setJavaScriptMode(mobile.JavaScriptMode.unrestricted);
-      _mobileController = controller;
+    try {
+      if (Platform.isWindows) {
+        final controller = win.WebviewController();
+        await controller.initialize();
+        _winController = controller;
+      } else {
+        final controller = mobile.WebViewController()
+          ..setJavaScriptMode(mobile.JavaScriptMode.unrestricted);
+        _mobileController = controller;
+      }
+      _log('WebView controller created');
+    } catch (e, st) {
+      // Clear cached future so next initialize() call retries
+      _readyFuture = null;
+      _log('WebView initialization failed: $e\n$st');
+      rethrow;
     }
-    _log('WebView controller created');
   }
 
   /// Load pixiv.net in the API WebView and wait for completion.
