@@ -43,6 +43,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   bool _isLoading = false;
   bool _isLoadingThumbnails = false;
   String? _error;
+  /// Incremented in _loadDirectory() to invalidate in-progress thumbnail loops.
+  /// Thumbnail loading must capture this at start and abort if it changes.
+  int _loadGeneration = 0;
 
   /// 画面に表示される行数から2画面分のアイテム数を計算
   int get _batchSize {
@@ -74,7 +77,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _reloadThumbnailsFromCache() async {
+    final generation = _loadGeneration;
     for (final image in _imageFiles) {
+      if (!mounted || generation != _loadGeneration) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}')
@@ -98,6 +103,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
 
   Future<void> _loadDirectory() async {
+    _loadGeneration++;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -152,8 +158,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     // 1行分（crossAxisCount枚）ずつ並列ダウンロード。
     // 全部同時に投げると帯域を奪い合い単体速度が落ちるため、
     // 行単位で区切って先に表示可能にする。
+    final generation = _loadGeneration;
     final list = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
     for (int i = 0; i < list.length; i += galleryCrossAxisCount) {
+      if (!mounted || generation != _loadGeneration) return;
       final end = (i + galleryCrossAxisCount).clamp(0, list.length);
       final row = list.sublist(i, end);
       await Future.wait(row.map(_loadOneThumbnail));
