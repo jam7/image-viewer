@@ -86,12 +86,7 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
       print('[PixivLogin] Login complete, URL: $url');
       // WebView を隠してローディング表示に切り替え（pixiv ホームが見えないように）
       if (mounted) setState(() => _showWebView = false);
-      _extractUserIdAsync();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.of(context).pop(true);
-        }
-      });
+      _completeLogin();
       return;
     }
 
@@ -101,6 +96,16 @@ class _PixivLoginScreenState extends State<PixivLoginScreen> {
       print('[PixivLogin] Login required, showing WebView');
       if (mounted) setState(() => _showWebView = true);
     }
+  }
+
+  /// Extract userId then pop. Ensures userId is set before pop returns.
+  Future<void> _completeLogin() async {
+    await _extractUserIdAsync();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
   }
 
   Future<void> _extractUserIdAsync() async {
