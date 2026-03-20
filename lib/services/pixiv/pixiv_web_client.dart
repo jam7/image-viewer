@@ -130,8 +130,9 @@ class PixivWebClient {
         String jsonStr = checkStr;
         if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
           jsonStr = jsonStr.substring(1, jsonStr.length - 1);
-          jsonStr = jsonStr.replaceAll(r'\"', '"');
+          // \\ を先に処理しないと \\" が誤変換される
           jsonStr = jsonStr.replaceAll(r'\\', r'\');
+          jsonStr = jsonStr.replaceAll(r'\"', '"');
         }
 
         _log('Result (first 300): ${jsonStr.substring(0, jsonStr.length > 300 ? 300 : jsonStr.length)}');
