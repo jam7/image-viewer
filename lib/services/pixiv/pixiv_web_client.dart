@@ -30,6 +30,20 @@ class PixivWebClient {
     return _readyFuture!;
   }
 
+  /// Reload pixiv.net in the API WebView to pick up new cookies after login.
+  Future<void> reload() async {
+    if (!_isReady) return;
+    _log('Reloading pixiv.net...');
+    if (Platform.isWindows && _winController != null) {
+      await _winController!.loadUrl('https://www.pixiv.net');
+    } else if (_mobileController != null) {
+      await _mobileController!.loadRequest(Uri.parse('https://www.pixiv.net'));
+    }
+    // Wait for page to load
+    await Future.delayed(const Duration(seconds: 2));
+    _log('Reload complete');
+  }
+
   Future<void> _doInitialize() async {
     _log('Initializing WebView...');
 
