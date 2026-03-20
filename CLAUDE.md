@@ -22,6 +22,12 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/
 - **ライブラリ（dart_smb2/ 等）**: 例外を throw/rethrow で呼び出し元に返す。フォールバック処理で catch する場合は具体的な型（`on FormatException` 等）でキャッチし、`catch (_)` で握りつぶさない
 - **dart_smb2 のログレベル**: `main.dart` で WARNING 以上に設定。info レベルの接続ログはアプリには表示されない
 
+### バグ調査の進め方（必須）
+
+- クラッシュやバグが報告されたら、**まずログを読んで根本原因を特定する**。ガードやフォールバックで隠してはいけない
+- ログから原因が特定できない場合は、**該当箇所にログを追加して再実行し、原因を絞り込む**。推測で修正しない
+- 原因が特定できてから修正する。修正が正しいことをログや再現手順で確認する
+
 ### 実装時の説明責任
 
 - 新機能や設計変更時は、方針と考え方を説明してから実装する
@@ -33,7 +39,8 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/
 flutter analyze          # 静的解析
 flutter test             # 全テスト実行
 flutter test test/widget_test.dart  # 単一テスト実行
-flutter run -d windows   # Windows向けビルド＆実行（Windows側で実行）
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8 # flutterの出力のパースをutf8に
+flutter run -d windows 2>&1 | Tee-Object -FilePath "C:\Users\jam\flutter_log.txt"  # Windows向け（PowerShell、ログは C:\Users\jam\flutter_log.txt）
 flutter run -d <iPad ID> # iOS/iPad向け（flutter devices でID確認）
 flutter run -d chrome    # Web向け（デバッグ用）
 ```
