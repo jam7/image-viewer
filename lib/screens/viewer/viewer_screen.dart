@@ -203,6 +203,21 @@ class _ViewerScreenState extends State<ViewerScreen> {
       _offset = Offset.zero;
     });
     _preloadAround(index);
+    _evictDistantPages(index, pages);
+  }
+
+  /// Release image data for pages far from [currentIndex] to prevent OOM
+  /// on works with many pages. Keeps ±5 pages. Data is still in L1 cache
+  /// so re-display is instant.
+  void _evictDistantPages(int currentIndex, List<ImageSource> pages) {
+    const keepRange = 5;
+    final keysToKeep = <String>{};
+    for (var i = currentIndex - keepRange; i <= currentIndex + keepRange; i++) {
+      if (i >= 0 && i < pages.length) {
+        keysToKeep.add(pages[i].id);
+      }
+    }
+    _fullImages.removeWhere((key, _) => !keysToKeep.contains(key));
   }
 
   void _nextPage() => _goToPage(_pageIndex + 1);
