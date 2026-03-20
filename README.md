@@ -20,7 +20,7 @@
 選定理由:
 - iOS/Android/Windowsの3プラットフォーム全てで最も成熟している
 - Impellerレンダリングエンジンによる安定した描画性能（画像重視アプリに適する）
-- `cached_network_image`, `smb_connect` 等の画像・ネットワーク系パッケージが充実
+- `cached_network_image` 等の画像・ネットワーク系パッケージが充実
 - コミュニティ最大、pub.devに豊富なパッケージ
 
 ## ナビゲーション
@@ -45,7 +45,7 @@
 | プロトコル | 方式 | 備考 |
 |---|---|---|
 | HTTP/HTTPS | 標準対応 | Range Request による部分ダウンロード対応 |
-| SMB2 | `smb_connect` パッケージ (SMB 1.0/2.0/2.1) | LAN/VPN環境が必要 |
+| SMB2 | `dart_smb2`（自作、SMB 2.0/2.1） | LAN/VPN環境が必要 |
 
 ### クラウドストレージ
 
