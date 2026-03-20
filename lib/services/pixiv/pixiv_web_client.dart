@@ -127,12 +127,11 @@ class PixivWebClient {
       if (checkStr != 'null' && checkStr != '<null>' && checkStr.isNotEmpty) {
         await _executeScript("delete window['$reqId'];");
 
+        // WebView の evaluateScript は JSON 文字列をさらに引用符で囲んで返す。
+        // jsonDecode を2回呼ぶことで、外側のエスケープ解除と JSON パースを分離。
         String jsonStr = checkStr;
         if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
-          jsonStr = jsonStr.substring(1, jsonStr.length - 1);
-          // \\ を先に処理しないと \\" が誤変換される
-          jsonStr = jsonStr.replaceAll(r'\\', r'\');
-          jsonStr = jsonStr.replaceAll(r'\"', '"');
+          jsonStr = jsonDecode(jsonStr) as String;
         }
 
         _log('Result (first 300): ${jsonStr.substring(0, jsonStr.length > 300 ? 300 : jsonStr.length)}');
