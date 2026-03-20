@@ -3,9 +3,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'cache_metadata.dart';
+
+final _log = Logger('DownloadStore');
 
 /// L3: ユーザーが明示的にDLした画像の永久保存。
 /// トグル式 — DL済みならtoggleで削除、未DLならtoggleで保存。
@@ -129,7 +132,7 @@ class DownloadStore {
         }
       }
     } catch (e, st) {
-      print('[DownloadStore] load error: $e\n$st');
+      _log.warning('load error', e, st);
       _entries.clear();
       _totalSizeBytes = 0;
     }

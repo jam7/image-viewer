@@ -3,12 +3,15 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/source_registry.dart';
+
+final _log = Logger('Viewer');
 
 /// 画像ビューア画面。
 /// - 上下スワイプ / マウスホイール / 上下キー / Page Up・Down: ページ送り（作品内）
@@ -70,14 +73,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
     _fullImages.clear();
     _cacheSources.clear();
     _loadingStates.clear();
-    print('[Viewer] deactivate: cleared image data');
+    _log.info('deactivate: cleared image data');
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    print('[Viewer] activate: reloading images');
+    _log.info('activate: reloading images');
     // Reload images when returning to this screen
     if (_pages != null) {
       _preloadAround(_pageIndex);
@@ -92,7 +95,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   /// 作品を開く: resolvePages でページ展開してプリロード開始。
   Future<void> _openItem(int itemIndex) async {
-    print('[Viewer] openItem: index=$itemIndex/${widget.items.length}, name=${widget.items[itemIndex].name}');
+    _log.info('openItem: index=$itemIndex/${widget.items.length}, name=${widget.items[itemIndex].name}');
     setState(() {
       _isResolvingPages = true;
       _error = null;
@@ -128,7 +131,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
         _preloadAround(0);
       }
     } catch (e, st) {
-      print('[Viewer] resolvePages error: $e\n$st');
+      _log.warning('resolvePages error', e, st);
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -156,12 +159,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
     _loadingStates[image.id] = true;
     final key = 'full:${image.id}';
-    print('[Viewer] Loading full image: ${image.name} key=$key');
+    _log.info('Loading full image: ${image.name} key=$key');
 
     try {
       final cached = await widget.cacheManager.get(key);
       if (cached != null) {
-        print('[Viewer] Cache hit: ${image.name} (${cached.data.length} bytes, ${cached.source})');
+        _log.info('Cache hit: ${image.name} (${cached.data.length} bytes, ${cached.source})');
         if (mounted) {
           setState(() {
             _fullImages[image.id] = Uint8List.fromList(cached.data);
@@ -185,7 +188,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
         }
       }
     } catch (e, st) {
-      print('[Viewer] loadFullImage error (${image.name}): $e\n$st');
+      _log.warning('loadFullImage error (${image.name})', e, st);
     } finally {
       _loadingStates[image.id] = false;
     }
@@ -243,7 +246,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
-      print('[Viewer] pop via mouse back button');
+      _log.info('pop via mouse back button');
       Navigator.of(context).pop();
     }
   }
@@ -305,7 +308,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
-      print('[Viewer] pop via ESC');
+      _log.info('pop via ESC');
       Navigator.of(context).pop();
       return KeyEventResult.handled;
     }
@@ -489,7 +492,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                                   final authorId = currentImage.metadata?['authorId'];
                                   final authorName = currentImage.metadata?['author'] as String? ?? '';
                                   if (authorId != null) {
-                                    print('[Viewer] pop with showUser: authorId=$authorId, authorName=$authorName');
+                                    _log.info('pop with showUser: authorId=$authorId, authorName=$authorName');
                                     Navigator.of(context).pop({
                                       'action': 'showUser',
                                       'userId': authorId,

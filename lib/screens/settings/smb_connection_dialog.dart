@@ -1,8 +1,11 @@
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
+
+final _log = Logger('SmbConnectionDialog');
 
 /// SMB接続設定の追加・編集ダイアログ。
 class SmbConnectionDialog extends StatefulWidget {
@@ -84,7 +87,7 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
         await client.disconnect();
       }
     } catch (e, st) {
-      print('[SMB] Test connection error: $e\n$st');
+      _log.warning('Test connection error', e, st);
       final message = e is Exception ? e.toString() : e.runtimeType.toString();
       setState(() {
         _testResult = '接続失敗: $message';
@@ -194,7 +197,7 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
       if (!_benchmarkCancelled) log('');
       if (!_benchmarkCancelled) log('完了');
     } catch (e, st) {
-      print('[SMB] Benchmark error: $e\n$st');
+      _log.warning('Benchmark error', e, st);
       log('エラー: $e');
     } finally {
       try {

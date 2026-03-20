@@ -17,8 +17,10 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/
 
 ### エラーハンドリング（必須）
 
-- **アプリ（lib/ 以下）**: catch ブロックでは必ず `print('[Component] error: $e\n$st')` でログ出力する。`catch (_)` で握りつぶさない。画面に表示するエラーとログ出力の両方を行う
-- **ライブラリ（dart_smb2/ 等）**: print せず例外を throw/rethrow で呼び出し元に返す。フォールバック処理で catch する場合は具体的な型（`on FormatException` 等）でキャッチし、`catch (_)` で握りつぶさない
+- **アプリ・ライブラリ共通**: `package:logging` を使用。`print` は使わない（出力先は `main.dart` のハンドラで設定）
+- **アプリ（lib/ 以下）**: catch ブロックでは必ず `_log.warning('message', e, st)` でログ出力する。`catch (_)` で握りつぶさない。画面に表示するエラーとログ出力の両方を行う
+- **ライブラリ（dart_smb2/ 等）**: 例外を throw/rethrow で呼び出し元に返す。フォールバック処理で catch する場合は具体的な型（`on FormatException` 等）でキャッチし、`catch (_)` で握りつぶさない
+- **dart_smb2 のログレベル**: `main.dart` で WARNING 以上に設定。info レベルの接続ログはアプリには表示されない
 
 ### 実装時の説明責任
 

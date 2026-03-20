@@ -4,9 +4,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'cache_metadata.dart';
+
+final _log = Logger('DiskCache');
 
 /// L2キャッシュ: 圧縮済み画像をディスクに保持。
 /// LRU + サイズ上限で排出。
@@ -160,7 +163,7 @@ class DiskCache {
       await tmpFile.rename(metaFile.path);
     } catch (e, st) {
       // rename失敗時は次回のflushで再試行
-      print('[DiskCache] flushMetadata error: $e\n$st');
+      _log.warning('flushMetadata error', e, st);
       _needsFlush = true;
     } finally {
       _isFlushing = false;
@@ -192,7 +195,7 @@ class DiskCache {
         }
       }
     } catch (e, st) {
-      print('[DiskCache] metadata load error: $e\n$st');
+      _log.warning('metadata load error', e, st);
       _entries.clear();
       _totalSizeBytes = 0;
     }

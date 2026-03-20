@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/server_config.dart';
 import '../../services/cache/cache_manager.dart';
@@ -12,6 +13,8 @@ import '../gallery/smb_gallery_screen.dart';
 import '../settings/settings_screen.dart';
 import '../settings/smb_connection_dialog.dart';
 import 'favorites_tab.dart';
+
+final _log = Logger('HomeScreen');
 
 /// ランディングページ。下部タブバーでホームとお気に入りを切り替え。
 class HomeScreen extends StatefulWidget {
@@ -186,18 +189,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openPixiv() async {
-    print('[HomeScreen] _openPixiv: resolving pixiv source');
+    _log.info('_openPixiv: resolving pixiv source');
     final provider = await widget.registry.resolve('pixiv:default', context);
-    print('[HomeScreen] _openPixiv: resolved=${provider != null}');
+    _log.info('_openPixiv: resolved=${provider != null}');
     if (provider == null || provider is! PixivSource) {
-      print('[HomeScreen] _openPixiv: provider is null or not PixivSource');
+      _log.info('_openPixiv: provider is null or not PixivSource');
       return;
     }
     if (!mounted) {
-      print('[HomeScreen] _openPixiv: not mounted, aborting');
+      _log.info('_openPixiv: not mounted, aborting');
       return;
     }
-    print('[HomeScreen] _openPixiv: pushing GalleryScreen');
+    _log.info('_openPixiv: pushing GalleryScreen');
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => GalleryScreen(
         source: provider,

@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../cache/cache_metadata.dart';
+
+final _log = Logger('FavoritesStore');
 
 /// お気に入り: URLとメタデータのみ記録（画像データなし）。
 /// トグル式 — お気に入り済みならtoggleで削除、未登録ならtoggleで追加。
@@ -86,7 +89,7 @@ class FavoritesStore {
       await tmpFile.writeAsString(jsonEncode(data), flush: true);
       await tmpFile.rename(_file.path);
     } catch (e, st) {
-      print('[FavoritesStore] flush error: $e\n$st');
+      _log.warning('flush error', e, st);
       _needsFlush = true;
     } finally {
       _isFlushing = false;
@@ -112,7 +115,7 @@ class FavoritesStore {
         );
       }
     } catch (e, st) {
-      print('[FavoritesStore] load error: $e\n$st');
+      _log.warning('load error', e, st);
       _entries.clear();
     }
   }

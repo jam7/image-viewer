@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
@@ -11,6 +12,8 @@ import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../viewer/viewer_screen.dart';
+
+final _log = Logger('Gallery');
 
 /// サムネイル一覧画面。
 class GalleryScreen extends StatefulWidget {
@@ -81,7 +84,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   void deactivate() {
-    print('[Gallery] deactivate: clearing ${_thumbnailData.length} thumbnails');
+    _log.info('deactivate: clearing ${_thumbnailData.length} thumbnails');
     _thumbnailData.clear();
     super.deactivate();
   }
@@ -89,7 +92,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void activate() {
     super.activate();
-    print('[Gallery] activate: ${_images.length} images, ${_thumbnailData.length} thumbnails cached');
+    _log.info('activate: ${_images.length} images, ${_thumbnailData.length} thumbnails cached');
     // Reload thumbnails from cache only (deactivate cleared them)
     if (_images.isNotEmpty && _thumbnailData.isEmpty) {
       _reloadThumbnailsFromCache();
@@ -108,7 +111,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           setState(() => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
         }
       } catch (e, st) {
-        print('[Gallery] reloadThumbnail error: $e\n$st');
+        _log.warning('reloadThumbnail error', e, st);
       }
     }
   }
@@ -243,7 +246,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   /// 作者ページをギャラリーで表示。
   void showUserWorks(int userId, String userName) {
-    print('[Gallery] showUserWorks: userId=$userId, userName=$userName');
+    _log.info('showUserWorks: userId=$userId, userName=$userName');
     setState(() {
       _userPath = '/user/$userId';
       _userName = userName;
@@ -309,7 +312,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _loadThumbnails(images);
       _loadMoreIfNeeded();
     } catch (e, st) {
-      print('[Gallery] loadImages error: $e\n$st');
+      _log.warning('loadImages error', e, st);
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -332,7 +335,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _loadThumbnails(images);
       _loadMoreIfNeeded();
     } catch (e, st) {
-      print('[Gallery] loadMore error: $e\n$st');
+      _log.warning('loadMore error', e, st);
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -375,7 +378,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           }
         }
       } catch (e, st) {
-        print('[Gallery] thumbnail error (id=${image.id}, name=${image.name}, uri=${image.uri}): $e\n$st');
+        _log.warning('thumbnail error (id=${image.id}, name=${image.name}, uri=${image.uri})', e, st);
       }
     }
   }
@@ -420,7 +423,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   void _openViewer(int index) async {
-    print('[Gallery] openViewer: index=$index, image=${_images[index].name}');
+    _log.info('openViewer: index=$index, image=${_images[index].name}');
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => ViewerScreen(
@@ -432,7 +435,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         ),
       ),
     );
-    print('[Gallery] viewer returned: result=$result, mounted=$mounted');
+    _log.info('viewer returned: result=$result, mounted=$mounted');
     if (!mounted) return;
     if (result != null && result['action'] == 'showUser') {
       WidgetsBinding.instance.addPostFrameCallback((_) {

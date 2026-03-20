@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 
 import 'screens/home/home_screen.dart';
 import 'screens/pixiv/pixiv_login_screen.dart';
@@ -11,6 +12,8 @@ import 'services/pixiv/pixiv_api_client.dart';
 import 'services/pixiv/pixiv_web_client.dart';
 import 'services/smb/smb_config_store.dart';
 import 'services/sources/source_registry.dart';
+
+final _log = Logger('App');
 
 class ImageViewerApp extends StatelessWidget {
   const ImageViewerApp({super.key});
@@ -87,7 +90,7 @@ class _AppRootState extends State<_AppRoot> {
     // ログイン状態の事前確認はできない。常にログイン画面を push する。
     // Cookie 有効時は pixiv が www.pixiv.net に即リダイレクトするので
     // ログイン画面側でフォームを見せずにローディング表示で済ませる。
-    print('[App] Pushing login screen');
+    _log.info('Pushing login screen');
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => PixivLoginScreen(
         onLoginSuccess: ({String? userId}) {
@@ -98,13 +101,13 @@ class _AppRootState extends State<_AppRoot> {
         },
       ),
     ));
-    print('[App] Login screen returned: result=$result');
+    _log.info('Login screen returned: result=$result');
 
     if (result != true) return null;
 
     // Now cookies are valid. Load pixiv.net in API WebView.
     await _webClient.loadPixivPage();
-    print('[App] API WebView ready, returning PixivApiClient');
+    _log.info('API WebView ready, returning PixivApiClient');
     return PixivApiClient(webClient: _webClient);
   }
 

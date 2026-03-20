@@ -2,11 +2,14 @@ import 'dart:typed_data';
 
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
+import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
 import '../../utils/natural_sort.dart';
 import 'image_source_provider.dart';
+
+final _log = Logger('SMB');
 
 /// SMB2経由の画像取得。
 class SmbSource extends ImageSourceProvider {
@@ -29,7 +32,7 @@ class SmbSource extends ImageSourceProvider {
 
   Future<Smb2Tree> _doConnect() async {
     final share = config.shareName ?? '';
-    print('[SMB] Connecting to ${config.host}/$share...');
+    _log.info('Connecting to ${config.host}/$share...');
     try {
       _client = await Smb2Client.connect(
         host: config.host,
@@ -37,18 +40,18 @@ class SmbSource extends ImageSourceProvider {
         username: config.username ?? '',
         password: password,
       );
-      print('[SMB] Connected: dialect=${Smb2Dialect.describe(_client!.dialectRevision)}, '
+      _log.info('Connected: dialect=${Smb2Dialect.describe(_client!.dialectRevision)}, '
           'maxRead=${_client!.maxReadSize}');
       _tree = await _client!.connectTree(share);
       return _tree!;
     } catch (e, st) {
-      print('[SMB] Connection error: $e\n$st');
+      _log.severe('Connection error', e, st);
       // Clean up partial connection to avoid leaking _client
       if (_client != null) {
         try {
           await _client!.disconnect();
         } catch (disconnectErr, disconnectSt) {
-          print('[SMB] disconnect error during cleanup: $disconnectErr\n$disconnectSt');
+          _log.warning('disconnect error during cleanup', disconnectErr, disconnectSt);
         }
         _client = null;
       }
@@ -62,7 +65,7 @@ class SmbSource extends ImageSourceProvider {
     final tree = await _connect();
     final dirPath = path ?? config.basePath ?? '/';
 
-    print('[SMB] Listing: $dirPath');
+    _log.info('Listing: $dirPath');
     final files = await tree.listDirectory(dirPath);
 
     final sources = <ImageSource>[];
@@ -123,16 +126,16 @@ class SmbSource extends ImageSourceProvider {
         if (thumbnail != null) {
           final bytes = thumbnail.values.toList();
           if (bytes.isNotEmpty) {
-            print('[SMB] EXIF thumbnail found for ${source.name} (${bytes.length} bytes)');
+            _log.info('EXIF thumbnail found for ${source.name} (${bytes.length} bytes)');
             return (data: Uint8List.fromList(bytes.cast<int>()), isFullImage: false);
           }
         }
-        print('[SMB] Fallback to full image: no EXIF thumbnail (${source.name})');
+        _log.info('Fallback to full image: no EXIF thumbnail (${source.name})');
       } catch (e, st) {
-        print('[SMB] Fallback to full image: EXIF parse error (${source.name}): $e\n$st');
+        _log.warning('Fallback to full image: EXIF parse error (${source.name})', e, st);
       }
     } else {
-      print('[SMB] Fallback to full image: not JPEG (${source.name})');
+      _log.info('Fallback to full image: not JPEG (${source.name})');
     }
     return (data: await fetchFullImage(source), isFullImage: true);
   }
@@ -174,7 +177,7 @@ class SmbSource extends ImageSourceProvider {
       stopwatch.stop();
       final seconds = stopwatch.elapsedMilliseconds / 1000;
       final speed = seconds > 0 ? (received / 1024 / seconds).toStringAsFixed(0) : '?';
-      print('[SMB] Downloaded ${source.name}: ${(received / 1024).toStringAsFixed(0)} KB in ${seconds.toStringAsFixed(2)}s ($speed KB/s)');
+      _log.info('Downloaded ${source.name}: ${(received / 1024).toStringAsFixed(0)} KB in ${seconds.toStringAsFixed(2)}s ($speed KB/s)');
 
       final result = Uint8List(received);
       int offset = 0;
