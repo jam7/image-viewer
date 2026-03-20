@@ -41,7 +41,6 @@ class _AppRootState extends State<_AppRoot> {
   late final SourceRegistry _registry;
   CacheManager? _cacheManager;
   FavoritesStore? _favoritesStore;
-  PixivApiClient? _pixivApiClient;
   bool _isLoading = true;
 
   @override
@@ -76,19 +75,14 @@ class _AppRootState extends State<_AppRoot> {
     }
   }
 
-  PixivApiClient _ensureApiClient() {
-    _pixivApiClient ??= PixivApiClient(webClient: _webClient);
-    _registry.setPixivApiClient(_pixivApiClient!);
-    return _pixivApiClient!;
-  }
-
-  /// Lazy Pixiv login: called when user taps Pixiv or opens a Pixiv favorite.
+  /// Lazy Pixiv login: called by SourceRegistry when Pixiv source is needed.
+  /// Returns PixivApiClient if login succeeds, null if cancelled.
   Future<PixivApiClient?> _handlePixivLogin(BuildContext context) async {
     // Check if already logged in (cookies still valid)
     if (_webClient.isReady) {
       final loggedIn = await _webClient.checkLoginStatus();
       if (loggedIn) {
-        return _ensureApiClient();
+        return PixivApiClient(webClient: _webClient);
       }
     }
 
@@ -116,7 +110,7 @@ class _AppRootState extends State<_AppRoot> {
 
     if (result != true) return null;
 
-    return _ensureApiClient();
+    return PixivApiClient(webClient: _webClient);
   }
 
   @override
@@ -135,7 +129,6 @@ class _AppRootState extends State<_AppRoot> {
     }
 
     return HomeScreen(
-      pixivApiClient: _ensureApiClient(),
       cacheManager: _cacheManager!,
       favoritesStore: _favoritesStore!,
       smbConfigStore: _smbConfigStore,
