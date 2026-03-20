@@ -43,6 +43,21 @@ class _FavoritesTabState extends State<FavoritesTab> {
     _loadThumbnails();
   }
 
+  @override
+  void deactivate() {
+    _log.info('deactivate: clearing ${_thumbnailData.length} thumbnails');
+    _thumbnailData.clear();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    if (_thumbnailData.isEmpty) {
+      _loadThumbnails();
+    }
+  }
+
   Future<void> _loadThumbnails() async {
     final favorites = _favorites;
     _log.info('Loading thumbnails for ${favorites.length} favorites');

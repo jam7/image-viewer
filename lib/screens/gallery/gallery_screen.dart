@@ -369,12 +369,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<void> _loadMore() async {
     if (_isLoading) return;
+    final generation = _loadGeneration;
     setState(() => _isLoading = true);
 
     try {
       final images = _filterImages(
         await _tab.source.listImages(path: _currentPath),
       );
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _images.addAll(images);
         _isLoading = false;
@@ -383,6 +385,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _loadMoreIfNeeded();
     } catch (e, st) {
       _log.warning('loadMore error', e, st);
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
