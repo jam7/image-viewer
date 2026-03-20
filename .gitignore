@@ -46,3 +46,6 @@ app.*.map.json
 
 # Developer-specific settings (contains DEVELOPMENT_TEAM etc.)
 ios/DeveloperSettings.xcconfig
+
+# Private API docs (paid service internals)
+docs/dmm_auth.md
