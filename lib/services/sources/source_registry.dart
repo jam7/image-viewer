@@ -131,6 +131,7 @@ class SourceRegistry {
       }
     }
     _smbSources.clear();
+    _pixivApiClient?.dispose();
     _pixivApiClient = null;
     _pixivLoginVerified = false;
   }
