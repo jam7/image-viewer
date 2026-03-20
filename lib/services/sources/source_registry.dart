@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/server_config.dart';
+import '../cache/cache_manager.dart';
 import '../pixiv/pixiv_api_client.dart';
 import '../smb/smb_config_store.dart';
 import 'image_source_provider.dart';
@@ -23,6 +24,7 @@ final _log = Logger('SourceRegistry');
 class SourceRegistry {
   final Map<String, ImageSourceProvider> _smbSources = {};
   final SmbConfigStore _smbConfigStore;
+  CacheManager? cacheManager;
 
   PixivApiClient? _pixivApiClient;
   bool _pixivLoginVerified = false;
@@ -33,7 +35,7 @@ class SourceRegistry {
   // Callback for lazy Pixiv login
   Future<PixivApiClient?> Function(BuildContext context)? onPixivLoginRequired;
 
-  SourceRegistry({required SmbConfigStore smbConfigStore})
+  SourceRegistry({required SmbConfigStore smbConfigStore, this.cacheManager})
       : _smbConfigStore = smbConfigStore;
 
   /// Register an SMB source for a given key.
@@ -117,7 +119,7 @@ class SourceRegistry {
     final password = await _smbConfigStore.getPassword(configId);
     if (password == null) return null;
 
-    final source = SmbSource(config: config, password: password);
+    final source = SmbSource(config: config, password: password, cacheManager: cacheManager);
     _smbSources[key] = source;
     return source;
   }

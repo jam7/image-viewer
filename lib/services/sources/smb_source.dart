@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
 import 'package:logging/logging.dart';
@@ -7,6 +8,7 @@ import 'package:logging/logging.dart';
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
 import '../../utils/natural_sort.dart';
+import '../cache/cache_manager.dart';
 import 'image_source_provider.dart';
 
 final _log = Logger('SMB');
@@ -15,6 +17,7 @@ final _log = Logger('SMB');
 class SmbSource extends ImageSourceProvider {
   final ServerConfig config;
   final String password;
+  final CacheManager? cacheManager;
   Smb2Client? _client;
   Smb2Tree? _tree;
 
@@ -22,9 +25,11 @@ class SmbSource extends ImageSourceProvider {
     '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
   };
 
+  static const _zipExtensions = {'.zip'};
+
   Future<Smb2Tree>? _connectFuture;
 
-  SmbSource({required this.config, required this.password});
+  SmbSource({required this.config, required this.password, this.cacheManager});
 
   Future<Smb2Tree> _connect() {
     return _connectFuture ??= _doConnect();
@@ -100,6 +105,19 @@ class SmbSource extends ImageSourceProvider {
             'path': file.path,
           },
         ));
+      } else if (_zipExtensions.contains(ext)) {
+        sources.add(ImageSource(
+          id: 'smb:${config.id}:${file.path}',
+          name: name,
+          uri: file.path,
+          type: ImageSourceType.smb,
+          sourceKey: smbSourceKey,
+          metadata: {
+            'isDirectory': false,
+            'isZip': true,
+            'path': file.path,
+          },
+        ));
       }
     }
 
@@ -112,6 +130,71 @@ class SmbSource extends ImageSourceProvider {
     });
 
     return sources;
+  }
+
+  @override
+  Future<List<ImageSource>> resolvePages(ImageSource source) async {
+    if (source.metadata?['isZip'] != true) return [source];
+
+    final zipPath = source.uri;
+    final smbSourceKey = 'smb:${config.id}';
+    _log.info('resolvePages: extracting ZIP $zipPath');
+
+    // Download entire ZIP
+    final zipData = await fetchFullImage(source);
+    _log.info('resolvePages: ZIP downloaded (${(zipData.length / 1024).toStringAsFixed(0)} KB)');
+
+    // Decode ZIP in memory
+    final archive = ZipDecoder().decodeBytes(zipData);
+
+    // Filter image files and sort naturally
+    final imageFiles = archive.files
+        .where((f) => !f.isFile ? false : _isImageName(f.name))
+        .toList()
+      ..sort((a, b) => naturalCompare(a.name, b.name));
+
+    _log.info('resolvePages: ${imageFiles.length} images in ZIP');
+
+    final pages = <ImageSource>[];
+    for (var i = 0; i < imageFiles.length; i++) {
+      final file = imageFiles[i];
+      final pageId = 'smb:${config.id}:$zipPath#${file.name}';
+      final cacheKey = 'full:$pageId';
+
+      // Store each page in L2 cache
+      if (cacheManager != null) {
+        final data = file.content as Uint8List;
+        await cacheManager!.l2.put(cacheKey, data);
+      }
+
+      final baseName = file.name.contains('/')
+          ? file.name.split('/').last
+          : file.name;
+
+      pages.add(ImageSource(
+        id: pageId,
+        name: '${source.name} (${i + 1}/${imageFiles.length}) $baseName',
+        uri: '$zipPath#${file.name}',
+        type: ImageSourceType.smb,
+        sourceKey: smbSourceKey,
+        metadata: {
+          'isDirectory': false,
+          'isZipEntry': true,
+          'zipPath': zipPath,
+          'entryName': file.name,
+          'path': source.metadata?['path'],
+        },
+      ));
+    }
+
+    return pages;
+  }
+
+  static bool _isImageName(String name) {
+    final lower = name.toLowerCase();
+    // Skip macOS resource fork files
+    if (lower.contains('__macosx') || lower.contains('/.')) return false;
+    return _imageExtensions.any((ext) => lower.endsWith(ext));
   }
 
   /// サムネイル取得。戻り値の `isFullImage` でフォールバックしたか判定。
@@ -162,6 +245,17 @@ class SmbSource extends ImageSourceProvider {
     ImageSource source, {
     void Function(int received, int total)? onProgress,
   }) async {
+    // ZIP entries are already cached by resolvePages
+    if (source.metadata?['isZipEntry'] == true && cacheManager != null) {
+      final cacheKey = 'full:${source.id}';
+      final cached = await cacheManager!.get(cacheKey);
+      if (cached != null) {
+        _log.info('ZIP entry from cache: ${source.name} (${cached.data.length} bytes)');
+        return Uint8List.fromList(cached.data);
+      }
+      _log.warning('ZIP entry not in cache: ${source.name}, key=$cacheKey');
+    }
+
     final stopwatch = Stopwatch()..start();
     final tree = await _connect();
     final reader = await tree.openRead(source.uri);
