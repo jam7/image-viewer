@@ -4,7 +4,7 @@
 - [x] ログイン→ギャラリー遷移中のホーム画面露出: ログイン画面 pop 後、API WebView の pixiv.net ロード完了までホーム画面が見えてしまう（Cookie 有効時も同様）。ログイン画面が API WebView のロードも完了してから pop する方式に変更すべき
 
 ## ナビゲーション
-- [ ] GalleryScreen のナビゲーション再設計: 現在は作者一覧・検索結果が同じ画面内の状態変更なので戻れない。showUserWorks や検索で新しい GalleryScreen を push し、Navigator の履歴として残す。deactivate で画像データを解放すればメモリは問題ない
+- [x] GalleryScreen のナビゲーション再設計: 現在は作者一覧・検索結果が同じ画面内の状態変更なので戻れない。showUserWorks や検索で新しい GalleryScreen を push し、Navigator の履歴として残す。deactivate で画像データを解放すればメモリは問題ない
 - [ ] GalleryScreen のタブごとに独立した PixivSource を持つ（タブ切り替えで読み進め位置が消える問題の解決）
 - [ ] ブラウザ風の履歴ジャンプ: 戻るボタン長押しで画面履歴一覧を表示し、popUntil で数段飛ばして戻れるようにする。各画面に RouteSettings(name) を付けて自前の履歴リストを管理
 
