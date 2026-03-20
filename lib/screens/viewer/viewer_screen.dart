@@ -223,8 +223,21 @@ class _ViewerScreenState extends State<ViewerScreen> {
     _fullImages.removeWhere((key, _) => !keysToKeep.contains(key));
   }
 
-  void _nextPage() => _goToPage(_pageIndex + 1);
-  void _prevPage() => _goToPage(_pageIndex - 1);
+  void _nextPage() {
+    if (_pages != null && _pageIndex + 1 >= _pages!.length) {
+      _nextItem(); // Last page: advance to next item
+    } else {
+      _goToPage(_pageIndex + 1);
+    }
+  }
+
+  void _prevPage() {
+    if (_pageIndex <= 0) {
+      _prevItem(); // First page: go back to previous item
+    } else {
+      _goToPage(_pageIndex - 1);
+    }
+  }
 
   // --- 作品送り（リスト内、左右） ---
 
