@@ -65,54 +65,47 @@ class _AppRootState extends State<_AppRoot> {
 
     await _smbConfigStore.init();
 
-    // Pixiv WebView is initialized lazily when user first accesses Pixiv
-    // (via _handlePixivLogin). No need to start it here.
-
     if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
   /// Lazy Pixiv login: called by SourceRegistry when Pixiv source is needed.
-  /// Returns PixivApiClient if login succeeds, null if cancelled.
+  ///
+  /// Flow:
+  /// 1. Initialize API WebView controller (no page load)
+  /// 2. Push login screen (accounts.pixiv.net/login)
+  ///    - Cookie valid → pixiv redirects to www.pixiv.net → pop immediately
+  ///    - Cookie invalid → user logs in → www.pixiv.net reached → pop
+  /// 3. Load pixiv.net in API WebView (with valid cookies now)
+  /// 4. Return PixivApiClient
   Future<PixivApiClient?> _handlePixivLogin(BuildContext context) async {
-    // Initialize API WebView on first Pixiv access
+    // Ensure API WebView controller is created
     await _webClient.initialize();
 
-    // Check if already logged in (cookies still valid)
-    final loggedIn = await _webClient.checkLoginStatus();
-    if (loggedIn) {
-      return PixivApiClient(webClient: _webClient);
-    }
-
+    // Login screen handles both cases:
+    // - Already logged in: instant redirect to www.pixiv.net → pop
+    // - Not logged in: user logs in → www.pixiv.net → pop
+    print('[App] Pushing login screen');
     final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => PixivLoginScreen(
         onLoginSuccess: ({String? userId}) {
           if (userId != null) {
             _webClient.userId = userId;
           }
-          // userId is set by PixivLoginScreen._extractUserIdAsync
-          // and verified by checkLoginStatus after login completes.
-          // No need to call waitForUserId here (it would run fetchJson
-          // in the background, interfering with gallery API calls).
-
-          // Delay pop to avoid calling during navigation lock
           WidgetsBinding.instance.addPostFrameCallback((_) {
             Navigator.of(context).pop(true);
           });
         },
       ),
     ));
+    print('[App] Login screen returned: result=$result');
 
-    print('[App] login screen returned: result=$result');
     if (result != true) return null;
 
-    // Reload API WebView to pick up cookies from login WebView
-    await _webClient.initialize();
-    await _webClient.reload();
-    print('[App] WebView reloaded, returning PixivApiClient');
+    // Now cookies are valid. Load pixiv.net in API WebView.
+    await _webClient.loadPixivPage();
+    print('[App] API WebView ready, returning PixivApiClient');
     return PixivApiClient(webClient: _webClient);
   }
 

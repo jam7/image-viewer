@@ -1,101 +1,94 @@
 # Pixiv 認証アーキテクチャ
 
-## Pixiv が必要とする処理
+## 概要
 
-Pixiv の API（`/ajax/...`）は Cookie ベースの認証が必要。Cookie がない、または期限切れの場合は `{"error":true}` が返る。
+Pixiv API は Cookie 認証。WebView でユーザーがログインし、その Cookie を使って API を呼ぶ。
 
-認証の流れ:
-1. ユーザーが `accounts.pixiv.net/login` でログイン
-2. ブラウザ（WebView）に Cookie が保存される
-3. 以降の API 呼び出しはその Cookie を使う
-
-Cookie の寿命はブラウザセッションに依存。アプリを閉じても WebView のデータフォルダに永続化される（Windows: `%LOCALAPPDATA%\flutter_webview_windows\image_viewer`）。
-
-## アーキテクチャの変遷
-
-### 第1世代: 強制ログイン（アプリ起動時）
+## WebView 構成
 
 ```
-アプリ起動 → ログイン画面（必須） → ログイン成功 → ギャラリー表示
+┌─────────────────────┐    ┌─────────────────────┐
+│  ログイン用 WebView   │    │   API用 WebView      │
+│  (PixivLoginScreen)  │    │  (PixivWebClient)    │
+│                     │    │                     │
+│  ユーザーがログイン   │    │  非表示・バックグラウンド│
+│  操作する画面       │    │  fetch() でAPI呼び出し │
+└─────────┬───────────┘    └─────────┬───────────┘
+          │                          │
+          └──── Cookie 共有 ─────────┘
+            (WebView2 ユーザーデータ /
+             WKWebView サンドボックス)
 ```
 
-- `app.dart` が `_isLoggedIn` フラグで管理
-- Cookie があってもログイン画面を表示（ページが `www.pixiv.net` にリダイレクトされれば即完了）
-- 問題: **Pixiv 以外のソース（SMB）を使うだけなのにログインを強制**
+- ログイン用と API 用は別の WebView だが、Cookie ストアを共有
+- Windows: 両方 `webview_windows`（WebView2）。同一ユーザーデータフォルダで Cookie 共有
+- iOS: 両方 `webview_flutter`（WKWebView）。同一 WKWebsiteDataStore で Cookie 共有
+- **重要**: `webview_flutter` は Windows 非対応。Windows は必ず `webview_windows`
 
-### 第2世代: 遅延ログイン + 共有 PixivSource（ホーム画面導入時）
+## ページロード完了の検出
 
-```
-アプリ起動 → ホーム画面
-  Pixiv タップ → ログイン済み？ → Yes → ギャラリー
-                                → No  → ログイン画面 → ギャラリー
-```
+3秒待ちなどの固定遅延は使わない。必ずイベントで完了を検出する:
 
-- `SourceRegistry` が遅延ログインを管理
-- `app.dart` が1つの `PixivSource` を作成し、全画面で共有
-- `_handlePixivLogin` コールバックで Cookie 確認 → 未ログインならログイン画面を push
-- 問題: **`PixivSource` を共有するため、複数の GalleryScreen でページネーション状態（`_nextOffset`）が競合**
+- Windows (`webview_windows`): `controller.loadingState` ストリームで `LoadingState.navigationCompleted` を待つ
+- iOS (`webview_flutter`): `NavigationDelegate.onPageFinished` コールバック
+- タイムアウト: 10秒。超えたらログ出力して続行
 
-### 第3世代: 遅延ログイン + 画面ごと PixivSource（現在）
+## 認証フロー
+
+### 統一フロー（Cookie 有効/無効で分岐しない）
 
 ```
-アプリ起動 → ホーム画面
-  Pixiv タップ → registry.resolve("pixiv:default") → ログイン確認 → 新しい PixivSource 作成 → ギャラリー
-  作者タップ  → registry.resolve("pixiv:default") → 新しい PixivSource 作成 → 作者ギャラリー
+ユーザーが Pixiv タップ
+  → registry.resolve("pixiv:default")
+    → _handlePixivLogin(context)
+      → await _webClient.initialize()
+        → API WebView コントローラー作成のみ（ページロードしない）
+      → ログイン画面を push（accounts.pixiv.net/login をロード）
+        → Cookie 有効: pixiv が www.pixiv.net に即リダイレクト → pop(true)
+        → Cookie 無効: ユーザーがログイン → www.pixiv.net 到達 → pop(true)
+      → await _webClient.loadPixivPage()
+        → API WebView で pixiv.net をロード（Cookie は共有済み）
+        → ページロード完了を検出（Windows: navigationCompleted, iOS: onPageFinished）
+      → return PixivApiClient ✓
 ```
 
-- `SourceRegistry` は `PixivApiClient`（認証/WebView 共有）を保持
-- `resolve()` のたびに新しい `PixivSource` を返す（ファイルディスクリプタのように独立した読み進め状態）
-- `PixivApiClient` は共有（WebView は1つ、Cookie も共有）
+ログイン確認は**ログイン用 WebView**が担う。API 用 WebView は認証に関わらない。
+ログイン画面が Cookie 有効/無効の両方を処理する（有効なら即リダイレクトで一瞬）。
+API 用 WebView のページロードはログイン確認後に1回だけ。
 
-## 現在の問題（未修正）
+## API WebView の並行アクセス禁止
 
-### 問題1: `_openPixiv` が registry を経由していない
+`fetchJson` は WebView 上で JavaScript の `fetch()` を実行し、結果を
+`window['_pixiv_result_N']` に格納してポーリングで取得する。
 
-`HomeScreen._openPixiv()` が `PixivSource(client: widget.pixivApiClient)` で直接作成しており、`registry.resolve()` を通っていない。そのため `_handlePixivLogin`（ログイン確認 + ログイン画面表示）が呼ばれない。
+同じ WebView で複数の fetchJson や checkLoginStatus が並行して走ると:
+- ページ遷移で `window` オブジェクトが消える
+- JavaScript 実行が干渉してタイムアウトする
 
-**原因**: 第3世代への移行時に `app.dart` が `_ensureApiClient()` を `build()` 内で呼び、`HomeScreen` に `pixivApiClient` を直接渡す設計にした。これにより `HomeScreen` が registry を迂回して `PixivSource` を作れるようになってしまった。
+したがって:
+- `onLoginSuccess` 内で `waitForUserId` を呼ばない（fetchJson と干渉）
+- バックグラウンドでの checkLoginStatus とギャラリーの API 呼び出しを同時に走らせない
 
-**修正方針**: `HomeScreen` は `pixivApiClient` を受け取らない。Pixiv を使う全ての場面で `registry.resolve()` を経由する。registry が唯一の Pixiv ソース取得経路とする（ゲートキーパー）。
+## ソースの取得経路
 
-### 問題2: `SourceRegistry._resolvePixiv` がログイン状態を確認しない
-
-`_resolvePixiv` は `_pixivApiClient != null` なら即座に `PixivSource` を返す。しかし `_pixivApiClient` が非 null でも Cookie が無効（削除された、期限切れ）の場合がある。
-
-**原因**: `_ensureApiClient()` が `build()` で毎回呼ばれるため `_pixivApiClient` は常に非 null。ログイン状態と `_pixivApiClient` の存在が分離している。
-
-**修正方針**: `_resolvePixiv` 内で `checkLoginStatus()` を呼び、Cookie が無効ならログイン画面を表示する。もしくは `_pixivApiClient` を「ログイン確認済み」フラグと紐付ける。
-
-### 問題3: ログイン成功判定が不正確だった
-
-`PixivLoginScreen._onUrlChanged` が `accounts.pixiv.net/login` から離れただけでログイン成功と判定していた。Pixiv が追加認証（reCAPTCHA 等）を要求した場合、認証途中でログイン成功と誤判定。
-
-**修正済み**: `www.pixiv.net` に到達したかどうかで判定するように変更（commit 8d9b856）。
-
-## コンポーネント関係図
+すべての Pixiv アクセスは `SourceRegistry.resolve()` を経由する。
+直接 `PixivSource()` を new しない。registry がログイン確認のゲートキーパー。
 
 ```
-app.dart (_AppRootState)
-  ├── PixivWebClient          : WebView 管理、Cookie 保持、fetchJson
-  │     └── initialize()      : pixiv.net をロードして API 呼び出し可能にする
-  │                              遅延初期化: ユーザーが Pixiv を使うまで呼ばれない
-  ├── SourceRegistry          : sourceKey → ImageSourceProvider の解決
-  │     ├── onPixivLoginRequired : ログイン画面表示コールバック
-  │     │     1. initialize() で API WebView を準備
-  │     │     2. checkLoginStatus() で Cookie 確認
-  │     │     3. 未ログイン → ログイン画面を push
-  │     │     4. ログイン成功 → PixivApiClient を返す
-  │     └── resolve("pixiv:*") → new PixivSource(client) を毎回返す
-  └── HomeScreen
-        ├── Pixiv タップ → registry.resolve() → GalleryScreen
-        ├── お気に入り  → registry.resolve() → ViewerScreen
-        └── SMB タップ  → registry.resolve() → SmbGalleryScreen
+HomeScreen._openPixiv()     → registry.resolve("pixiv:default")
+FavoritesTab._onItemTap()   → registry.resolve(entry.sourceKey)
+ViewerScreen._loadFullImage() → registry.resolve(image.sourceKey)
 ```
 
-## 守るべき原則
+## PixivSource のライフサイクル
 
-1. **Pixiv ソースの取得は必ず `registry.resolve()` を経由する**。直接 `PixivSource()` を new しない
-2. **`PixivApiClient` の存在 ≠ ログイン済み**。Cookie の有効性は `checkLoginStatus()` で確認する
-3. **`PixivSource` は画面ごとに新規作成**。ページネーション状態の共有を避ける
-4. **ログイン画面は `www.pixiv.net` 到達で完了判定**。中間ページ（追加認証等）は無視
-5. **API 用 WebView で `fetchJson` を並行実行しない**。`fetchJson` は WebView 上で JavaScript の fetch() を実行し、結果を `window['_pixiv_result_N']` に格納してポーリングで取得する。同じ WebView で別の fetchJson や checkLoginStatus が並行して走ると、ページ遷移や JavaScript 実行が干渉して結果が消える（タイムアウトの原因）。`onLoginSuccess` 内で `waitForUserId` を呼ぶと、ギャラリーの API 呼び出しと干渉するため削除した
+- `PixivApiClient`（WebView ラッパー）: アプリに1つ、全画面で共有
+- `PixivSource`（API + ページネーション状態）: 画面ごとに新規作成
+  - おすすめ一覧用、検索結果用、作者一覧用がそれぞれ独立
+  - ファイルディスクリプタのように「読み進め位置」を持つ
+
+## ログイン成功の判定
+
+- `accounts.pixiv.net` の別ページ（reCAPTCHA、追加認証）ではまだ完了でない
+- `www.pixiv.net` に URL が到達した時点で完了
+- ユーザーID は PixivLoginScreen._extractUserIdAsync() でログインページの HTML から取得
