@@ -16,6 +16,8 @@ final _log = Logger('SMB');
 
 /// SMB2経由の画像取得。
 class SmbSource extends ImageSourceProvider {
+  static const _connectTimeout = Duration(seconds: 15);
+  static const _ioTimeout = Duration(seconds: 30);
   final ServerConfig config;
   final String password;
   final CacheManager? cacheManager;
@@ -57,10 +59,10 @@ class SmbSource extends ImageSourceProvider {
         port: config.port,
         username: config.username ?? '',
         password: password,
-      );
+      ).timeout(_connectTimeout);
       _log.info('Connected: dialect=${Smb2Dialect.describe(_client!.dialectRevision)}, '
           'maxRead=${_client!.maxReadSize}');
-      _tree = await _client!.connectTree(share);
+      _tree = await _client!.connectTree(share).timeout(_connectTimeout);
       return _tree!;
     } catch (e, st) {
       _log.severe('Connection error', e, st);
@@ -84,7 +86,7 @@ class SmbSource extends ImageSourceProvider {
     final dirPath = path ?? config.basePath ?? '/';
 
     _log.info('Listing: $dirPath');
-    final files = await tree.listDirectory(dirPath);
+    final files = await tree.listDirectory(dirPath).timeout(_ioTimeout);
 
     final sources = <ImageSource>[];
     for (final file in files) {
@@ -151,7 +153,7 @@ class SmbSource extends ImageSourceProvider {
 
   Future<ZipReader> _createZipReader(String zipPath) async {
     final tree = await _connect();
-    final reader = await tree.openRead(zipPath);
+    final reader = await tree.openRead(zipPath).timeout(_ioTimeout);
     final fileSize = reader.fileSize;
     await reader.close();
 
@@ -164,9 +166,9 @@ class SmbSource extends ImageSourceProvider {
   /// Range read for a specific file path via SMB.
   Future<Uint8List> _readRange(String path, int offset, int length) async {
     final tree = await _connect();
-    final reader = await tree.openRead(path);
+    final reader = await tree.openRead(path).timeout(_ioTimeout);
     try {
-      return await reader.readRange(offset, length);
+      return await reader.readRange(offset, length).timeout(_ioTimeout);
     } finally {
       try {
         await reader.close();
@@ -288,9 +290,9 @@ class SmbSource extends ImageSourceProvider {
   /// ファイルの先頭 [length] バイトだけ読み込む。
   Future<Uint8List> _readPartial(String path, int length) async {
     final tree = await _connect();
-    final reader = await tree.openRead(path);
+    final reader = await tree.openRead(path).timeout(_ioTimeout);
     try {
-      return await reader.readRange(0, length);
+      return await reader.readRange(0, length).timeout(_ioTimeout);
     } finally {
       try {
         await reader.close();
@@ -335,7 +337,7 @@ class SmbSource extends ImageSourceProvider {
 
     final stopwatch = Stopwatch()..start();
     final tree = await _connect();
-    final reader = await tree.openRead(source.uri);
+    final reader = await tree.openRead(source.uri).timeout(_ioTimeout);
     try {
       final chunks = <Uint8List>[];
       int received = 0;
