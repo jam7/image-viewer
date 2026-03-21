@@ -19,6 +19,11 @@
 - [ ] listShares() 実装 → 接続設定UIで共有フォルダ一覧から選択できるようにする（共有名の手入力を不要にする）
 - [ ] SMB 再接続ロジック: 長時間アイドル後にサーバー側でセッションが切れた場合の自動再接続。現在は SourceRegistry に接続を保持し続けるが、再接続の仕組みがない
 
+## SMB ZIP 対応
+- [x] Phase 1: ZIP ファイルの基本対応（ダウンロード → 展開 → L2 キャッシュ → ビューア表示）
+- [ ] Phase 2: ZIP サムネイル最適化（セントラルディレクトリの Range Read でファイル名一覧取得 → 自然順で最初の画像だけ読み出し）
+- [ ] Phase 3: ZIP 間の先読み（ビューアで次の ZIP の resolvePages をバックグラウンド実行）
+
 ## ネットワーク
 - [ ] Range Request対応（ZIPファイル内の個別画像取得に必要）
 - [ ] ZIPファイル対応（Pixiv ugoira等）
@@ -30,6 +35,10 @@
 - [ ] iOS/iPad WKWebView でオートフィル（パスワード自動入力）を有効化
 
 ## プロバイダー
-- [ ] DMM対応
+- [ ] DMM対応（API 調査済み、private submodule 構成決定済み → docs/dmm_auth.md）
 - [ ] iCloud Drive対応（iOS/macOS限定）
-- [ ] その他プロバイダー（HTTP/SMB/Google Drive/OneDrive）
+- [ ] その他プロバイダー（HTTP/Google Drive/OneDrive）
+
+## App Store
+- [ ] Phase 1: ローカル利用時間管理 + 制限 UI
+- [ ] Phase 2: StoreKit 接続（RevenueCat）、サブスクリプション課金
