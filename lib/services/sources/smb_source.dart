@@ -204,13 +204,9 @@ class SmbSource extends ImageSourceProvider {
       final pageId = 'smb:${config.id}:$zipPath#${entry.name}';
       final isSupported = _isImageName(entry.name);
 
-      final baseName = entry.name.contains('/')
-          ? entry.name.split('/').last
-          : entry.name;
-
       pages.add(ImageSource(
         id: pageId,
-        name: '${source.name} (${i + 1}/${fileEntries.length}) $baseName',
+        name: '${source.name} (${i + 1}/${fileEntries.length}) ${entry.name}',
         uri: '$zipPath#${entry.name}',
         type: ImageSourceType.smb,
         sourceKey: smbSourceKey,
