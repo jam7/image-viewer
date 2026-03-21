@@ -189,24 +189,20 @@ class SmbSource extends ImageSourceProvider {
     final zipReader = await _getZipReader(zipPath);
     final allEntries = await zipReader.listEntries();
 
-    // Filter image files and sort naturally
-    final imageEntries = allEntries
-        .where((e) => !e.isDirectory && _isImageName(e.name))
+    // All non-directory entries, sorted naturally
+    final fileEntries = allEntries
+        .where((e) => !e.isDirectory)
         .toList()
       ..sort((a, b) => naturalCompare(a.name, b.name));
 
-    _log.info('resolvePages: ${imageEntries.length} images in ZIP '
+    _log.info('resolvePages: ${fileEntries.length} files in ZIP '
         '(${allEntries.length} total entries, read directory only, no full download)');
-    if (imageEntries.isEmpty && allEntries.isNotEmpty) {
-      for (final e in allEntries) {
-        _log.info('  entry: "${e.name}" dir=${e.isDirectory} size=${e.uncompressedSize} method=${e.compressionMethod}');
-      }
-    }
 
     final pages = <ImageSource>[];
-    for (var i = 0; i < imageEntries.length; i++) {
-      final entry = imageEntries[i];
+    for (var i = 0; i < fileEntries.length; i++) {
+      final entry = fileEntries[i];
       final pageId = 'smb:${config.id}:$zipPath#${entry.name}';
+      final isSupported = _isImageName(entry.name);
 
       final baseName = entry.name.contains('/')
           ? entry.name.split('/').last
@@ -214,7 +210,7 @@ class SmbSource extends ImageSourceProvider {
 
       pages.add(ImageSource(
         id: pageId,
-        name: '${source.name} (${i + 1}/${imageEntries.length}) $baseName',
+        name: '${source.name} (${i + 1}/${fileEntries.length}) $baseName',
         uri: '$zipPath#${entry.name}',
         type: ImageSourceType.smb,
         sourceKey: smbSourceKey,
@@ -224,6 +220,7 @@ class SmbSource extends ImageSourceProvider {
           'zipPath': zipPath,
           'entryName': entry.name,
           'path': source.metadata?['path'],
+          if (!isSupported) 'unsupported': true,
         },
       ));
     }
