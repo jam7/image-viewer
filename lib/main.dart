@@ -20,8 +20,8 @@ void main() {
     }
   });
 
-  // dart_smb2: only show warnings and above (suppress info-level connection logs)
-  Logger('Smb2Client').level = Level.WARNING;
+  // dart_smb2: Smb2Client (connect/auth) at INFO — infrequent, useful for tracing.
+  // Smb2Multiplexer/Tree/FileReader at WARNING — high volume I/O logs suppressed.
   Logger('Smb2Multiplexer').level = Level.WARNING;
   Logger('Smb2Tree').level = Level.WARNING;
   Logger('Smb2FileReader').level = Level.WARNING;

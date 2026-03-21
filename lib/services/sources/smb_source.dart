@@ -41,7 +41,7 @@ class SmbSource extends ImageSourceProvider {
   Future<Smb2Tree> _connect() {
     // Detect dead connection and reset for reconnect
     if (_client != null && !_client!.isConnected) {
-      _log.info('Connection lost, will reconnect');
+      _log.info('Connection lost, will reconnect (SmbSource@${hashCode.toRadixString(16)}, client@${_client!.hashCode.toRadixString(16)})');
       _client = null;
       _tree = null;
       _connectFuture = null;
@@ -52,7 +52,7 @@ class SmbSource extends ImageSourceProvider {
 
   Future<Smb2Tree> _doConnect() async {
     final share = config.shareName ?? '';
-    _log.info('Connecting to ${config.host}/$share...');
+    _log.info('Connecting to ${config.host}/$share... (SmbSource@${hashCode.toRadixString(16)})');
     try {
       _client = await Smb2Client.connect(
         host: config.host,
@@ -61,7 +61,7 @@ class SmbSource extends ImageSourceProvider {
         password: password,
       ).timeout(_connectTimeout);
       _log.info('Connected: dialect=${Smb2Dialect.describe(_client!.dialectRevision)}, '
-          'maxRead=${_client!.maxReadSize}');
+          'maxRead=${_client!.maxReadSize}, client@${_client!.hashCode.toRadixString(16)}');
       _tree = await _client!.connectTree(share).timeout(_connectTimeout);
       return _tree!;
     } catch (e, st) {
