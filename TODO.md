@@ -17,12 +17,12 @@
 ## dart_smb2
 - [x] ライブラリ内の print をロギング機構に置き換え（package:logging）
 - [ ] listShares() 実装 → 接続設定UIで共有フォルダ一覧から選択できるようにする（共有名の手入力を不要にする）
-- [ ] SMB 再接続ロジック: 長時間アイドル後にサーバー側でセッションが切れた場合の自動再接続。現在は SourceRegistry に接続を保持し続けるが、再接続の仕組みがない
+- [x] SMB 再接続ロジック: 長時間アイドル後にサーバー側でセッションが切れた場合の自動再接続。Smb2Client.isConnected で検出し、SmbSource._connect() で透過的に再接続
 
 ## SMB ZIP 対応
 - [x] Phase 1: ZIP ファイルの基本対応（ダウンロード → 展開 → L2 キャッシュ → ビューア表示）
-- [ ] Phase 2: ZIP サムネイル最適化（セントラルディレクトリの Range Read でファイル名一覧取得 → 自然順で最初の画像だけ読み出し）
-- [ ] Phase 3: ZIP 間の先読み（ビューアで次の ZIP の resolvePages をバックグラウンド実行）
+- [x] Phase 2: ZIP サムネイル・ページ取得を Range Read 化（archive_reader パッケージで ZIP 全体をダウンロードせず個別エントリを取得）
+- ~~Phase 3: ZIP 間の先読み~~ → Range Read 化で resolvePages が十分高速になり不要
 
 ## ネットワーク
 - [ ] Range Request対応（ZIPファイル内の個別画像取得に必要）
