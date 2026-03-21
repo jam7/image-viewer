@@ -46,8 +46,9 @@ class CacheManager {
   /// ネットワークから取得し、L1 + L2 に格納。
   Future<CacheResult> fetchAndCache(
     String key,
-    Future<Uint8List> Function() fetcher,
-  ) async {
+    Future<Uint8List> Function() fetcher, {
+    void Function(int received, int total)? onProgress,
+  }) async {
     final data = await fetcher();
     l1.put(key, data);
     await l2.put(key, data);

@@ -54,6 +54,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
   final Map<String, Uint8List> _fullImages = {};
   final Map<String, CacheSource> _cacheSources = {};
   final Map<String, bool> _loadingStates = {};
+  final Map<String, (int received, int total)> _loadProgress = {};
   bool _showOverlay = true;
   final _focusNode = FocusNode();
 
@@ -108,6 +109,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       _fullImages.clear();
       _cacheSources.clear();
       _loadingStates.clear();
+      _loadProgress.clear();
     });
 
     try {
@@ -189,7 +191,11 @@ class _ViewerScreenState extends State<ViewerScreen> {
         if (provider == null) return;
         final result = await widget.cacheManager.fetchAndCache(
           key,
-          () => provider.fetchFullImage(image),
+          () => provider.fetchFullImage(image, onProgress: (received, total) {
+            if (mounted) {
+              setState(() => _loadProgress[image.id] = (received, total));
+            }
+          }),
         );
         if (mounted) {
           setState(() {
@@ -202,6 +208,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       _log.warning('loadFullImage error (${image.name})', e, st);
     } finally {
       _loadingStates[image.id] = false;
+      _loadProgress.remove(image.id);
     }
   }
 
@@ -218,6 +225,32 @@ class _ViewerScreenState extends State<ViewerScreen> {
     });
     _preloadAround(index);
     _evictDistantPages(index, pages);
+  }
+
+  Widget _buildLoadingIndicator(String imageId) {
+    final progress = _loadProgress[imageId];
+    if (progress == null) {
+      return const CircularProgressIndicator();
+    }
+    final (received, total) = progress;
+    final fraction = total > 0 ? received / total : null;
+    final receivedKB = (received / 1024).toStringAsFixed(0);
+    final totalKB = total > 0 ? (total / 1024).toStringAsFixed(0) : '?';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: CircularProgressIndicator(value: fraction),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '$receivedKB / $totalKB KB',
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+      ],
+    );
   }
 
   /// Release image data for pages far from [currentIndex] to prevent OOM
@@ -478,7 +511,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                                 ..scale(_scale), // ignore: deprecated_member_use
                               child: Image.memory(data, fit: BoxFit.contain),
                             )
-                          : const CircularProgressIndicator(),
+                          : _buildLoadingIndicator(currentImage.id),
                 ),
                 if (_showOverlay) ...[
                   Positioned(
