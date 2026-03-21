@@ -152,7 +152,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
   void _preloadAround(int index) {
     final pages = _pages;
     if (pages == null) return;
-    for (var i = index - 1; i <= index + 2; i++) {
+    for (var i = index - 1; i <= index + 4; i++) {
       if (i >= 0 && i < pages.length) {
         _loadFullImage(pages[i]);
       }
