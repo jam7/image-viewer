@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,25 +10,29 @@ import '../range_reader.dart';
 
 final _log = Logger('ZipReader');
 
+/// Maximum uncompressed size allowed (100MB) to guard against zip bombs.
+const _maxUncompressedSize = 100 * 1024 * 1024;
+
 /// ZIP archive reader using range reads.
 ///
 /// Reads the End of Central Directory (EOCD) and Central Directory
 /// to build a file list, then extracts individual entries via range
 /// reads without downloading the entire archive.
+///
+/// ZIP64 is not supported. Archives with offsets or sizes exceeding
+/// 4GB will throw [FormatException].
 class ZipReader implements ArchiveReader {
   final RangeReader readRange;
   final int fileSize;
 
-  List<ArchiveEntry>? _entries;
+  /// Cached future for listEntries to prevent duplicate _parseDirectory calls.
+  Future<List<ArchiveEntry>>? _entriesFuture;
 
   ZipReader({required this.readRange, required this.fileSize});
 
   @override
-  Future<List<ArchiveEntry>> listEntries() async {
-    if (_entries != null) return _entries!;
-    _entries = await _parseDirectory();
-    return _entries!;
-  }
+  Future<List<ArchiveEntry>> listEntries() =>
+      _entriesFuture ??= _parseDirectory();
 
   @override
   Future<Uint8List> readEntry(ArchiveEntry entry) async {
@@ -40,19 +45,32 @@ class ZipReader implements ArchiveReader {
     final extraFieldLen = _readUint16(localHeader, 28);
     final dataOffset = entry.localHeaderOffset + 30 + fileNameLen + extraFieldLen;
 
+    // Bounds check
+    if (dataOffset + entry.compressedSize > fileSize) {
+      throw FormatException(
+          'Entry "${entry.name}" data range ($dataOffset + ${entry.compressedSize}) '
+          'exceeds file size ($fileSize)');
+    }
+
     _log.info('readEntry: ${entry.name} offset=$dataOffset '
         'compressed=${entry.compressedSize} method=${entry.compressionMethod}');
 
     final compressedData = await readRange(dataOffset, entry.compressedSize);
 
+    Uint8List result;
     if (entry.isStored) {
-      return compressedData;
+      result = compressedData;
     } else if (entry.isDeflated) {
-      return _inflate(compressedData, entry.uncompressedSize);
+      result = _inflate(compressedData, entry.uncompressedSize);
     } else {
       throw UnsupportedError(
           'Unsupported compression method: ${entry.compressionMethod}');
     }
+
+    // CRC-32 verification
+    _verifyCrc32(result, entry.crc32, entry.name);
+
+    return result;
   }
 
   // --- EOCD and Central Directory parsing ---
@@ -83,6 +101,11 @@ class ZipReader implements ArchiveReader {
     final cdSize = _readUint32(tail, eocdPos + 12);
     final cdOffset = _readUint32(tail, eocdPos + 16);
 
+    // ZIP64 detection
+    if (cdOffset == 0xFFFFFFFF || cdSize == 0xFFFFFFFF) {
+      throw FormatException('ZIP64 archives are not supported');
+    }
+
     _log.info('EOCD found: $cdEntryCount entries, '
         'CD offset=$cdOffset, CD size=$cdSize');
 
@@ -103,6 +126,7 @@ class ZipReader implements ArchiveReader {
         throw FormatException('Invalid Central Directory entry signature at offset $pos');
       }
 
+      final generalFlag = _readUint16(cd, pos + 8);
       final compressionMethod = _readUint16(cd, pos + 10);
       final crc32 = _readUint32(cd, pos + 16);
       final compressedSize = _readUint32(cd, pos + 20);
@@ -112,8 +136,20 @@ class ZipReader implements ArchiveReader {
       final commentLen = _readUint16(cd, pos + 32);
       final localHeaderOffset = _readUint32(cd, pos + 42);
 
+      // ZIP64 marker on individual entry
+      if (compressedSize == 0xFFFFFFFF || uncompressedSize == 0xFFFFFFFF ||
+          localHeaderOffset == 0xFFFFFFFF) {
+        _log.warning('Skipping ZIP64 entry at index $i');
+        pos += 46 + fileNameLen + extraLen + commentLen;
+        continue;
+      }
+
+      // Decode file name: bit 11 of general flag = UTF-8
       final nameBytes = cd.sublist(pos + 46, pos + 46 + fileNameLen);
-      final name = String.fromCharCodes(nameBytes);
+      final isUtf8 = (generalFlag & (1 << 11)) != 0;
+      final name = isUtf8
+          ? utf8.decode(nameBytes, allowMalformed: true)
+          : String.fromCharCodes(nameBytes);
 
       entries.add(ArchiveEntry(
         name: name,
@@ -140,9 +176,45 @@ class ZipReader implements ArchiveReader {
   }
 
   Uint8List _inflate(Uint8List compressed, int uncompressedSize) {
+    // Guard against zip bombs
+    if (uncompressedSize > _maxUncompressedSize) {
+      throw FormatException(
+          'Uncompressed size ($uncompressedSize) exceeds limit ($_maxUncompressedSize)');
+    }
+
     // Raw deflate (no zlib/gzip header)
     final inflated = ZLibCodec(raw: true).decode(compressed);
+
+    // Verify size matches
+    if (inflated.length != uncompressedSize) {
+      _log.warning('Inflate size mismatch: expected $uncompressedSize, got ${inflated.length}');
+    }
+
+    // Avoid copy if already Uint8List
+    if (inflated is Uint8List) return inflated;
     return Uint8List.fromList(inflated);
+  }
+
+  /// Verify CRC-32 of decompressed data.
+  void _verifyCrc32(Uint8List data, int expectedCrc, String name) {
+    final actual = _crc32(data);
+    if (actual != expectedCrc) {
+      _log.warning('CRC-32 mismatch for "$name": '
+          'expected ${expectedCrc.toRadixString(16)}, '
+          'got ${actual.toRadixString(16)}');
+    }
+  }
+
+  /// Compute CRC-32 (ISO 3309 / ITU-T V.42).
+  static int _crc32(Uint8List data) {
+    var crc = 0xFFFFFFFF;
+    for (final byte in data) {
+      crc ^= byte;
+      for (var j = 0; j < 8; j++) {
+        crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+      }
+    }
+    return crc ^ 0xFFFFFFFF;
   }
 
   // --- Little-endian readers ---

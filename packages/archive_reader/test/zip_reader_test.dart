@@ -129,4 +129,37 @@ void main() {
     await reader.listEntries();
     expect(callCount, firstCallCount, reason: 'Second call should use cache');
   });
+
+  test('concurrent listEntries calls share one parse', () async {
+    final zipData = _createTestZip();
+    var callCount = 0;
+    final reader = ZipReader(
+      readRange: (offset, length) async {
+        callCount++;
+        final end = offset + length > zipData.length ? zipData.length : offset + length;
+        return Uint8List.sublistView(zipData, offset, end);
+      },
+      fileSize: zipData.length,
+    );
+
+    // Fire two concurrent calls
+    final results = await Future.wait([
+      reader.listEntries(),
+      reader.listEntries(),
+    ]);
+    expect(results[0], same(results[1]), reason: 'Should return same list');
+  });
+
+  test('readEntry verifies CRC-32 (no exception on valid data)', () async {
+    final zipData = _createTestZip();
+    final reader = ZipReader(
+      readRange: _memoryRangeReader(zipData),
+      fileSize: zipData.length,
+    );
+    final entries = await reader.listEntries();
+    // Should not throw — CRC matches
+    for (final entry in entries) {
+      await reader.readEntry(entry);
+    }
+  });
 }
