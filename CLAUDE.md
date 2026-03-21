@@ -66,8 +66,10 @@ lib/
 ├── services/                          # ビジネスロジック（UIに依存しない）
 │   ├── sources/                       # プロトコル別の画像取得
 │   │   ├── image_source_provider.dart # 共通インターフェース（abstract class）
+│   │   ├── source_registry.dart       # sourceKey → Provider 解決、ログイン管理
+│   │   ├── pixiv_source.dart          # Pixiv API経由の画像取得
+│   │   ├── smb_source.dart            # SMB経由の画像取得（ZIP対応）
 │   │   ├── http_source.dart
-│   │   ├── smb_source.dart
 │   │   ├── google_drive_source.dart
 │   │   └── onedrive_source.dart
 │   ├── pixiv/                         # Pixiv API連携
@@ -84,12 +86,18 @@ lib/
 │   └── prefetch/
 │       └── prefetch_manager.dart      # スライディングウィンドウ制御
 ├── screens/                           # 画面（画面固有のウィジェットも同フォルダに置く）
-│   ├── gallery/gallery_screen.dart    # サムネイル一覧
+│   ├── gallery/gallery_screen.dart    # Pixiv サムネイル一覧（タブ独立、per-tab state）
+│   ├── gallery/smb_gallery_screen.dart # SMB ディレクトリブラウズ（ZIP/画像/フォルダ）
 │   ├── viewer/viewer_screen.dart      # フルスクリーン画像ビューア（スワイプ/キーボード操作）
 │   ├── pixiv/pixiv_login_screen.dart  # Pixivログイン（プラットフォーム別WebView）
 │   └── settings/settings_screen.dart  # 接続先設定
 └── widgets/                           # 複数画面で共有するウィジェット
-    └── progressive_image.dart         # 3段階ロード画像ウィジェット
+    ├── progressive_image.dart         # 3段階ロード画像ウィジェット
+    └── thumbnail_result.dart          # サムネイル取得結果（sealed class）
+
+packages/
+└── archive_reader/                    # Range Read ベースのアーカイブリーダー
+    └── lib/src/zip/zip_reader.dart    # ZIP セントラルディレクトリ解析 + 個別エントリ取得
 ```
 
 - 画像取得は `ImageSourceProvider` インターフェースで抽象化し、プロトコル毎に実装を差し替え可能
@@ -140,6 +148,8 @@ BlurHash表示（即座、~30バイト）
 - Cookie ストアを共有。ログイン用でログインすれば API 用も認証済みになる
 - **重要**: `webview_flutter` は Windows 非対応。Windows は `webview_windows` を使う
 - PixivWebClient → PixivApiClient → PixivSource の順に抽象化
+- CSRF トークンはログイン WebView の HTML から抽出（エスケープ済み JSON 内の `token\":\"hex\"`）
+- お気に入り追加時に Pixiv ブックマークも同時追加（`POST /ajax/illusts/bookmarks/add`、best-effort）
 - 認証フローの詳細は [docs/pixiv_auth.md](docs/pixiv_auth.md) を参照
 
 ### SMB ファイルブラウズ
@@ -150,6 +160,11 @@ BlurHash表示（即座、~30バイト）
 - ディレクトリ一覧→画像フィルタ→サムネイル/フル画像取得の流れ
 - ビューアでは同一ディレクトリ内の画像を連続閲覧可能（ホイール/キー操作）
 - プリロード: 現在 + 前方2枚 + 後方1枚（キャッシュヒット時はDL不要）
+- **ZIP 対応**: `archive_reader` パッケージ（自作）と `SmbSource` の連携で実現
+  - `archive_reader` が ZIP セントラルディレクトリを解析し、個別エントリを Range Read + 展開
+  - `dart_smb2` の `readRange` を `RangeReader` として渡す（dart_smb2 自体は ZIP を知らない）
+  - サムネイル: 自然順ソートで最初の画像だけ取得（ZIP 全体のダウンロード不要）
+  - ビューア: 各ページを個別に取得 → L2 キャッシュ格納
 
 ### 認証情報の保存場所
 
@@ -167,12 +182,12 @@ BlurHash表示（即座、~30バイト）
 
 | 入力 | 動作 |
 |---|---|
-| 上スワイプ | 次ページ |
-| 下スワイプ | 前ページ |
-| マウスホイール | ページ送り |
+| 上スワイプ / ↓ / Space | 次ページ（最後のページなら次の作品） |
+| 下スワイプ / ↑ | 前ページ（最初のページなら前の作品） |
+| マウスホイール | ページ送り（端で作品送り） |
 | Ctrl + ホイール | ズーム |
-| 矢印キー / Space | ページ送り |
-| Escape | 一覧に戻る |
+| ← → | 作品送り |
+| Escape / マウスバック | 一覧に戻る |
 
 ### ネットワーク
 
@@ -191,6 +206,7 @@ BlurHash表示（即座、~30バイト）
 - `webview_flutter`: iOS/Android 用 WebView（ログイン + API）
 - `webview_windows`: Windows 用 WebView2（ログイン + API）
 - `dart_smb2`: SMB 2.0/2.1 クライアント（自作、dart_smb2/ ディレクトリ）
+- `archive_reader`: Range Read ベースの ZIP リーダー（自作、packages/archive_reader/）
 - `flutter_secure_storage`: パスワード安全保管（Keychain/Credential Manager）
 - `dio`: HTTP通信（画像ダウンロード等）
 - `path_provider`: アプリ固有ディレクトリ取得
