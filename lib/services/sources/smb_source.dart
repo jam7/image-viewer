@@ -4,6 +4,7 @@ import 'package:archive_reader/archive_reader.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
 import 'package:logging/logging.dart';
+import 'package:printing/printing.dart';
 
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
@@ -33,6 +34,10 @@ class SmbSource extends ImageSourceProvider {
   };
 
   static const _zipExtensions = {'.zip'};
+  static const _pdfExtensions = {'.pdf'};
+
+  /// Cached PDF bytes keyed by file path.
+  final Map<String, Uint8List> _pdfBytesCache = {};
 
   Future<Smb2Tree>? _connectFuture;
 
@@ -133,6 +138,19 @@ class SmbSource extends ImageSourceProvider {
             'path': file.path,
           },
         ));
+      } else if (_pdfExtensions.contains(ext)) {
+        sources.add(ImageSource(
+          id: 'smb:${config.id}:${file.path}',
+          name: name,
+          uri: file.path,
+          type: ImageSourceType.smb,
+          sourceKey: smbSourceKey,
+          metadata: {
+            'isDirectory': false,
+            'isPdf': true,
+            'path': file.path,
+          },
+        ));
       }
     }
 
@@ -180,6 +198,9 @@ class SmbSource extends ImageSourceProvider {
 
   @override
   Future<List<ImageSource>> resolvePages(ImageSource source) async {
+    if (source.metadata?['isPdf'] == true) {
+      return _resolvePdfPages(source);
+    }
     if (source.metadata?['isZip'] != true) return [source];
 
     final zipPath = source.uri;
@@ -234,6 +255,11 @@ class SmbSource extends ImageSourceProvider {
   /// サムネイル取得。戻り値の `isFullImage` でフォールバックしたか判定。
   /// 並行呼び出しに安全（インスタンス変数を使わない）。
   Future<({Uint8List data, bool isFullImage})> fetchThumbnailWithInfo(ImageSource source) async {
+    // PDF files: no thumbnail support for now
+    if (source.metadata?['isPdf'] == true) {
+      throw ThumbnailNotSupportedException('PDF: ${source.name}');
+    }
+
     // ZIP files: read first image from ZIP directory via range read
     if (source.metadata?['isZip'] == true) {
       final zipPath = source.uri;
@@ -306,6 +332,13 @@ class SmbSource extends ImageSourceProvider {
     ImageSource source, {
     void Function(int received, int total)? onProgress,
   }) async {
+    // PDF pages: render from cached PDF bytes
+    if (source.metadata?['isPdfPage'] == true) {
+      final pdfPath = source.metadata!['pdfPath'] as String;
+      final pageIndex = source.metadata!['pageIndex'] as int;
+      return _renderPdfPage(pdfPath, pageIndex);
+    }
+
     // ZIP entries: read individual file via range read
     if (source.metadata?['isZipEntry'] == true) {
       // Check cache first
@@ -363,9 +396,87 @@ class SmbSource extends ImageSourceProvider {
     }
   }
 
+  /// Resolve PDF pages: download full PDF, count pages, return page list.
+  Future<List<ImageSource>> _resolvePdfPages(ImageSource source) async {
+    final pdfPath = source.uri;
+    final smbSourceKey = 'smb:${config.id}';
+    _log.info('resolvePages: downloading PDF $pdfPath');
+
+    // Download full PDF
+    final pdfBytes = await _downloadFile(pdfPath);
+    _pdfBytesCache[pdfPath] = pdfBytes;
+    _log.info('resolvePages: PDF downloaded (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB)');
+
+    // Get page count by rasterizing with info callback
+    int pageCount = 0;
+    await for (final _ in Printing.raster(pdfBytes, dpi: 36)) {
+      pageCount++;
+    }
+    _log.info('resolvePages: $pageCount pages in PDF');
+
+    final pages = <ImageSource>[];
+    for (var i = 0; i < pageCount; i++) {
+      pages.add(ImageSource(
+        id: 'smb:${config.id}:$pdfPath#page$i',
+        name: '${source.name} (${i + 1}/$pageCount)',
+        uri: '$pdfPath#page$i',
+        type: ImageSourceType.smb,
+        sourceKey: smbSourceKey,
+        metadata: {
+          'isDirectory': false,
+          'isPdfPage': true,
+          'pdfPath': pdfPath,
+          'pageIndex': i,
+          'path': source.metadata?['path'],
+        },
+      ));
+    }
+    return pages;
+  }
+
+  /// Render a single PDF page to PNG.
+  Future<Uint8List> _renderPdfPage(String pdfPath, int pageIndex) async {
+    final pdfBytes = _pdfBytesCache[pdfPath];
+    if (pdfBytes == null) {
+      throw StateError('PDF not cached: $pdfPath');
+    }
+
+    _log.info('Rendering PDF page $pageIndex from $pdfPath');
+    await for (final page in Printing.raster(pdfBytes, pages: [pageIndex], dpi: 200)) {
+      final png = await page.toPng();
+      _log.info('Rendered PDF page $pageIndex: ${(png.length / 1024).toStringAsFixed(0)} KB');
+      return png;
+    }
+    throw StateError('Failed to render PDF page $pageIndex');
+  }
+
+  /// Download an entire file from SMB.
+  Future<Uint8List> _downloadFile(String path) async {
+    final tree = await _connect();
+    final reader = await tree.openRead(path).timeout(_ioTimeout);
+    try {
+      final chunks = <Uint8List>[];
+      int received = 0;
+      await for (final chunk in reader.readStream()) {
+        chunks.add(chunk);
+        received += chunk.length;
+      }
+      final result = Uint8List(received);
+      int offset = 0;
+      for (final chunk in chunks) {
+        result.setRange(offset, offset + chunk.length, chunk);
+        offset += chunk.length;
+      }
+      return result;
+    } finally {
+      await reader.close();
+    }
+  }
+
   @override
   Future<void> dispose() async {
     _zipReaderFutures.clear();
+    _pdfBytesCache.clear();
     _connectFuture = null;
     if (_client != null) {
       await _client!.disconnect();
