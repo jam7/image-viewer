@@ -20,7 +20,8 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/
 - **アプリ・ライブラリ共通**: `package:logging` を使用。`print` は使わない（出力先は `main.dart` のハンドラで設定）
 - **アプリ（lib/ 以下）**: catch ブロックでは必ず `_log.warning('message', e, st)` でログ出力する。`catch (_)` で握りつぶさない。画面に表示するエラーとログ出力の両方を行う
 - **ライブラリ（dart_smb2/ 等）**: 例外を throw/rethrow で呼び出し元に返す。フォールバック処理で catch する場合は具体的な型（`on FormatException` 等）でキャッチし、`catch (_)` で握りつぶさない
-- **dart_smb2 のログレベル**: `main.dart` で WARNING 以上に設定。info レベルの接続ログはアプリには表示されない
+- **dart_smb2 のログレベル**: `main.dart` で設定。接続・認証など頻度の低いログ（`Smb2Client`）は INFO 許可。大量に出る I/O ログ（`Smb2Multiplexer`, `Smb2FileReader`, `Smb2Tree`）は WARNING 以上に制限
+- **ログレベル変更時の原則**: ライブラリのログを抑制する場合、必要なログまで抑制しないか確認する。ワークアラウンド（warning に昇格、アプリ層で代替出力）ではなく、ログレベル設定自体を見直す
 
 ### バグ調査の進め方（必須）
 
