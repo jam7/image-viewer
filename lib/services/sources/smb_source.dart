@@ -22,8 +22,9 @@ class SmbSource extends ImageSourceProvider {
   Smb2Client? _client;
   Smb2Tree? _tree;
 
-  /// Cached ZipReaders keyed by ZIP file path.
-  final Map<String, ZipReader> _zipReaders = {};
+  /// Cached ZipReader futures keyed by ZIP file path.
+  /// Using Future cache prevents duplicate _parseDirectory on concurrent calls.
+  final Map<String, Future<ZipReader>> _zipReaderFutures = {};
 
   static const _imageExtensions = {
     '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
@@ -42,7 +43,7 @@ class SmbSource extends ImageSourceProvider {
       _client = null;
       _tree = null;
       _connectFuture = null;
-      _zipReaders.clear();
+      _zipReaderFutures.clear();
     }
     return _connectFuture ??= _doConnect();
   }
@@ -145,21 +146,19 @@ class SmbSource extends ImageSourceProvider {
   }
 
   /// Get or create a ZipReader for the given ZIP path.
-  Future<ZipReader> _getZipReader(String zipPath) async {
-    if (_zipReaders.containsKey(zipPath)) return _zipReaders[zipPath]!;
+  Future<ZipReader> _getZipReader(String zipPath) =>
+      _zipReaderFutures[zipPath] ??= _createZipReader(zipPath);
 
+  Future<ZipReader> _createZipReader(String zipPath) async {
     final tree = await _connect();
     final reader = await tree.openRead(zipPath);
     final fileSize = reader.fileSize;
     await reader.close();
 
-    final zipReader = ZipReader(
+    return ZipReader(
       readRange: (offset, length) => _readRange(zipPath, offset, length),
       fileSize: fileSize,
     );
-
-    _zipReaders[zipPath] = zipReader;
-    return zipReader;
   }
 
   /// Range read for a specific file path via SMB.
@@ -169,7 +168,11 @@ class SmbSource extends ImageSourceProvider {
     try {
       return await reader.readRange(offset, length);
     } finally {
-      await reader.close();
+      try {
+        await reader.close();
+      } catch (e, st) {
+        _log.warning('close error in _readRange', e, st);
+      }
     }
   }
 
@@ -246,9 +249,9 @@ class SmbSource extends ImageSourceProvider {
         final firstImage = await zipReader.readEntry(imageEntries.first);
         _log.info('ZIP thumbnail: ${imageEntries.first.name} (${firstImage.length} bytes)');
         return (data: firstImage, isFullImage: true);
-      } catch (e) {
+      } catch (e, st) {
         if (e is ThumbnailNotSupportedException) rethrow;
-        _log.warning('ZIP thumbnail failed, falling back: ${source.name}', e);
+        _log.warning('ZIP thumbnail failed, falling back: ${source.name}', e, st);
         throw ThumbnailNotSupportedException('ZIP: ${source.name}');
       }
     }
@@ -289,7 +292,11 @@ class SmbSource extends ImageSourceProvider {
     try {
       return await reader.readRange(0, length);
     } finally {
-      await reader.close();
+      try {
+        await reader.close();
+      } catch (e, st) {
+        _log.warning('close error in _readPartial', e, st);
+      }
     }
   }
 
@@ -357,6 +364,8 @@ class SmbSource extends ImageSourceProvider {
 
   @override
   Future<void> dispose() async {
+    _zipReaderFutures.clear();
+    _connectFuture = null;
     if (_client != null) {
       await _client!.disconnect();
       _client = null;
