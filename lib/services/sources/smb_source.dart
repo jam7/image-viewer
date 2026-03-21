@@ -8,6 +8,7 @@ import 'package:logging/logging.dart';
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
 import '../../utils/natural_sort.dart';
+import '../../widgets/thumbnail_result.dart';
 import '../cache/cache_manager.dart';
 import 'image_source_provider.dart';
 
@@ -200,6 +201,11 @@ class SmbSource extends ImageSourceProvider {
   /// サムネイル取得。戻り値の `isFullImage` でフォールバックしたか判定。
   /// 並行呼び出しに安全（インスタンス変数を使わない）。
   Future<({Uint8List data, bool isFullImage})> fetchThumbnailWithInfo(ImageSource source) async {
+    // ZIP files: thumbnail not supported at listing time
+    if (source.metadata?['isZip'] == true) {
+      throw ThumbnailNotSupportedException('ZIP: ${source.name}');
+    }
+
     final name = source.name.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
       try {

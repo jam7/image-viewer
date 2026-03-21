@@ -11,6 +11,7 @@ import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../../widgets/thumbnail_result.dart';
 import '../viewer/viewer_screen.dart';
 
 final _log = Logger('SmbGallery');
@@ -38,7 +39,7 @@ class SmbGalleryScreen extends StatefulWidget {
 
 class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final List<ImageSource> _items = [];
-  final Map<String, Uint8List> _thumbnailData = {};
+  final Map<String, ThumbnailResult> _thumbnailData = {};
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   List<ImageSource> _imageFiles = []; // サムネイル読み込み対象（ディレクトリ除外）
@@ -89,7 +90,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         final cached = await widget.cacheManager.get('thumb:${image.id}')
             ?? await widget.cacheManager.get('full:${image.id}');
         if (cached != null && mounted) {
-          setState(() => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
+          setState(() => _thumbnailData[image.id] = ThumbnailData(Uint8List.fromList(cached.data)));
         }
       } catch (e, st) {
         _log.warning('reloadThumbnail error', e, st);
@@ -182,7 +183,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       if (cached != null) {
         if (mounted) {
           setState(() =>
-              _thumbnailData[image.id] = Uint8List.fromList(cached.data));
+              _thumbnailData[image.id] = ThumbnailData(Uint8List.fromList(cached.data)));
         }
       } else {
         final result = await widget.source.fetchThumbnailWithInfo(image);
@@ -190,11 +191,19 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         widget.cacheManager.l1.put(saveKey, result.data);
         await widget.cacheManager.l2.put(saveKey, result.data);
         if (mounted) {
-          setState(() => _thumbnailData[image.id] = result.data);
+          setState(() => _thumbnailData[image.id] = ThumbnailData(result.data));
         }
       }
+    } on ThumbnailNotSupportedException {
+      _log.info('Thumbnail not supported: ${image.name}');
+      if (mounted) {
+        setState(() => _thumbnailData[image.id] = ThumbnailFailed(ThumbnailFailReason.notSupported));
+      }
     } catch (e, st) {
-      _log.warning('thumbnail error', e, st);
+      _log.warning('thumbnail error (${image.name})', e, st);
+      if (mounted) {
+        setState(() => _thumbnailData[image.id] = ThumbnailFailed(ThumbnailFailReason.timeout));
+      }
     }
   }
 
@@ -345,11 +354,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       itemBuilder: (context, index) {
         final item = _items[index];
         final isDir = item.metadata?['isDirectory'] == true;
-        final thumbnail = _thumbnailData[item.id];
+        final thumb = _thumbnailData[item.id];
 
-        // サムネイル未読み込みの画像が表示されようとしたら次バッチ開始。
-        // build 中に async を直接起動しないよう addPostFrameCallback で遅延。
-        if (!isDir && thumbnail == null && !_isLoadingThumbnails) {
+        // Trigger next batch when an untried item becomes visible.
+        if (!isDir && thumb == null && !_isLoadingThumbnails) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && !_isLoadingThumbnails) _loadNextBatch();
           });
@@ -358,26 +366,15 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         return GestureDetector(
           onTap: () => _onItemTap(item),
           child: isDir
-              ? Container(
-                  color: Colors.grey[200],
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.folder, size: 48, color: Colors.amber),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.name,
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    ],
-                  ),
-                )
-              : thumbnail != null
-                  ? Image.memory(thumbnail, fit: BoxFit.cover)
-                  : Container(
+              ? _buildIconTile(item.name, Icons.folder, Colors.amber)
+              : switch (thumb) {
+                  ThumbnailData(data: final d) =>
+                    Image.memory(d, fit: BoxFit.cover),
+                  ThumbnailFailed(reason: ThumbnailFailReason.notSupported) =>
+                    _buildIconTile(item.name, Icons.archive, Colors.blueGrey),
+                  ThumbnailFailed(reason: ThumbnailFailReason.timeout) =>
+                    _buildIconTile(item.name, Icons.broken_image, Colors.red[300]!),
+                  null => Container(
                       color: Colors.grey[300],
                       child: const Center(
                         child: SizedBox(
@@ -387,8 +384,29 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
                         ),
                       ),
                     ),
+                },
         );
       },
+    );
+  }
+
+  Widget _buildIconTile(String name, IconData icon, Color color) {
+    return Container(
+      color: Colors.grey[200],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 48, color: color),
+          const SizedBox(height: 4),
+          Text(
+            name,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11),
+          ),
+        ],
+      ),
     );
   }
 }
