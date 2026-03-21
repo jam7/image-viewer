@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:archive_reader/archive_reader.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
 import 'package:logging/logging.dart';
@@ -21,6 +21,9 @@ class SmbSource extends ImageSourceProvider {
   final CacheManager? cacheManager;
   Smb2Client? _client;
   Smb2Tree? _tree;
+
+  /// Cached ZipReaders keyed by ZIP file path.
+  final Map<String, ZipReader> _zipReaders = {};
 
   static const _imageExtensions = {
     '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
@@ -133,56 +136,74 @@ class SmbSource extends ImageSourceProvider {
     return sources;
   }
 
+  /// Get or create a ZipReader for the given ZIP path.
+  Future<ZipReader> _getZipReader(String zipPath) async {
+    if (_zipReaders.containsKey(zipPath)) return _zipReaders[zipPath]!;
+
+    final tree = await _connect();
+    final reader = await tree.openRead(zipPath);
+    final fileSize = reader.fileSize;
+    await reader.close();
+
+    final zipReader = ZipReader(
+      readRange: (offset, length) => _readRange(zipPath, offset, length),
+      fileSize: fileSize,
+    );
+
+    _zipReaders[zipPath] = zipReader;
+    return zipReader;
+  }
+
+  /// Range read for a specific file path via SMB.
+  Future<Uint8List> _readRange(String path, int offset, int length) async {
+    final tree = await _connect();
+    final reader = await tree.openRead(path);
+    try {
+      return await reader.readRange(offset, length);
+    } finally {
+      await reader.close();
+    }
+  }
+
   @override
   Future<List<ImageSource>> resolvePages(ImageSource source) async {
     if (source.metadata?['isZip'] != true) return [source];
 
     final zipPath = source.uri;
     final smbSourceKey = 'smb:${config.id}';
-    _log.info('resolvePages: extracting ZIP $zipPath');
+    _log.info('resolvePages: reading ZIP directory $zipPath');
 
-    // Download entire ZIP
-    final zipData = await fetchFullImage(source);
-    _log.info('resolvePages: ZIP downloaded (${(zipData.length / 1024).toStringAsFixed(0)} KB)');
-
-    // Decode ZIP in memory
-    final archive = ZipDecoder().decodeBytes(zipData);
+    final zipReader = await _getZipReader(zipPath);
+    final allEntries = await zipReader.listEntries();
 
     // Filter image files and sort naturally
-    final imageFiles = archive.files
-        .where((f) => !f.isFile ? false : _isImageName(f.name))
+    final imageEntries = allEntries
+        .where((e) => !e.isDirectory && _isImageName(e.name))
         .toList()
       ..sort((a, b) => naturalCompare(a.name, b.name));
 
-    _log.info('resolvePages: ${imageFiles.length} images in ZIP');
+    _log.info('resolvePages: ${imageEntries.length} images in ZIP (read directory only, no full download)');
 
     final pages = <ImageSource>[];
-    for (var i = 0; i < imageFiles.length; i++) {
-      final file = imageFiles[i];
-      final pageId = 'smb:${config.id}:$zipPath#${file.name}';
-      final cacheKey = 'full:$pageId';
+    for (var i = 0; i < imageEntries.length; i++) {
+      final entry = imageEntries[i];
+      final pageId = 'smb:${config.id}:$zipPath#${entry.name}';
 
-      // Store each page in L2 cache
-      if (cacheManager != null) {
-        final data = file.content as Uint8List;
-        await cacheManager!.l2.put(cacheKey, data);
-      }
-
-      final baseName = file.name.contains('/')
-          ? file.name.split('/').last
-          : file.name;
+      final baseName = entry.name.contains('/')
+          ? entry.name.split('/').last
+          : entry.name;
 
       pages.add(ImageSource(
         id: pageId,
-        name: '${source.name} (${i + 1}/${imageFiles.length}) $baseName',
-        uri: '$zipPath#${file.name}',
+        name: '${source.name} (${i + 1}/${imageEntries.length}) $baseName',
+        uri: '$zipPath#${entry.name}',
         type: ImageSourceType.smb,
         sourceKey: smbSourceKey,
         metadata: {
           'isDirectory': false,
           'isZipEntry': true,
           'zipPath': zipPath,
-          'entryName': file.name,
+          'entryName': entry.name,
           'path': source.metadata?['path'],
         },
       ));
@@ -201,9 +222,27 @@ class SmbSource extends ImageSourceProvider {
   /// サムネイル取得。戻り値の `isFullImage` でフォールバックしたか判定。
   /// 並行呼び出しに安全（インスタンス変数を使わない）。
   Future<({Uint8List data, bool isFullImage})> fetchThumbnailWithInfo(ImageSource source) async {
-    // ZIP files: thumbnail not supported at listing time
+    // ZIP files: read first image from ZIP directory via range read
     if (source.metadata?['isZip'] == true) {
-      throw ThumbnailNotSupportedException('ZIP: ${source.name}');
+      final zipPath = source.uri;
+      try {
+        final zipReader = await _getZipReader(zipPath);
+        final entries = await zipReader.listEntries();
+        final imageEntries = entries
+            .where((e) => !e.isDirectory && _isImageName(e.name))
+            .toList()
+          ..sort((a, b) => naturalCompare(a.name, b.name));
+        if (imageEntries.isEmpty) {
+          throw ThumbnailNotSupportedException('ZIP has no images: ${source.name}');
+        }
+        final firstImage = await zipReader.readEntry(imageEntries.first);
+        _log.info('ZIP thumbnail: ${imageEntries.first.name} (${firstImage.length} bytes)');
+        return (data: firstImage, isFullImage: true);
+      } catch (e) {
+        if (e is ThumbnailNotSupportedException) rethrow;
+        _log.warning('ZIP thumbnail failed, falling back: ${source.name}', e);
+        throw ThumbnailNotSupportedException('ZIP: ${source.name}');
+      }
     }
 
     final name = source.name.toLowerCase();
@@ -251,15 +290,32 @@ class SmbSource extends ImageSourceProvider {
     ImageSource source, {
     void Function(int received, int total)? onProgress,
   }) async {
-    // ZIP entries are already cached by resolvePages
-    if (source.metadata?['isZipEntry'] == true && cacheManager != null) {
-      final cacheKey = 'full:${source.id}';
-      final cached = await cacheManager!.get(cacheKey);
-      if (cached != null) {
-        _log.info('ZIP entry from cache: ${source.name} (${cached.data.length} bytes)');
-        return Uint8List.fromList(cached.data);
+    // ZIP entries: read individual file via range read
+    if (source.metadata?['isZipEntry'] == true) {
+      // Check cache first
+      if (cacheManager != null) {
+        final cacheKey = 'full:${source.id}';
+        final cached = await cacheManager!.get(cacheKey);
+        if (cached != null) {
+          _log.info('ZIP entry from cache: ${source.name} (${cached.data.length} bytes)');
+          return Uint8List.fromList(cached.data);
+        }
       }
-      _log.warning('ZIP entry not in cache: ${source.name}, key=$cacheKey');
+
+      // Range read from ZIP
+      final zipPath = source.metadata!['zipPath'] as String;
+      final entryName = source.metadata!['entryName'] as String;
+      final zipReader = await _getZipReader(zipPath);
+      final entries = await zipReader.listEntries();
+      final entry = entries.firstWhere((e) => e.name == entryName);
+      final data = await zipReader.readEntry(entry);
+      _log.info('ZIP entry via range read: ${source.name} (${data.length} bytes)');
+
+      // Cache the result
+      if (cacheManager != null) {
+        await cacheManager!.l2.put('full:${source.id}', data);
+      }
+      return data;
     }
 
     final stopwatch = Stopwatch()..start();
