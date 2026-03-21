@@ -165,6 +165,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
       return;
     }
 
+    // Skip download for unsupported formats (e.g. ZIP inside ZIP)
+    if (image.metadata?['unsupported'] == true) return;
+
     _loadingStates[image.id] = true;
     final key = 'full:${image.id}';
     _log.info('Loading full image: ${image.name} key=$key');
@@ -450,15 +453,32 @@ class _ViewerScreenState extends State<ViewerScreen> {
             body: Stack(
               children: [
                 Center(
-                  child: data != null
-                      ? Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.identity()
-                            ..translate(_offset.dx, _offset.dy) // ignore: deprecated_member_use
-                            ..scale(_scale), // ignore: deprecated_member_use
-                          child: Image.memory(data, fit: BoxFit.contain),
+                  child: currentImage.metadata?['unsupported'] == true
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.block, color: Colors.white38, size: 64),
+                            const SizedBox(height: 16),
+                            Text(
+                              currentImage.name.split(') ').last,
+                              style: const TextStyle(color: Colors.white54),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Unsupported format',
+                              style: TextStyle(color: Colors.white38, fontSize: 12),
+                            ),
+                          ],
                         )
-                      : const CircularProgressIndicator(),
+                      : data != null
+                          ? Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.identity()
+                                ..translate(_offset.dx, _offset.dy) // ignore: deprecated_member_use
+                                ..scale(_scale), // ignore: deprecated_member_use
+                              child: Image.memory(data, fit: BoxFit.contain),
+                            )
+                          : const CircularProgressIndicator(),
                 ),
                 if (_showOverlay) ...[
                   Positioned(
