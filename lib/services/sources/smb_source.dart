@@ -195,7 +195,13 @@ class SmbSource extends ImageSourceProvider {
         .toList()
       ..sort((a, b) => naturalCompare(a.name, b.name));
 
-    _log.info('resolvePages: ${imageEntries.length} images in ZIP (read directory only, no full download)');
+    _log.info('resolvePages: ${imageEntries.length} images in ZIP '
+        '(${allEntries.length} total entries, read directory only, no full download)');
+    if (imageEntries.isEmpty && allEntries.isNotEmpty) {
+      for (final e in allEntries) {
+        _log.info('  entry: "${e.name}" dir=${e.isDirectory} size=${e.uncompressedSize} method=${e.compressionMethod}');
+      }
+    }
 
     final pages = <ImageSource>[];
     for (var i = 0; i < imageEntries.length; i++) {

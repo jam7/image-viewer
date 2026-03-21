@@ -125,11 +125,18 @@ class _ViewerScreenState extends State<ViewerScreen> {
       }
 
       if (mounted) {
-        setState(() {
-          _pages = pages;
-          _isResolvingPages = false;
-        });
-        _preloadAround(0);
+        if (pages.isEmpty) {
+          setState(() {
+            _error = 'No viewable images in ${item.name}';
+            _isResolvingPages = false;
+          });
+        } else {
+          setState(() {
+            _pages = pages;
+            _isResolvingPages = false;
+          });
+          _preloadAround(0);
+        }
       }
     } catch (e, st) {
       _log.warning('resolvePages error', e, st);
