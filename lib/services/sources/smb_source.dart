@@ -36,6 +36,14 @@ class SmbSource extends ImageSourceProvider {
   SmbSource({required this.config, required this.password, this.cacheManager});
 
   Future<Smb2Tree> _connect() {
+    // Detect dead connection and reset for reconnect
+    if (_client != null && !_client!.isConnected) {
+      _log.info('Connection lost, will reconnect');
+      _client = null;
+      _tree = null;
+      _connectFuture = null;
+      _zipReaders.clear();
+    }
     return _connectFuture ??= _doConnect();
   }
 
