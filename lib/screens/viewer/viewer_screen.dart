@@ -91,13 +91,28 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   @override
   void dispose() {
+    _cleanupPdfCache();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  /// Remove rendered PDF page PNGs from L2 cache.
+  /// PDF bytes remain in SmbSource memory cache for re-rendering.
+  void _cleanupPdfCache() {
+    final pages = _pages;
+    if (pages == null) return;
+    if (pages.isEmpty || pages.first.metadata?['isPdfPage'] != true) return;
+    for (final page in pages) {
+      widget.cacheManager.l2.delete('full:${page.id}');
+    }
+    _log.info('Cleaned up ${pages.length} PDF page(s) from L2 cache');
   }
 
   /// 作品を開く: resolvePages でページ展開してプリロード開始。
   Future<void> _openItem(int itemIndex) async {
     _log.info('openItem: index=$itemIndex/${widget.items.length}, name=${widget.items[itemIndex].name}');
+    // Clean up rendered PDF pages from L2 (PDF bytes are re-renderable)
+    _cleanupPdfCache();
     setState(() {
       _isResolvingPages = true;
       _error = null;

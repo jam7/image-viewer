@@ -86,6 +86,21 @@ class DiskCache {
     _scheduleFlush();
   }
 
+  /// Delete a single entry by key.
+  void delete(String key) {
+    if (!_initialized) return;
+    final existing = _entries.remove(key);
+    if (existing != null) {
+      _totalSizeBytes -= existing.sizeBytes;
+      try {
+        _fileFor(key).deleteSync();
+      } catch (e, st) {
+        _log.warning('delete error for $key', e, st);
+      }
+      _scheduleFlush();
+    }
+  }
+
   Future<void> clear() async {
     if (!_initialized) return;
     _entries.clear();
