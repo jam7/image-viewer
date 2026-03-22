@@ -175,11 +175,15 @@ BlurHash表示（即座、~30バイト）
   - サムネイル: 自然順ソートで最初の画像だけ取得（ZIP 全体のダウンロード不要）
   - ビューア: 全非ディレクトリエントリをページ化。非画像（ZIP in ZIP 等）は「非対応」表示でスキップ可能
   - 各ページを個別に Range Read → L2 キャッシュ格納
-- **PDF 対応**: `printing` パッケージでページレンダリング
-  - PDF 全体を SMB からダウンロード → `Printing.raster()` でページ数取得・個別レンダリング
-  - PDF バイトは SmbSource のメモリにキャッシュ（再オープン時に再DL不要）
+- **PDF 対応**: `pdfrx`（PDFium ベース）でページレンダリング
+  - `printing` は `Printing.raster()` がプラットフォームチャネル経由で UI スレッドをブロックするため不採用
+  - `pdfrx` は FFI ベースで非同期レンダリング（UI ブロックなし、ESC でキャンセル可能）
+  - pdfrx の `FPDF_LoadCustomDocument` パスにデッドロックバグがあるため fork を使用（packages/pdfrx）
+    - `openData` で既にメモリ上のデータに対して `FPDF_LoadMemDocument` を強制する修正
+  - PDF 全体を SMB からダウンロード → `PdfDocument.openData` でページ数取得（ラスタライズ不要）
+  - 各ページを `page.render()` → PNG 変換して表示
   - レンダリング済み PNG は閲覧中のみ L2 キャッシュ、ビューア離脱時に削除（2倍消費回避）
-  - レンダリング速度: 約 100〜130ms/ページ（dpi=200）。再レンダリングでも十分高速
+  - レンダリング速度: 約 100ms/ページ。再レンダリングでも十分高速
 
 ### 認証情報の保存場所
 
@@ -222,7 +226,7 @@ BlurHash表示（即座、~30バイト）
 - `webview_windows`: Windows 用 WebView2（ログイン + API）
 - `dart_smb2`: SMB 2.0/2.1 クライアント（自作、dart_smb2/ ディレクトリ）
 - `archive_reader`: Range Read ベースの ZIP リーダー（自作、packages/archive_reader/）
-- `printing`: PDF ページレンダリング（`Printing.raster()` で PNG 出力）
+- `pdfrx`: PDF ページレンダリング（PDFium ベース、fork 版を packages/pdfrx に配置）
 - `flutter_secure_storage`: パスワード安全保管（Keychain/Credential Manager）
 - `dio`: HTTP通信（画像ダウンロード等）
 - `path_provider`: アプリ固有ディレクトリ取得
