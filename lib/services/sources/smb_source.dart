@@ -337,8 +337,9 @@ class SmbSource extends ImageSourceProvider {
     // PDF pages: render from cached PDF bytes
     if (source.metadata?['isPdfPage'] == true) {
       final pdfPath = source.metadata!['pdfPath'] as String;
+      final pdfCacheKey = source.metadata!['pdfCacheKey'] as String;
       final pageIndex = source.metadata!['pageIndex'] as int;
-      return _renderPdfPage(pdfPath, pageIndex);
+      return _renderPdfPage(pdfPath, pdfCacheKey, pageIndex);
     }
 
     // ZIP entries: read individual file via range read
@@ -402,12 +403,25 @@ class SmbSource extends ImageSourceProvider {
   Future<List<ImageSource>> _resolvePdfPages(ImageSource source) async {
     final pdfPath = source.uri;
     final smbSourceKey = 'smb:${config.id}';
-    _log.info('resolvePages: downloading PDF $pdfPath');
 
-    // Download full PDF
-    final pdfBytes = await _downloadFile(pdfPath);
+    // Check L2 cache for PDF bytes, then memory cache, then download
+    final pdfCacheKey = 'pdf:${source.id}';
+    Uint8List pdfBytes;
+    final cached = cacheManager != null ? await cacheManager!.get(pdfCacheKey) : null;
+    if (cached != null) {
+      pdfBytes = Uint8List.fromList(cached.data);
+      _log.info('resolvePages: PDF from cache (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB, ${cached.source})');
+    } else {
+      _log.info('resolvePages: downloading PDF $pdfPath');
+      pdfBytes = await _downloadFile(pdfPath);
+      _log.info('resolvePages: PDF downloaded (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB)');
+      // Store in L1 + L2
+      if (cacheManager != null) {
+        cacheManager!.l1.put(pdfCacheKey, pdfBytes);
+        await cacheManager!.l2.put(pdfCacheKey, pdfBytes);
+      }
+    }
     _pdfBytesCache[pdfPath] = pdfBytes;
-    _log.info('resolvePages: PDF downloaded (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB)');
 
     // Get page count from PDF metadata (no rasterization)
     final doc = await PdfDocument.openData(pdfBytes);
@@ -427,6 +441,7 @@ class SmbSource extends ImageSourceProvider {
           'isDirectory': false,
           'isPdfPage': true,
           'pdfPath': pdfPath,
+          'pdfCacheKey': pdfCacheKey,
           'pageIndex': i,
           'path': source.metadata?['path'],
         },
@@ -436,8 +451,17 @@ class SmbSource extends ImageSourceProvider {
   }
 
   /// Render a single PDF page to PNG.
-  Future<Uint8List> _renderPdfPage(String pdfPath, int pageIndex) async {
-    final pdfBytes = _pdfBytesCache[pdfPath];
+  Future<Uint8List> _renderPdfPage(String pdfPath, String pdfCacheKey, int pageIndex) async {
+    var pdfBytes = _pdfBytesCache[pdfPath];
+    if (pdfBytes == null && cacheManager != null) {
+      // Restore from L2 cache
+      final cached = await cacheManager!.get(pdfCacheKey);
+      if (cached != null) {
+        pdfBytes = Uint8List.fromList(cached.data);
+        _pdfBytesCache[pdfPath] = pdfBytes;
+        _log.info('PDF bytes restored from cache for $pdfPath');
+      }
+    }
     if (pdfBytes == null) {
       throw StateError('PDF not cached: $pdfPath');
     }
