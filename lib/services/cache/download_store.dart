@@ -33,33 +33,46 @@ class DownloadStore {
     return _entries.containsKey(key);
   }
 
-  /// トグル。未DL→保存してtrue返却、DL済み→削除してfalse返却。
-  Future<bool> toggle(
-      String key, Uint8List? data, Map<String, dynamic>? meta) async {
-    if (!_initialized) return false;
+  /// Save data to L3.
+  Future<void> put(String key, Uint8List data, Map<String, dynamic>? meta) async {
+    if (!_initialized) return;
+    // Remove existing entry if present
+    await remove(key);
+    final file = _fileFor(key);
+    await file.writeAsBytes(data, flush: true);
+    final now = DateTime.now();
+    _entries[key] = CacheEntryMeta(
+      key: key,
+      sizeBytes: data.length,
+      lastAccessTime: now,
+      createdTime: now,
+    );
+    _totalSizeBytes += data.length;
+    await _flushMetadata();
+  }
 
-    if (_entries.containsKey(key)) {
-      // 削除
-      final entry = _entries.remove(key)!;
+  /// Remove data from L3.
+  Future<void> remove(String key) async {
+    if (!_initialized) return;
+    final entry = _entries.remove(key);
+    if (entry != null) {
       _totalSizeBytes -= entry.sizeBytes;
       final file = _fileFor(key);
       if (file.existsSync()) file.deleteSync();
       await _flushMetadata();
+    }
+  }
+
+  /// トグル。未DL→保存してtrue返却、DL済み→削除してfalse返却。
+  Future<bool> toggle(
+      String key, Uint8List? data, Map<String, dynamic>? meta) async {
+    if (!_initialized) return false;
+    if (_entries.containsKey(key)) {
+      await remove(key);
       return false;
     } else {
-      // 保存
       if (data == null) return false;
-      final file = _fileFor(key);
-      await file.writeAsBytes(data, flush: true);
-      final now = DateTime.now();
-      _entries[key] = CacheEntryMeta(
-        key: key,
-        sizeBytes: data.length,
-        lastAccessTime: now,
-        createdTime: now,
-      );
-      _totalSizeBytes += data.length;
-      await _flushMetadata();
+      await put(key, data, meta);
       return true;
     }
   }
