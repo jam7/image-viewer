@@ -465,8 +465,17 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final item = widget.items[_itemIndex];
     final workKey = _workDownloadKey();
 
-    // Already downloaded → remove
+    // Already downloaded → remove work and its pages
     if (widget.cacheManager.l3.isDownloaded(workKey)) {
+      final pages = _pages;
+      if (pages != null) {
+        for (final page in pages) {
+          final pageKey = 'full:${page.id}';
+          if (widget.cacheManager.l3.isDownloaded(pageKey)) {
+            await widget.cacheManager.l3.toggle(pageKey, null, null);
+          }
+        }
+      }
       await widget.cacheManager.l3.toggle(workKey, null, null);
       setState(() {});
       return;
