@@ -24,6 +24,23 @@
 - [x] Phase 2: ZIP サムネイル・ページ取得を Range Read 化（archive_reader パッケージで ZIP 全体をダウンロードせず個別エントリを取得）
 - ~~Phase 3: ZIP 間の先読み~~ → Range Read 化で resolvePages が十分高速になり不要
 
+## PDF 対応
+- [x] PDF ページレンダリング（pdfrx / PDFium）
+- [x] pdfrx の FPDF_LoadCustomDocument デッドロック修正（fork: packages/pdfrx）
+- [x] PDF バイトの L2 キャッシュ（再オープン時に再DL不要）
+- [x] レンダリング済み PNG のビューア離脱時 L2 削除（2倍消費回避）
+- [ ] pdfrx 本家へのバグ報告 / PR（openData で FPDF_LoadMemDocument を使うべき件）
+
+## ダウンロード（L3）
+- [x] 作品単位 DL（ZIP 全体 / PDF 全体 / Pixiv 全ページ）
+- [x] ZIP ストリーミング DL（メモリ枯渇回避）
+- [x] DL キャンセル対応（ESC / 部分ファイル削除）
+- [x] DownloadStore に put/remove API 追加
+- [ ] DL 済み作品の閲覧画面（L3 ブラウズ UI）
+- [ ] メタデータによるグルーピング表示（作者名、ソース別、作品名等）
+- [ ] DL 済み ZIP のローカル RangeReader での閲覧（SMB 不要）
+- [ ] DL 済み PDF のローカル閲覧
+
 ## ネットワーク
 - [ ] Range Request対応（ZIPファイル内の個別画像取得に必要）
 - [ ] ZIPファイル対応（Pixiv ugoira等）
