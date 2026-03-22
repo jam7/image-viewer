@@ -105,7 +105,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     for (final page in pages) {
       widget.cacheManager.l2.delete('full:${page.id}');
     }
-    _log.info('Cleaned up ${pages.length} PDF page(s) from L2 cache');
+    _log.info('Cleaned up rendered PDF pages from L2 cache');
   }
 
   /// 作品を開く: resolvePages でページ展開してプリロード開始。
