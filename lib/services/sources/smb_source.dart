@@ -412,7 +412,7 @@ class SmbSource extends ImageSourceProvider {
     // Get page count from PDF metadata (no rasterization)
     final doc = await PdfDocument.openData(pdfBytes);
     final pageCount = doc.pages.length;
-    doc.dispose();
+    await doc.dispose();
     _log.info('resolvePages: $pageCount pages in PDF');
 
     final pages = <ImageSource>[];
@@ -471,7 +471,7 @@ class SmbSource extends ImageSourceProvider {
         pdfImage.dispose();
       }
     } finally {
-      doc.dispose();
+      await doc.dispose();
     }
   }
 
