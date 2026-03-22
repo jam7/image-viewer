@@ -400,12 +400,12 @@ class SmbSource extends ImageSourceProvider {
   }
 
   @override
-  Future<({Stream<Uint8List> stream, int fileSize})> openReadStream(
+  Future<({Stream<Uint8List> stream, int fileSize, Future<void> Function() close})> openReadStream(
     ImageSource source,
   ) async {
     final tree = await _connect();
     final reader = await tree.openRead(source.uri).timeout(_ioTimeout);
-    return (stream: reader.readStream(), fileSize: reader.fileSize);
+    return (stream: reader.readStream(), fileSize: reader.fileSize, close: () => reader.close());
   }
 
   /// Resolve PDF pages: download full PDF, count pages, return page list.

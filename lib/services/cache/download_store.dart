@@ -65,20 +65,27 @@ class DownloadStore {
   }
 
   /// Stream download: write chunks directly to file without holding all in memory.
-  Future<void> putFromStream(
+  /// [isCancelled] is checked after each chunk; if true, deletes partial file.
+  Future<bool> putFromStream(
     String key,
     Stream<Uint8List> stream,
     Map<String, dynamic>? meta, {
     void Function(int received, int total)? onProgress,
     int total = 0,
+    bool Function()? isCancelled,
   }) async {
-    if (!_initialized) return;
+    if (!_initialized) return false;
 
     final file = _fileFor(key);
     final sink = file.openWrite();
     int received = 0;
+    bool cancelled = false;
     try {
       await for (final chunk in stream) {
+        if (isCancelled?.call() == true) {
+          cancelled = true;
+          break;
+        }
         sink.add(chunk);
         received += chunk.length;
         onProgress?.call(received, total);
@@ -86,6 +93,11 @@ class DownloadStore {
       await sink.flush();
     } finally {
       await sink.close();
+    }
+
+    if (cancelled) {
+      if (file.existsSync()) file.deleteSync();
+      return false;
     }
 
     final now = DateTime.now();
@@ -97,6 +109,7 @@ class DownloadStore {
     );
     _totalSizeBytes += received;
     await _flushMetadata();
+    return true;
   }
 
   Future<Uint8List?> get(String key) async {
