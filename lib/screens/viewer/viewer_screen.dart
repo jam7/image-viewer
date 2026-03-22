@@ -467,6 +467,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
     // Already downloaded → remove work and its pages
     if (widget.cacheManager.l3.isDownloaded(workKey)) {
+      _log.info('Removing download: ${item.name} key=$workKey');
       final pages = _pages;
       if (pages != null) {
         for (final page in pages) {
@@ -480,6 +481,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
       setState(() {});
       return;
     }
+
+    _log.info('Downloading work: ${item.name} key=$workKey');
 
     final meta = {
       'name': item.name,
@@ -495,6 +498,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
          pages.first.metadata?['isZipEntry'] != true)) {
       final data = _fullImages[currentImage.id];
       await widget.cacheManager.l3.toggle(workKey, data, meta);
+      _log.info('Downloaded single image: ${item.name} (${data?.length ?? 0} bytes)');
       setState(() {});
       return;
     }
@@ -515,18 +519,20 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
       if (item.metadata?['isPdf'] == true) {
         // PDF: get bytes from cache (already downloaded during resolvePages)
+        _log.info('Downloading PDF from cache: ${item.name}');
         final cached = await widget.cacheManager.get('full:${item.id}');
         workData = cached != null ? Uint8List.fromList(cached.data) : null;
       } else if (item.metadata?['isZip'] == true) {
         // ZIP: download entire file from source
+        _log.info('Downloading ZIP from source: ${item.name}');
         workData = await provider.fetchFullImage(item, onProgress: (received, total) {
           if (mounted) {
             setState(() => _downloadProgress = (received, total));
           }
         });
       } else {
-        // Pixiv multi-page: download all pages and bundle
-        // Save each page individually, then mark work as downloaded
+        // Multi-page (e.g. Pixiv): download all pages individually
+        _log.info('Downloading ${pages.length} pages: ${item.name}');
         int received = 0;
         final totalPages = pages.length;
         for (var i = 0; i < pages.length; i++) {
@@ -552,6 +558,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
         }
         // Mark work itself as downloaded (empty data, metadata only)
         await widget.cacheManager.l3.toggle(workKey, Uint8List(0), meta);
+        _log.info('Downloaded all pages: ${item.name}');
         setState(() {
           _isDownloading = false;
           _downloadProgress = null;
@@ -561,6 +568,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
       if (workData != null && mounted) {
         await widget.cacheManager.l3.toggle(workKey, workData, meta);
+        _log.info('Downloaded work: ${item.name} (${(workData.length / 1024).toStringAsFixed(0)} KB)');
       }
     } catch (e, st) {
       _log.warning('Download work failed', e, st);
