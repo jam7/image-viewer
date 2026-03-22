@@ -523,13 +523,23 @@ class _ViewerScreenState extends State<ViewerScreen> {
         final cached = await widget.cacheManager.get('full:${item.id}');
         workData = cached != null ? Uint8List.fromList(cached.data) : null;
       } else if (item.metadata?['isZip'] == true) {
-        // ZIP: download entire file from source
+        // ZIP: stream directly to L3 file (avoid loading entire ZIP into memory)
         _log.info('Downloading ZIP from source: ${item.name}');
-        workData = await provider.fetchFullImage(item, onProgress: (received, total) {
-          if (mounted) {
-            setState(() => _downloadProgress = (received, total));
-          }
+        final (:stream, :fileSize) = await provider.openReadStream(item);
+        await widget.cacheManager.l3.putFromStream(workKey, stream, meta,
+          total: fileSize,
+          onProgress: (received, total) {
+            if (mounted) {
+              setState(() => _downloadProgress = (received, total));
+            }
+          },
+        );
+        _log.info('Downloaded ZIP: ${item.name} (${(fileSize / 1024).toStringAsFixed(0)} KB)');
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = null;
         });
+        return;
       } else {
         // Multi-page (e.g. Pixiv): download all pages individually
         _log.info('Downloading ${pages.length} pages: ${item.name}');

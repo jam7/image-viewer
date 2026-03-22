@@ -64,6 +64,41 @@ class DownloadStore {
     }
   }
 
+  /// Stream download: write chunks directly to file without holding all in memory.
+  Future<void> putFromStream(
+    String key,
+    Stream<Uint8List> stream,
+    Map<String, dynamic>? meta, {
+    void Function(int received, int total)? onProgress,
+    int total = 0,
+  }) async {
+    if (!_initialized) return;
+
+    final file = _fileFor(key);
+    final sink = file.openWrite();
+    int received = 0;
+    try {
+      await for (final chunk in stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, total);
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+
+    final now = DateTime.now();
+    _entries[key] = CacheEntryMeta(
+      key: key,
+      sizeBytes: received,
+      lastAccessTime: now,
+      createdTime: now,
+    );
+    _totalSizeBytes += received;
+    await _flushMetadata();
+  }
+
   Future<Uint8List?> get(String key) async {
     if (!_initialized || !_entries.containsKey(key)) return null;
     final file = _fileFor(key);

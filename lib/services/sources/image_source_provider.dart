@@ -18,6 +18,15 @@ abstract class ImageSourceProvider {
     void Function(int received, int total)? onProgress,
   });
 
+  /// Stream the raw file bytes (for large file download to disk).
+  /// Returns the stream and file size. Default wraps fetchFullImage.
+  Future<({Stream<Uint8List> stream, int fileSize})> openReadStream(
+    ImageSource source,
+  ) async {
+    final data = await fetchFullImage(source);
+    return (stream: Stream.value(data), fileSize: data.length);
+  }
+
   /// 作品のページ一覧を解決する。
   /// Pixiv: 複数ページ作品を展開。SMB: そのまま返す。
   Future<List<ImageSource>> resolvePages(ImageSource source) async => [source];
