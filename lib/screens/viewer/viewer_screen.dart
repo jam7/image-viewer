@@ -497,7 +497,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
         (pages.length == 1 && pages.first.metadata?['isPdfPage'] != true &&
          pages.first.metadata?['isZipEntry'] != true)) {
       final data = _fullImages[currentImage.id];
-      if (data == null) return;
+      if (data == null) {
+        _log.warning('Download skipped: image not loaded yet (${item.name})');
+        return;
+      }
       await widget.cacheManager.l3.put(workKey, data, meta);
       _log.info('Downloaded single image: ${item.name} (${data.length} bytes)');
       setState(() {});
