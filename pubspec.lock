@@ -441,18 +441,16 @@ packages:
   pdfrx:
     dependency: "direct main"
     description:
-      name: pdfrx
-      sha256: e32e0c786528eec2b3c56b43f59ef1debce3a27c7accd862b95413f949afcfa9
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/pdfrx/packages/pdfrx"
+      relative: true
+    source: path
     version: "2.2.24"
   pdfrx_engine:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: pdfrx_engine
-      sha256: a8914433d1f6188b903c53d36b9d7dc908bfa89131591a9db22f1a22470d3a48
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/pdfrx/packages/pdfrx_engine"
+      relative: true
+    source: path
     version: "0.3.9"
   petitparser:
     dependency: transitive
