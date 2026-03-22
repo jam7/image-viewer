@@ -4,7 +4,9 @@ import 'package:archive_reader/archive_reader.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
 import 'package:logging/logging.dart';
-import 'package:printing/printing.dart';
+import 'dart:ui' as ui;
+
+import 'package:pdfrx/pdfrx.dart';
 
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
@@ -407,11 +409,10 @@ class SmbSource extends ImageSourceProvider {
     _pdfBytesCache[pdfPath] = pdfBytes;
     _log.info('resolvePages: PDF downloaded (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB)');
 
-    // Get page count by rasterizing with info callback
-    int pageCount = 0;
-    await for (final _ in Printing.raster(pdfBytes, dpi: 36)) {
-      pageCount++;
-    }
+    // Get page count from PDF metadata (no rasterization)
+    final doc = await PdfDocument.openData(pdfBytes);
+    final pageCount = doc.pages.length;
+    doc.dispose();
     _log.info('resolvePages: $pageCount pages in PDF');
 
     final pages = <ImageSource>[];
@@ -442,12 +443,36 @@ class SmbSource extends ImageSourceProvider {
     }
 
     _log.info('Rendering PDF page $pageIndex from $pdfPath');
-    await for (final page in Printing.raster(pdfBytes, pages: [pageIndex], dpi: 200)) {
-      final png = await page.toPng();
-      _log.info('Rendered PDF page $pageIndex: ${(png.length / 1024).toStringAsFixed(0)} KB');
-      return png;
+    final doc = await PdfDocument.openData(pdfBytes);
+    try {
+      final page = doc.pages[pageIndex];
+      // Render at 2x page size for good quality
+      final pdfImage = await page.render(
+        fullWidth: page.width * 2,
+        fullHeight: page.height * 2,
+      );
+      if (pdfImage == null) {
+        throw StateError('Failed to render PDF page $pageIndex');
+      }
+      try {
+        final image = await pdfImage.createImage();
+        try {
+          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData == null) {
+            throw StateError('Failed to encode PDF page $pageIndex as PNG');
+          }
+          final png = byteData.buffer.asUint8List();
+          _log.info('Rendered PDF page $pageIndex: ${(png.length / 1024).toStringAsFixed(0)} KB');
+          return png;
+        } finally {
+          image.dispose();
+        }
+      } finally {
+        pdfImage.dispose();
+      }
+    } finally {
+      doc.dispose();
     }
-    throw StateError('Failed to render PDF page $pageIndex');
   }
 
   /// Download an entire file from SMB.
