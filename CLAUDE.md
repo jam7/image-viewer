@@ -144,13 +144,43 @@ BlurHash表示（即座、~30バイト）
 |---|---|---|---|
 | L1: 短期 | メモリ | デコード済み画像 〜10枚 | LRU自動 |
 | L2: 中期 | ディスク | 圧縮画像 500MB〜5GB（設定可） | LRU自動 |
-| L3: DL | ディスク | ユーザーが明示的にDLした画像 | 手動トグル |
+| L3: DL | ディスク | ユーザーが明示的にDLした作品 | 手動トグル |
 | お気に入り | JSON | URL+メタデータのみ（画像なし） | 手動トグル |
 
 - CacheManager が L1→L2→L3→ネットワークの順に検索
-- キー命名: `thumb:<id>` サムネイル / `full:<id>` 表示用データ（画像、ZIPエントリ、PDF PNG、PDFバイト本体）
-- PDFバイトは `full:<pdfのid>`（`#page` なし）、各ページPNGは `full:<pdfのid>#pageN` で区別
 - メタデータは `_metadata.json` でatomic write管理
+
+#### キー命名規則
+
+| プレフィックス | 用途 | 例 |
+|---|---|---|
+| `thumb:<id>` | サムネイル | `thumb:smb:...:image.jpg` |
+| `full:<id>` | 表示用データ | `full:smb:...:image.jpg` |
+
+`full:` は全種別で統一。ID 部分で内容を区別する：
+
+| 対象 | キー例 | 内容 |
+|---|---|---|
+| 画像 | `full:smb:...:image.jpg` | 画像バイト |
+| ZIPエントリ | `full:smb:...:archive.zip#entry/001.jpg` | 展開済み画像 |
+| PDFバイト本体 | `full:smb:...:1.pdf` | PDF ファイル全体 |
+| PDFレンダリング | `full:smb:...:1.pdf#page0` | レンダリング済み PNG |
+| Pixivページ | `full:142601425_p0` | ダウンロード済み画像 |
+
+#### L3 ダウンロードの構造
+
+DL はビューアで作品単位。L3 のストレージはフラットで、閲覧 UI 側でメタデータによりグルーピングする設計。
+
+| 作品種別 | L3 保存内容 |
+|---|---|
+| 画像1枚 | `full:<work id>` に画像バイト |
+| ZIP | `full:<work id>` に ZIP バイト全体 |
+| PDF | `full:<work id>` に PDF バイト全体 |
+| 複数ページ（Pixiv等） | 各ページを `full:<page id>` で個別保存 + `full:<work id>` に空データ（DL 済みマーカー） |
+
+- 複数ページ作品の work マーカーはデータ 0 バイト + メタデータ（作品名、ソース等）
+- DL トグルオフ時は work マーカーと全ページを一括削除
+- PDF の L2 キャッシュ: PDF バイトは L2 に残る。レンダリング済み PNG はビューア離脱時に L2 から削除（2倍消費回避）
 
 ### Pixiv 認証 & API（WebView 2台構成）
 
