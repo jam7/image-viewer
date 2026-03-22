@@ -19,12 +19,13 @@ abstract class ImageSourceProvider {
   });
 
   /// Stream the raw file bytes (for large file download to disk).
-  /// Returns the stream and file size. Default wraps fetchFullImage.
-  Future<({Stream<Uint8List> stream, int fileSize})> openReadStream(
+  /// Returns the stream, file size, and a close callback to release resources.
+  /// Default wraps fetchFullImage.
+  Future<({Stream<Uint8List> stream, int fileSize, Future<void> Function() close})> openReadStream(
     ImageSource source,
   ) async {
     final data = await fetchFullImage(source);
-    return (stream: Stream.value(data), fileSize: data.length);
+    return (stream: Stream.value(data), fileSize: data.length, close: () async {});
   }
 
   /// 作品のページ一覧を解決する。

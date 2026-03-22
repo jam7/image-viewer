@@ -525,16 +525,22 @@ class _ViewerScreenState extends State<ViewerScreen> {
       } else if (item.metadata?['isZip'] == true) {
         // ZIP: stream directly to L3 file (avoid loading entire ZIP into memory)
         _log.info('Downloading ZIP from source: ${item.name}');
-        final (:stream, :fileSize) = await provider.openReadStream(item);
-        await widget.cacheManager.l3.putFromStream(workKey, stream, meta,
+        final (:stream, :fileSize, :close) = await provider.openReadStream(item);
+        final saved = await widget.cacheManager.l3.putFromStream(workKey, stream, meta,
           total: fileSize,
           onProgress: (received, total) {
             if (mounted) {
               setState(() => _downloadProgress = (received, total));
             }
           },
+          isCancelled: () => !_isDownloading || !mounted,
         );
-        _log.info('Downloaded ZIP: ${item.name} (${(fileSize / 1024).toStringAsFixed(0)} KB)');
+        await close();
+        if (saved) {
+          _log.info('Downloaded ZIP: ${item.name} (${(fileSize / 1024).toStringAsFixed(0)} KB)');
+        } else {
+          _log.info('Download cancelled: ${item.name}');
+        }
         setState(() {
           _isDownloading = false;
           _downloadProgress = null;
@@ -544,9 +550,17 @@ class _ViewerScreenState extends State<ViewerScreen> {
         // Multi-page (e.g. Pixiv): download all pages individually
         _log.info('Downloading ${pages.length} pages: ${item.name}');
         int received = 0;
+        final savedPageKeys = <String>[];
         final totalPages = pages.length;
         for (var i = 0; i < pages.length; i++) {
-          if (!mounted || !_isDownloading) return; // cancelled
+          if (!mounted || !_isDownloading) {
+            // Cancel: remove pages saved so far
+            _log.info('Download cancelled at page ${i + 1}/$totalPages: ${item.name}');
+            for (final k in savedPageKeys) {
+              await widget.cacheManager.l3.toggle(k, null, null);
+            }
+            return;
+          }
           final page = pages[i];
           final pageKey = 'full:${page.id}';
           // Skip if already in L3
@@ -560,6 +574,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
               'workKey': workKey,
               ...?page.metadata,
             });
+            savedPageKeys.add(pageKey);
+          } else {
+            savedPageKeys.add(pageKey); // track for cleanup on cancel
           }
           received = i + 1;
           if (mounted) {
