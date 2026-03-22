@@ -405,7 +405,7 @@ class SmbSource extends ImageSourceProvider {
     final smbSourceKey = 'smb:${config.id}';
 
     // Check L2 cache for PDF bytes, then memory cache, then download
-    final pdfCacheKey = 'pdf:${source.id}';
+    final pdfCacheKey = 'full:${source.id}';
     Uint8List pdfBytes;
     final cached = cacheManager != null ? await cacheManager!.get(pdfCacheKey) : null;
     if (cached != null) {
