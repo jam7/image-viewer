@@ -545,10 +545,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
         } else {
           _log.info('Download cancelled: ${item.name}');
         }
-        setState(() {
-          _isDownloading = false;
-          _downloadProgress = null;
-        });
+        if (mounted) {
+          setState(() {
+            _isDownloading = false;
+            _downloadProgress = null;
+          });
+        }
         return;
       } else {
         // Multi-page (e.g. Pixiv): download all pages individually
