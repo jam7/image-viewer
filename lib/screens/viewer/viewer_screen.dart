@@ -473,11 +473,11 @@ class _ViewerScreenState extends State<ViewerScreen> {
         for (final page in pages) {
           final pageKey = 'full:${page.id}';
           if (widget.cacheManager.l3.isDownloaded(pageKey)) {
-            await widget.cacheManager.l3.toggle(pageKey, null, null);
+            await widget.cacheManager.l3.remove(pageKey);
           }
         }
       }
-      await widget.cacheManager.l3.toggle(workKey, null, null);
+      await widget.cacheManager.l3.remove(workKey);
       setState(() {});
       return;
     }
@@ -497,8 +497,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
         (pages.length == 1 && pages.first.metadata?['isPdfPage'] != true &&
          pages.first.metadata?['isZipEntry'] != true)) {
       final data = _fullImages[currentImage.id];
-      await widget.cacheManager.l3.toggle(workKey, data, meta);
-      _log.info('Downloaded single image: ${item.name} (${data?.length ?? 0} bytes)');
+      if (data == null) return;
+      await widget.cacheManager.l3.put(workKey, data, meta);
+      _log.info('Downloaded single image: ${item.name} (${data.length} bytes)');
       setState(() {});
       return;
     }
@@ -557,7 +558,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
             // Cancel: remove pages saved so far
             _log.info('Download cancelled at page ${i + 1}/$totalPages: ${item.name}');
             for (final k in savedPageKeys) {
-              await widget.cacheManager.l3.toggle(k, null, null);
+              await widget.cacheManager.l3.remove(k);
             }
             return;
           }
@@ -568,7 +569,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
             final pageData = _fullImages[page.id] ??
                 (await widget.cacheManager.get(pageKey))?.data as Uint8List? ??
                 await provider.fetchFullImage(page);
-            await widget.cacheManager.l3.toggle(pageKey, Uint8List.fromList(pageData), {
+            await widget.cacheManager.l3.put(pageKey, Uint8List.fromList(pageData), {
               'name': page.name,
               'uri': page.uri,
               'workKey': workKey,
@@ -584,7 +585,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
           }
         }
         // Mark work itself as downloaded (empty data, metadata only)
-        await widget.cacheManager.l3.toggle(workKey, Uint8List(0), meta);
+        await widget.cacheManager.l3.put(workKey, Uint8List(0), meta);
         _log.info('Downloaded all pages: ${item.name}');
         setState(() {
           _isDownloading = false;
@@ -594,7 +595,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       }
 
       if (workData != null && mounted) {
-        await widget.cacheManager.l3.toggle(workKey, workData, meta);
+        await widget.cacheManager.l3.put(workKey, workData, meta);
         _log.info('Downloaded work: ${item.name} (${(workData.length / 1024).toStringAsFixed(0)} KB)');
       }
     } catch (e, st) {
