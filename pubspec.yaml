@@ -44,9 +44,14 @@ dependencies:
   webview_windows: ^0.4.0
   webview_flutter: ^4.13.1
   exif: ^3.3.0
-  pdfrx: ^2.2.0
+  pdfrx:
+    path: packages/pdfrx/packages/pdfrx
   archive_reader:
     path: packages/archive_reader
+
+dependency_overrides:
+  pdfrx_engine:
+    path: packages/pdfrx/packages/pdfrx_engine
 
 dev_dependencies:
   flutter_test:

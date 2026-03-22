@@ -1,0 +1,3 @@
+[submodule "packages/pdfrx"]
+	path = packages/pdfrx
+	url = git@github.com:jam7/pdfrx.git
