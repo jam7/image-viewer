@@ -148,7 +148,8 @@ BlurHash表示（即座、~30バイト）
 | お気に入り | JSON | URL+メタデータのみ（画像なし） | 手動トグル |
 
 - CacheManager が L1→L2→L3→ネットワークの順に検索
-- キー命名: `thumb:<imageId>` / `full:<imageId>`
+- キー命名: `thumb:<id>` サムネイル / `full:<id>` 表示用データ（画像、ZIPエントリ、PDF PNG、PDFバイト本体）
+- PDFバイトは `full:<pdfのid>`（`#page` なし）、各ページPNGは `full:<pdfのid>#pageN` で区別
 - メタデータは `_metadata.json` でatomic write管理
 
 ### Pixiv 認証 & API（WebView 2台構成）
