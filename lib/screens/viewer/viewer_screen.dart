@@ -56,6 +56,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
   final Map<String, bool> _loadingStates = {};
   final Map<String, (int received, int total)> _loadProgress = {};
   bool _showOverlay = true;
+  bool _isDownloading = false;
+  (int received, int total)? _downloadProgress;
   final _focusNode = FocusNode();
 
   @override
@@ -268,6 +270,37 @@ class _ViewerScreenState extends State<ViewerScreen> {
     );
   }
 
+  Widget _buildDownloadProgress() {
+    final (received, total) = _downloadProgress!;
+    final item = widget.items[_itemIndex];
+    final isPagesProgress = item.metadata?['isZip'] != true && item.metadata?['isPdf'] != true;
+
+    final fraction = total > 0 ? received / total : null;
+    final progressText = isPagesProgress
+        ? '$received / $total pages'
+        : '${(received / 1024).toStringAsFixed(0)} / ${(total / 1024).toStringAsFixed(0)} KB';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: CircularProgressIndicator(value: fraction),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Downloading ${item.name}',
+          style: const TextStyle(color: Colors.white54, fontSize: 14),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          progressText,
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
   /// Release image data for pages far from [currentIndex] to prevent OOM
   /// on works with many pages. Keeps ±5 pages. Data is still in L1 cache
   /// so re-display is instant.
@@ -417,14 +450,119 @@ class _ViewerScreenState extends State<ViewerScreen> {
     }
   }
 
-  Future<void> _toggleDownload(ImageSource image) async {
-    final key = 'full:${image.id}';
-    final data = _fullImages[image.id];
-    await widget.cacheManager.l3.toggle(key, data, {
-      'name': image.name,
-      'uri': image.uri,
+  /// Get the L3 download key for the current work (not page).
+  String _workDownloadKey() {
+    final item = widget.items[_itemIndex];
+    return 'full:${item.id}';
+  }
+
+  /// Whether the current work is downloaded to L3.
+  bool _isWorkDownloaded() {
+    return widget.cacheManager.l3.isDownloaded(_workDownloadKey());
+  }
+
+  Future<void> _toggleDownload(ImageSource currentImage) async {
+    final item = widget.items[_itemIndex];
+    final workKey = _workDownloadKey();
+
+    // Already downloaded → remove
+    if (widget.cacheManager.l3.isDownloaded(workKey)) {
+      await widget.cacheManager.l3.toggle(workKey, null, null);
+      setState(() {});
+      return;
+    }
+
+    final meta = {
+      'name': item.name,
+      'uri': item.uri,
+      'sourceKey': item.sourceKey,
+      ...?item.metadata,
+    };
+
+    // Single image (no pages or 1 page = the item itself)
+    final pages = _pages;
+    if (pages == null ||
+        (pages.length == 1 && pages.first.metadata?['isPdfPage'] != true &&
+         pages.first.metadata?['isZipEntry'] != true)) {
+      final data = _fullImages[currentImage.id];
+      await widget.cacheManager.l3.toggle(workKey, data, meta);
+      setState(() {});
+      return;
+    }
+
+    // Multi-page work: show loading screen
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = null;
     });
-    setState(() {});
+
+    try {
+      final provider = item.sourceKey != null
+          ? await widget.registry.resolve(item.sourceKey!, context)
+          : null;
+      if (provider == null || !mounted) return;
+
+      Uint8List? workData;
+
+      if (item.metadata?['isPdf'] == true) {
+        // PDF: get bytes from cache (already downloaded during resolvePages)
+        final cached = await widget.cacheManager.get('full:${item.id}');
+        workData = cached != null ? Uint8List.fromList(cached.data) : null;
+      } else if (item.metadata?['isZip'] == true) {
+        // ZIP: download entire file from source
+        workData = await provider.fetchFullImage(item, onProgress: (received, total) {
+          if (mounted) {
+            setState(() => _downloadProgress = (received, total));
+          }
+        });
+      } else {
+        // Pixiv multi-page: download all pages and bundle
+        // Save each page individually, then mark work as downloaded
+        int received = 0;
+        final totalPages = pages.length;
+        for (var i = 0; i < pages.length; i++) {
+          if (!mounted || !_isDownloading) return; // cancelled
+          final page = pages[i];
+          final pageKey = 'full:${page.id}';
+          // Skip if already in L3
+          if (!widget.cacheManager.l3.isDownloaded(pageKey)) {
+            final pageData = _fullImages[page.id] ??
+                (await widget.cacheManager.get(pageKey))?.data as Uint8List? ??
+                await provider.fetchFullImage(page);
+            await widget.cacheManager.l3.toggle(pageKey, Uint8List.fromList(pageData), {
+              'name': page.name,
+              'uri': page.uri,
+              'workKey': workKey,
+              ...?page.metadata,
+            });
+          }
+          received = i + 1;
+          if (mounted) {
+            setState(() => _downloadProgress = (received, totalPages));
+          }
+        }
+        // Mark work itself as downloaded (empty data, metadata only)
+        await widget.cacheManager.l3.toggle(workKey, Uint8List(0), meta);
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = null;
+        });
+        return;
+      }
+
+      if (workData != null && mounted) {
+        await widget.cacheManager.l3.toggle(workKey, workData, meta);
+      }
+    } catch (e, st) {
+      _log.warning('Download work failed', e, st);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = null;
+        });
+      }
+    }
   }
 
   // --- UI ---
@@ -441,6 +579,31 @@ class _ViewerScreenState extends State<ViewerScreen> {
           child: const Scaffold(
             backgroundColor: Colors.black,
             body: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      );
+    }
+
+    if (_isDownloading) {
+      return Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+            setState(() => _isDownloading = false);
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Listener(
+          onPointerDown: _onPointerDown,
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: _downloadProgress != null
+                  ? _buildDownloadProgress()
+                  : const CircularProgressIndicator(),
+            ),
           ),
         ),
       );
@@ -475,8 +638,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final currentImage = pages[_pageIndex];
     final data = _fullImages[currentImage.id];
     final isFav = widget.favoritesStore.isFavorite(currentImage.id);
-    final isDl =
-        widget.cacheManager.l3.isDownloaded('full:${currentImage.id}');
+    final isDl = _isWorkDownloaded();
     final cacheSource = _cacheSources[currentImage.id];
 
     return Focus(
