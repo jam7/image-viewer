@@ -99,7 +99,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
   }
 
   /// Remove rendered PDF page PNGs from L2 cache.
-  /// PDF bytes remain in SmbSource memory cache for re-rendering.
+  /// PDF file remains in L2 cache for re-rendering via openFile.
   void _cleanupPdfCache() {
     final pages = _pages;
     if (pages == null) return;
