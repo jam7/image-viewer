@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:archive_reader/archive_reader.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
+import 'package:flutter/painting.dart';
 import 'package:logging/logging.dart';
 import 'dart:ui' as ui;
 
@@ -21,6 +22,7 @@ final _log = Logger('SMB');
 class SmbSource extends ImageSourceProvider {
   static const _connectTimeout = Duration(seconds: 15);
   static const _ioTimeout = Duration(seconds: 30);
+  static const _thumbnailMaxSize = 300;
   final ServerConfig config;
   final String password;
   final CacheManager? cacheManager;
@@ -254,15 +256,26 @@ class SmbSource extends ImageSourceProvider {
     return _imageExtensions.any((ext) => lower.endsWith(ext));
   }
 
-  /// サムネイル取得。戻り値の `isFullImage` でフォールバックしたか判定。
-  /// 並行呼び出しに安全（インスタンス変数を使わない）。
-  Future<({Uint8List data, bool isFullImage})> fetchThumbnailWithInfo(ImageSource source) async {
-    // PDF files: no thumbnail support for now
+  @override
+  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+    // PDF: render page 0 if cached locally
     if (source.metadata?['isPdf'] == true) {
-      throw ThumbnailNotSupportedException('PDF: ${source.name}');
+      final pdfCacheKey = 'full:${source.id}';
+      final filePath = cacheManager?.getFilePath(pdfCacheKey);
+      if (filePath == null) {
+        throw ThumbnailNotSupportedException('PDF not cached: ${source.name}');
+      }
+      try {
+        final png = await _renderPdfThumbnail(filePath);
+        _log.info('PDF thumbnail: ${source.name} (${(png.length / 1024).toStringAsFixed(0)} KB)');
+        return png;
+      } catch (e, st) {
+        _log.warning('PDF thumbnail failed: ${source.name}', e, st);
+        throw ThumbnailNotSupportedException('PDF: ${source.name}');
+      }
     }
 
-    // ZIP files: read first image from ZIP directory via range read
+    // ZIP: read first image from ZIP directory via range read
     if (source.metadata?['isZip'] == true) {
       final zipPath = source.uri;
       try {
@@ -277,14 +290,15 @@ class SmbSource extends ImageSourceProvider {
         }
         final firstImage = await zipReader.readEntry(imageEntries.first);
         _log.info('ZIP thumbnail: ${imageEntries.first.name} (${firstImage.length} bytes)');
-        return (data: firstImage, isFullImage: true);
+        return _resizeToThumbnail(firstImage);
       } catch (e, st) {
         if (e is ThumbnailNotSupportedException) rethrow;
-        _log.warning('ZIP thumbnail failed, falling back: ${source.name}', e, st);
+        _log.warning('ZIP thumbnail failed: ${source.name}', e, st);
         throw ThumbnailNotSupportedException('ZIP: ${source.name}');
       }
     }
 
+    // JPEG: try EXIF thumbnail first
     final name = source.name.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
       try {
@@ -294,24 +308,24 @@ class SmbSource extends ImageSourceProvider {
         if (thumbnail != null) {
           final bytes = thumbnail.values.toList();
           if (bytes.isNotEmpty) {
-            _log.info('EXIF thumbnail found for ${source.name} (${bytes.length} bytes)');
-            return (data: Uint8List.fromList(bytes.cast<int>()), isFullImage: false);
+            final exifBytes = Uint8List.fromList(bytes.cast<int>());
+            // Check if EXIF thumbnail is large enough
+            final exifSize = await _getImageSize(exifBytes);
+            if (exifSize != null && (exifSize.width >= _thumbnailMaxSize || exifSize.height >= _thumbnailMaxSize)) {
+              _log.info('EXIF thumbnail: ${source.name} (${exifSize.width}x${exifSize.height})');
+              return _resizeToThumbnail(exifBytes);
+            }
+            _log.info('EXIF thumbnail too small (${exifSize?.width}x${exifSize?.height}), using full image: ${source.name}');
           }
         }
-        _log.info('Fallback to full image: no EXIF thumbnail (${source.name})');
       } catch (e, st) {
-        _log.warning('Fallback to full image: EXIF parse error (${source.name})', e, st);
+        _log.warning('EXIF parse error, using full image: ${source.name}', e, st);
       }
-    } else {
-      _log.info('Fallback to full image: not JPEG (${source.name})');
     }
-    return (data: await fetchFullImage(source), isFullImage: true);
-  }
 
-  @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
-    final result = await fetchThumbnailWithInfo(source);
-    return result.data;
+    // Fallback: full image → resize
+    final fullData = await fetchFullImage(source);
+    return _resizeToThumbnail(fullData);
   }
 
   /// ファイルの先頭 [length] バイトだけ読み込む。
@@ -534,6 +548,77 @@ class SmbSource extends ImageSourceProvider {
       return result;
     } finally {
       await reader.close();
+    }
+  }
+
+  /// Get image dimensions without full decode.
+  Future<ui.Size?> _getImageSize(Uint8List data) async {
+    try {
+      final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final size = ui.Size(descriptor.width.toDouble(), descriptor.height.toDouble());
+      descriptor.dispose();
+      buffer.dispose();
+      return size;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Resize image data so the long edge is at most [_thumbnailMaxSize] px.
+  /// Returns PNG bytes.
+  Future<Uint8List> _resizeToThumbnail(Uint8List data) async {
+    final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+    final codec = await PaintingBinding.instance.instantiateImageCodecWithSize(
+      buffer,
+      getTargetSize: (w, h) {
+        final longEdge = w > h ? w : h;
+        if (longEdge <= _thumbnailMaxSize) return ui.TargetImageSize(width: w, height: h);
+        final scale = _thumbnailMaxSize / longEdge;
+        return ui.TargetImageSize(
+          width: (w * scale).round(),
+          height: (h * scale).round(),
+        );
+      },
+    );
+    final frame = await codec.getNextFrame();
+    final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    frame.image.dispose();
+    codec.dispose();
+    buffer.dispose();
+    return byteData!.buffer.asUint8List();
+  }
+
+  /// Render PDF page 0 as a thumbnail with long edge [_thumbnailMaxSize] px.
+  Future<Uint8List> _renderPdfThumbnail(String filePath) async {
+    final doc = await PdfDocument.openFile(filePath);
+    try {
+      final page = doc.pages[0];
+      final longEdge = page.width > page.height ? page.width : page.height;
+      final scale = _thumbnailMaxSize / longEdge;
+      final pdfImage = await page.render(
+        fullWidth: page.width * scale,
+        fullHeight: page.height * scale,
+      );
+      if (pdfImage == null) {
+        throw StateError('Failed to render PDF page 0');
+      }
+      try {
+        final image = await pdfImage.createImage();
+        try {
+          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData == null) {
+            throw StateError('Failed to encode PDF page 0 as PNG');
+          }
+          return byteData.buffer.asUint8List();
+        } finally {
+          image.dispose();
+        }
+      } finally {
+        pdfImage.dispose();
+      }
+    } finally {
+      await doc.dispose();
     }
   }
 
