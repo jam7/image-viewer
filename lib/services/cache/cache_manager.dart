@@ -18,6 +18,20 @@ class CacheManager {
     required this.l3,
   });
 
+  /// キーに対応するキャッシュファイルのパスを返す（L2 → L3 の順）。
+  /// L1 はメモリなのでスキップ。
+  String? getFilePath(String key) {
+    // L2: ディスク
+    final l2Path = l2.getFilePath(key);
+    if (l2Path != null) return l2Path;
+
+    // L3: DL
+    final l3Path = l3.getFilePath(key);
+    if (l3Path != null) return l3Path;
+
+    return null;
+  }
+
   /// キャッシュから取得。見つからなければ null。
   Future<CacheResult?> get(String key) async {
     // L1: メモリ

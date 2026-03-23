@@ -38,8 +38,8 @@ class SmbSource extends ImageSourceProvider {
   static const _zipExtensions = {'.zip'};
   static const _pdfExtensions = {'.pdf'};
 
-  /// Cached PDF bytes keyed by file path.
-  final Map<String, Uint8List> _pdfBytesCache = {};
+  /// Cached PDF file paths keyed by PDF source path.
+  final Map<String, String> _pdfFilePathCache = {};
 
   Future<Smb2Tree>? _connectFuture;
 
@@ -413,27 +413,12 @@ class SmbSource extends ImageSourceProvider {
     final pdfPath = source.uri;
     final smbSourceKey = 'smb:${config.id}';
 
-    // Check L2 cache for PDF bytes, then memory cache, then download
+    // Get PDF file path from cache, or download to L2
     final pdfCacheKey = 'full:${source.id}';
-    Uint8List pdfBytes;
-    final cached = cacheManager != null ? await cacheManager!.get(pdfCacheKey) : null;
-    if (cached != null) {
-      pdfBytes = Uint8List.fromList(cached.data);
-      _log.info('resolvePages: PDF from cache (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB, ${cached.source})');
-    } else {
-      _log.info('resolvePages: downloading PDF $pdfPath');
-      pdfBytes = await _downloadFile(pdfPath);
-      _log.info('resolvePages: PDF downloaded (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB)');
-      // Store in L1 + L2
-      if (cacheManager != null) {
-        cacheManager!.l1.put(pdfCacheKey, pdfBytes);
-        await cacheManager!.l2.put(pdfCacheKey, pdfBytes);
-      }
-    }
-    _pdfBytesCache[pdfPath] = pdfBytes;
+    final pdfFilePath = await _ensurePdfFile(pdfPath, pdfCacheKey);
 
     // Get page count from PDF metadata (no rasterization)
-    final doc = await PdfDocument.openData(pdfBytes);
+    final doc = await PdfDocument.openFile(pdfFilePath);
     final pageCount = doc.pages.length;
     await doc.dispose();
     _log.info('resolvePages: $pageCount pages in PDF');
@@ -459,24 +444,45 @@ class SmbSource extends ImageSourceProvider {
     return pages;
   }
 
-  /// Render a single PDF page to PNG.
-  Future<Uint8List> _renderPdfPage(String pdfPath, String pdfCacheKey, int pageIndex) async {
-    var pdfBytes = _pdfBytesCache[pdfPath];
-    if (pdfBytes == null && cacheManager != null) {
-      // Restore from L2 cache
-      final cached = await cacheManager!.get(pdfCacheKey);
-      if (cached != null) {
-        pdfBytes = Uint8List.fromList(cached.data);
-        _pdfBytesCache[pdfPath] = pdfBytes;
-        _log.info('PDF bytes restored from cache for $pdfPath');
+  /// Ensure PDF file is available on local disk. Returns file path.
+  Future<String> _ensurePdfFile(String pdfPath, String pdfCacheKey) async {
+    // Check in-memory path cache
+    final cachedPath = _pdfFilePathCache[pdfPath];
+    if (cachedPath != null) return cachedPath;
+
+    // Check L2/L3 cache for existing file
+    if (cacheManager != null) {
+      final filePath = cacheManager!.getFilePath(pdfCacheKey);
+      if (filePath != null) {
+        _log.info('resolvePages: PDF from cache file');
+        _pdfFilePathCache[pdfPath] = filePath;
+        return filePath;
       }
     }
-    if (pdfBytes == null) {
-      throw StateError('PDF not cached: $pdfPath');
+
+    // Download from SMB and store in L2
+    _log.info('resolvePages: downloading PDF $pdfPath');
+    final pdfBytes = await _downloadFile(pdfPath);
+    _log.info('resolvePages: PDF downloaded (${(pdfBytes.length / 1024).toStringAsFixed(0)} KB)');
+    if (cacheManager != null) {
+      await cacheManager!.l2.put(pdfCacheKey, pdfBytes);
+      final filePath = cacheManager!.l2.getFilePath(pdfCacheKey);
+      if (filePath != null) {
+        _pdfFilePathCache[pdfPath] = filePath;
+        return filePath;
+      }
     }
 
+    // Fallback: should not happen if cacheManager is set
+    throw StateError('Failed to cache PDF file: $pdfPath');
+  }
+
+  /// Render a single PDF page to PNG.
+  Future<Uint8List> _renderPdfPage(String pdfPath, String pdfCacheKey, int pageIndex) async {
+    final pdfFilePath = await _ensurePdfFile(pdfPath, pdfCacheKey);
+
     _log.info('Rendering PDF page $pageIndex from $pdfPath');
-    final doc = await PdfDocument.openData(pdfBytes);
+    final doc = await PdfDocument.openFile(pdfFilePath);
     try {
       final page = doc.pages[pageIndex];
       // Render at 2x page size for good quality
@@ -534,7 +540,7 @@ class SmbSource extends ImageSourceProvider {
   @override
   Future<void> dispose() async {
     _zipReaderFutures.clear();
-    _pdfBytesCache.clear();
+    _pdfFilePathCache.clear();
     _connectFuture = null;
     if (_client != null) {
       await _client!.disconnect();
