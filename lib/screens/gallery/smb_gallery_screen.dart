@@ -203,6 +203,21 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     }
   }
 
+  /// ビューアから戻った後、notSupported だったサムネイルを再取得する。
+  /// PDF はビューア表示中に L2 にキャッシュされるため、戻った時に取得可能になる。
+  void _retryUnsupportedThumbnails() {
+    if (!mounted) return;
+    final retryItems = _imageFiles.where((img) {
+      final thumb = _thumbnailData[img.id];
+      return thumb is ThumbnailFailed && thumb.reason == ThumbnailFailReason.notSupported;
+    }).toList();
+    if (retryItems.isEmpty) return;
+    for (final img in retryItems) {
+      _thumbnailData.remove(img.id);
+    }
+    _loadThumbnails(retryItems);
+  }
+
   void _onItemTap(ImageSource item) {
     if (item.metadata?['isDirectory'] == true) {
       final path = item.metadata?['path'] as String? ?? '/';
@@ -229,7 +244,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             cacheManager: widget.cacheManager,
             favoritesStore: widget.favoritesStore,
           ),
-        ));
+        )).then((_) => _retryUnsupportedThumbnails());
       }
     }
   }
