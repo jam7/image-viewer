@@ -585,7 +585,6 @@ class SmbSource extends ImageSourceProvider {
     final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
     frame.image.dispose();
     codec.dispose();
-    buffer.dispose();
     return byteData!.buffer.asUint8List();
   }
 
