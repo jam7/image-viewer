@@ -58,6 +58,28 @@ class DiskCache {
     return file.readAsBytes();
   }
 
+  /// キーに対応するファイルパスを返す。エントリが存在しファイルがあれば返す。
+  /// アクセス時間は更新しない（読み取りは呼び出し側が行う）。
+  String? getFilePath(String key) {
+    if (!_initialized) return null;
+    final entry = _entries[key];
+    if (entry == null) return null;
+
+    final file = _fileFor(key);
+    if (!file.existsSync()) {
+      _entries.remove(key);
+      _totalSizeBytes -= entry.sizeBytes;
+      _scheduleFlush();
+      return null;
+    }
+
+    // アクセス時間を更新
+    _entries[key] = entry.copyWith(lastAccessTime: DateTime.now());
+    _scheduleFlush();
+
+    return file.path;
+  }
+
   Future<void> put(String key, Uint8List data) async {
     if (!_initialized) return;
 

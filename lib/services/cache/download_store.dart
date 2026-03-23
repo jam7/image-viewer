@@ -135,6 +135,17 @@ class DownloadStore {
     return file.readAsBytes();
   }
 
+  /// キーに対応するファイルパスを返す。エントリが存在しファイルがあれば返す。
+  String? getFilePath(String key) {
+    if (!_initialized || !_entries.containsKey(key)) return null;
+    final file = _fileFor(key);
+    if (!file.existsSync()) {
+      _entries.remove(key);
+      return null;
+    }
+    return file.path;
+  }
+
   Future<CacheStats> getStats() async {
     return CacheStats(
       totalSizeBytes: _totalSizeBytes,
