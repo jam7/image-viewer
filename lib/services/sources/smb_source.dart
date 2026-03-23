@@ -22,7 +22,7 @@ final _log = Logger('SMB');
 class SmbSource extends ImageSourceProvider {
   static const _connectTimeout = Duration(seconds: 15);
   static const _ioTimeout = Duration(seconds: 30);
-  static const _thumbnailMaxSize = 300;
+  static const _thumbnailMaxSize = 600;
   final ServerConfig config;
   final String password;
   final CacheManager? cacheManager;
@@ -569,9 +569,12 @@ class SmbSource extends ImageSourceProvider {
   /// Returns PNG bytes.
   Future<Uint8List> _resizeToThumbnail(Uint8List data) async {
     final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+    int? origW, origH;
     final codec = await PaintingBinding.instance.instantiateImageCodecWithSize(
       buffer,
       getTargetSize: (w, h) {
+        origW = w;
+        origH = h;
         final longEdge = w > h ? w : h;
         if (longEdge <= _thumbnailMaxSize) return ui.TargetImageSize(width: w, height: h);
         final scale = _thumbnailMaxSize / longEdge;
@@ -582,6 +585,7 @@ class SmbSource extends ImageSourceProvider {
       },
     );
     final frame = await codec.getNextFrame();
+    _log.info('Thumbnail resize: ${origW}x$origH → ${frame.image.width}x${frame.image.height} (input ${(data.length / 1024).toStringAsFixed(0)} KB)');
     final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
     frame.image.dispose();
     codec.dispose();
