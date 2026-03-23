@@ -29,7 +29,15 @@
 - [x] pdfrx の FPDF_LoadCustomDocument デッドロック修正（fork: packages/pdfrx）
 - [x] PDF バイトの L2 キャッシュ（再オープン時に再DL不要）
 - [x] レンダリング済み PNG のビューア離脱時 L2 削除（2倍消費回避）
-- [ ] pdfrx 本家へのバグ報告 / PR（openData で FPDF_LoadMemDocument を使うべき件）
+- [x] openFile 化: PDF 全体をメモリに載せず L2/L3 のファイルパスから直接開く（fork 不要に）
+- [x] pdfrx 本家へのバグ報告 / PR（openData で FPDF_LoadMemDocument を使うべき件）
+- [x] PDF サムネイル: L2/L3 に PDF がある場合、page 0 をレンダリングしてサムネイル表示
+
+## サムネイル
+- [x] サムネイルキャッシュキー修正: thumb: キーのみ検索、full: は検索しない
+- [x] サムネイルリサイズ: 全種別で長辺 600px にリサイズして thumb: に保存
+- [x] ビューアから戻った時に notSupported サムネイルを自動リトライ
+- [x] ZIP サムネイルの L3 問題: thumb: キーのみ検索に変更したため解決済み
 
 ## ダウンロード（L3）
 - [x] 作品単位 DL（ZIP 全体 / PDF 全体 / Pixiv 全ページ）
