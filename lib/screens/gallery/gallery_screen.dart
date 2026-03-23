@@ -159,8 +159,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       if (!mounted || generation != _loadGeneration) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
-        final cached = await widget.cacheManager.get('thumb:${image.id}')
-            ?? await widget.cacheManager.get('full:${image.id}');
+        final cached = await widget.cacheManager.get('thumb:${image.id}');
         if (cached != null && mounted) {
           setState(() => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
         }
