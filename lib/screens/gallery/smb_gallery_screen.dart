@@ -460,12 +460,24 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
           final isVideo = item.metadata?['isVideo'] == true;
 
+          final videoThumb = isVideo ? _thumbnailData[item.id] : null;
+
           return GestureDetector(
             onTap: () => _onItemTap(item),
             child: isDir
                 ? _buildIconTile(item.name, Icons.folder, Colors.amber)
                 : isVideo
-                ? _buildIconTile(item.name, Icons.play_circle_outline, Colors.deepPurple)
+                ? (videoThumb is ThumbnailData
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.memory(videoThumb.data, fit: BoxFit.cover),
+                          const Center(
+                            child: Icon(Icons.play_circle_outline, color: Colors.white70, size: 48),
+                          ),
+                        ],
+                      )
+                    : _buildIconTile(item.name, Icons.play_circle_outline, Colors.deepPurple))
                 : switch (thumb) {
                     ThumbnailData(data: final d) =>
                       Image.memory(d, fit: BoxFit.cover),
