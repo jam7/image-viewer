@@ -371,16 +371,23 @@ class _ViewerScreenState extends State<ViewerScreen> {
     }
 
     final key = event.logicalKey;
-    // 上下: ページ送り
+    // 上下: 1ページ送り
     if (key == LogicalKeyboardKey.arrowDown ||
-        key == LogicalKeyboardKey.pageDown ||
         key == LogicalKeyboardKey.space) {
       _nextPage();
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.arrowUp ||
-        key == LogicalKeyboardKey.pageUp) {
+    if (key == LogicalKeyboardKey.arrowUp) {
       _prevPage();
+      return KeyEventResult.handled;
+    }
+    // PageDown/PageUp: 10ページ飛ばし
+    if (key == LogicalKeyboardKey.pageDown) {
+      _goToPage((_pageIndex + 10).clamp(0, (_pages?.length ?? 1) - 1));
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.pageUp) {
+      _goToPage((_pageIndex - 10).clamp(0, (_pages?.length ?? 1) - 1));
       return KeyEventResult.handled;
     }
     // 左右: 作品送り

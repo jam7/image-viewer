@@ -288,6 +288,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       _scrollBy(-viewportHeight * 0.9);
       return KeyEventResult.handled;
     }
+    if (key == LogicalKeyboardKey.home) {
+      _scrollBy(-_scrollController.offset);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.end) {
+      _scrollBy(_scrollController.position.maxScrollExtent - _scrollController.offset);
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.escape) {
       _popOnce();
       return KeyEventResult.handled;
