@@ -123,7 +123,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
     try {
       final items = await widget.source.listImages(path: widget.initialPath);
-      _imageFiles = items.where((i) => i.metadata?['isDirectory'] != true).toList();
+      _imageFiles = items.where((i) =>
+          i.metadata?['isDirectory'] != true &&
+          i.metadata?['isVideo'] != true).toList();
       setState(() {
         _items.addAll(items);
         _isLoading = false;

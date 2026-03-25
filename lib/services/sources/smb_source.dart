@@ -279,6 +279,11 @@ class SmbSource extends ImageSourceProvider {
 
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async {
+    // Video: no thumbnail support
+    if (source.metadata?['isVideo'] == true) {
+      throw ThumbnailNotSupportedException('Video: ${source.name}');
+    }
+
     // PDF: render page 0 if cached locally
     if (source.metadata?['isPdf'] == true) {
       final pdfCacheKey = 'full:${source.id}';
