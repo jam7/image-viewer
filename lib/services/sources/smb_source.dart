@@ -39,6 +39,7 @@ class SmbSource extends ImageSourceProvider {
 
   static const _zipExtensions = {'.zip'};
   static const _pdfExtensions = {'.pdf'};
+  static const _videoExtensions = {'.mp4'};
 
   /// Cached PDF file paths keyed by PDF source path.
   final Map<String, String> _pdfFilePathCache = {};
@@ -159,6 +160,19 @@ class SmbSource extends ImageSourceProvider {
             'path': file.path,
           },
         ));
+      } else if (_videoExtensions.contains(ext)) {
+        sources.add(ImageSource(
+          id: 'smb:${config.id}:${file.path}',
+          name: name,
+          uri: file.path,
+          type: ImageSourceType.smb,
+          sourceKey: smbSourceKey,
+          metadata: {
+            'isDirectory': false,
+            'isVideo': true,
+            'path': file.path,
+          },
+        ));
       }
     }
 
@@ -184,13 +198,16 @@ class SmbSource extends ImageSourceProvider {
     await reader.close();
 
     return ZipReader(
-      readRange: (offset, length) => _readRange(zipPath, offset, length),
+      readRange: (offset, length) => readRange(zipPath, offset, length),
       fileSize: fileSize,
     );
   }
 
+  /// Expose connect for proxy server.
+  Future<Smb2Tree> connectForProxy() => _connect();
+
   /// Range read for a specific file path via SMB.
-  Future<Uint8List> _readRange(String path, int offset, int length) async {
+  Future<Uint8List> readRange(String path, int offset, int length) async {
     final tree = await _connect();
     final reader = await tree.openRead(path).timeout(_ioTimeout);
     try {
@@ -199,7 +216,7 @@ class SmbSource extends ImageSourceProvider {
       try {
         await reader.close();
       } catch (e, st) {
-        _log.warning('close error in _readRange', e, st);
+        _log.warning('close error in readRange', e, st);
       }
     }
   }

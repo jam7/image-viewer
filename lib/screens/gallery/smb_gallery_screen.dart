@@ -11,7 +11,9 @@ import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../../services/video/smb_proxy_server.dart';
 import '../../widgets/thumbnail_result.dart';
+import '../video/video_player_screen.dart';
 import '../viewer/viewer_screen.dart';
 
 final _log = Logger('SmbGallery');
@@ -22,6 +24,7 @@ class SmbGalleryScreen extends StatefulWidget {
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
+  final SmbProxyServer proxyServer;
   final String initialPath;
 
   const SmbGalleryScreen({
@@ -30,6 +33,7 @@ class SmbGalleryScreen extends StatefulWidget {
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
+    required this.proxyServer,
     this.initialPath = '/',
   });
 
@@ -227,18 +231,28 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           cacheManager: widget.cacheManager,
           favoritesStore: widget.favoritesStore,
           registry: widget.registry,
+          proxyServer: widget.proxyServer,
           initialPath: path,
         ),
       ));
+    } else if (item.metadata?['isVideo'] == true) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => VideoPlayerScreen(
+          item: item,
+          source: widget.source,
+          proxyServer: widget.proxyServer,
+        ),
+      ));
     } else {
-      // 画像のみフィルタしてビューアに渡す
-      final imageItems =
-          _items.where((i) => i.metadata?['isDirectory'] != true).toList();
-      final index = imageItems.indexWhere((i) => i.id == item.id);
+      // 画像/ZIP/PDFをフィルタしてビューアに渡す（動画を除外）
+      final viewerItems = _items.where((i) =>
+          i.metadata?['isDirectory'] != true &&
+          i.metadata?['isVideo'] != true).toList();
+      final index = viewerItems.indexWhere((i) => i.id == item.id);
       if (index >= 0) {
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ViewerScreen(
-            items: imageItems,
+            items: viewerItems,
             initialIndex: index,
             registry: widget.registry,
             cacheManager: widget.cacheManager,
@@ -385,10 +399,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             });
           }
 
+          final isVideo = item.metadata?['isVideo'] == true;
+
           return GestureDetector(
             onTap: () => _onItemTap(item),
             child: isDir
                 ? _buildIconTile(item.name, Icons.folder, Colors.amber)
+                : isVideo
+                ? _buildIconTile(item.name, Icons.play_circle_outline, Colors.deepPurple)
                 : switch (thumb) {
                     ThumbnailData(data: final d) =>
                       Image.memory(d, fit: BoxFit.cover),

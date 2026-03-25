@@ -12,6 +12,7 @@ import 'services/pixiv/pixiv_api_client.dart';
 import 'services/pixiv/pixiv_web_client.dart';
 import 'services/smb/smb_config_store.dart';
 import 'services/sources/source_registry.dart';
+import 'services/video/smb_proxy_server.dart';
 
 final _log = Logger('App');
 
@@ -41,6 +42,7 @@ class _AppRoot extends StatefulWidget {
 class _AppRootState extends State<_AppRoot> {
   final _webClient = PixivWebClient();
   final _smbConfigStore = SmbConfigStore();
+  final _proxyServer = SmbProxyServer();
   late final SourceRegistry _registry;
   CacheManager? _cacheManager;
   FavoritesStore? _favoritesStore;
@@ -114,6 +116,7 @@ class _AppRootState extends State<_AppRoot> {
 
   @override
   void dispose() {
+    _proxyServer.dispose();
     _registry.disposeAll();
     _webClient.dispose();
     super.dispose();
@@ -132,6 +135,7 @@ class _AppRootState extends State<_AppRoot> {
       favoritesStore: _favoritesStore!,
       smbConfigStore: _smbConfigStore,
       registry: _registry,
+      proxyServer: _proxyServer,
     );
   }
 }
