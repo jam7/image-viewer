@@ -258,7 +258,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             await player.stream.width
                 .firstWhere((w) => w != null && w > 0)
                 .timeout(const Duration(seconds: 15));
-            await Future.delayed(const Duration(milliseconds: 300));
             await player.pause();
             final bytes = await player.screenshot(format: 'image/jpeg');
             if (bytes != null && mounted) {
