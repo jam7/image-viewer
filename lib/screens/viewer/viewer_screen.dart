@@ -743,6 +743,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
                             )
                           : _buildLoadingIndicator(currentImage.id),
                 ),
+                // Page sidebar (right edge)
+                if (pages.length > 1)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    right: 0,
+                    child: _buildPageSidebar(pages),
+                  ),
                 if (_showOverlay) ...[
                   Positioned(
                     top: 0,
@@ -871,6 +879,59 @@ class _ViewerScreenState extends State<ViewerScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageSidebar(List<ImageSource> pages) {
+    return GestureDetector(
+      onVerticalDragUpdate: (details) {
+        final renderBox = details.localPosition;
+        final height = context.size?.height ?? 1;
+        final ratio = (renderBox.dy / height).clamp(0.0, 1.0);
+        final targetPage = (ratio * (pages.length - 1)).round();
+        if (targetPage != _pageIndex) {
+          _goToPage(targetPage);
+        }
+      },
+      onTapDown: (details) {
+        final height = context.size?.height ?? 1;
+        final ratio = (details.localPosition.dy / height).clamp(0.0, 1.0);
+        final targetPage = (ratio * (pages.length - 1)).round();
+        _goToPage(targetPage);
+      },
+      child: Container(
+        width: 40,
+        color: Colors.black26,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final totalHeight = constraints.maxHeight;
+            final indicatorPos = pages.length > 1
+                ? (_pageIndex / (pages.length - 1)) * (totalHeight - 24)
+                : 0.0;
+            return Stack(
+              children: [
+                Positioned(
+                  top: indicatorPos,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 24,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${_pageIndex + 1}',
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

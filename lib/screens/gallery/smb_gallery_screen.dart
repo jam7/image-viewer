@@ -365,47 +365,51 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       return const Center(child: Text('ファイルが見つかりませんでした'));
     }
 
-    return GridView.builder(
+    return Scrollbar(
       controller: _scrollController,
-      padding: const EdgeInsets.all(4),
-      gridDelegate: galleryGridDelegate,
-      itemCount: _items.length,
-      itemBuilder: (context, index) {
-        final item = _items[index];
-        final isDir = item.metadata?['isDirectory'] == true;
-        final thumb = _thumbnailData[item.id];
+      thumbVisibility: true,
+      child: GridView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(4),
+        gridDelegate: galleryGridDelegate,
+        itemCount: _items.length,
+        itemBuilder: (context, index) {
+          final item = _items[index];
+          final isDir = item.metadata?['isDirectory'] == true;
+          final thumb = _thumbnailData[item.id];
 
-        // Trigger next batch when an untried item becomes visible.
-        if (!isDir && thumb == null && !_isLoadingThumbnails) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && !_isLoadingThumbnails) _loadNextBatch();
-          });
-        }
+          // Trigger next batch when an untried item becomes visible.
+          if (!isDir && thumb == null && !_isLoadingThumbnails) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && !_isLoadingThumbnails) _loadNextBatch();
+            });
+          }
 
-        return GestureDetector(
-          onTap: () => _onItemTap(item),
-          child: isDir
-              ? _buildIconTile(item.name, Icons.folder, Colors.amber)
-              : switch (thumb) {
-                  ThumbnailData(data: final d) =>
-                    Image.memory(d, fit: BoxFit.cover),
-                  ThumbnailFailed(reason: ThumbnailFailReason.notSupported) =>
-                    _buildIconTile(item.name, Icons.archive, Colors.blueGrey),
-                  ThumbnailFailed(reason: ThumbnailFailReason.timeout) =>
-                    _buildIconTile(item.name, Icons.broken_image, Colors.red[300]!),
-                  null => Container(
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+          return GestureDetector(
+            onTap: () => _onItemTap(item),
+            child: isDir
+                ? _buildIconTile(item.name, Icons.folder, Colors.amber)
+                : switch (thumb) {
+                    ThumbnailData(data: final d) =>
+                      Image.memory(d, fit: BoxFit.cover),
+                    ThumbnailFailed(reason: ThumbnailFailReason.notSupported) =>
+                      _buildIconTile(item.name, Icons.archive, Colors.blueGrey),
+                    ThumbnailFailed(reason: ThumbnailFailReason.timeout) =>
+                      _buildIconTile(item.name, Icons.broken_image, Colors.red[300]!),
+                    null => Container(
+                        color: Colors.grey[300],
+                        child: const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         ),
                       ),
-                    ),
-                },
-        );
-      },
+                  },
+          );
+        },
+      ),
     );
   }
 
