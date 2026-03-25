@@ -8,6 +8,7 @@ import '../../services/smb/smb_config_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../../services/video/smb_proxy_server.dart';
 import '../gallery/gallery_screen.dart';
 import '../gallery/smb_gallery_screen.dart';
 import '../settings/settings_screen.dart';
@@ -22,6 +23,7 @@ class HomeScreen extends StatefulWidget {
   final FavoritesStore favoritesStore;
   final SmbConfigStore smbConfigStore;
   final SourceRegistry registry;
+  final SmbProxyServer proxyServer;
 
   const HomeScreen({
     super.key,
@@ -29,6 +31,7 @@ class HomeScreen extends StatefulWidget {
     required this.favoritesStore,
     required this.smbConfigStore,
     required this.registry,
+    required this.proxyServer,
   });
 
   @override
@@ -223,6 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
         registry: widget.registry,
+        proxyServer: widget.proxyServer,
         initialPath: config.basePath ?? '/',
       ),
     ));
