@@ -43,6 +43,10 @@ class SmbSource extends ImageSourceProvider {
   /// Cached PDF file paths keyed by PDF source path.
   final Map<String, String> _pdfFilePathCache = {};
 
+  /// Cached PdfDocument for avoiding repeated open/close on large PDFs.
+  String? _cachedPdfPath;
+  PdfDocument? _cachedPdfDoc;
+
   Future<Smb2Tree>? _connectFuture;
 
   SmbSource({required this.config, required this.password, this.cacheManager});
@@ -432,9 +436,8 @@ class SmbSource extends ImageSourceProvider {
     final pdfFilePath = await _ensurePdfFile(pdfPath, pdfCacheKey);
 
     // Get page count from PDF metadata (no rasterization)
-    final doc = await PdfDocument.openFile(pdfFilePath);
+    final doc = await _openPdfCached(pdfFilePath);
     final pageCount = doc.pages.length;
-    await doc.dispose();
     _log.info('resolvePages: $pageCount pages in PDF');
 
     final pages = <ImageSource>[];
@@ -491,40 +494,59 @@ class SmbSource extends ImageSourceProvider {
     throw StateError('Failed to cache PDF file: $pdfPath');
   }
 
+  /// Get or open a cached PdfDocument. Disposes previous if different file.
+  Future<PdfDocument> _openPdfCached(String filePath) async {
+    if (_cachedPdfPath == filePath && _cachedPdfDoc != null) {
+      return _cachedPdfDoc!;
+    }
+    await _closePdfCache();
+    final doc = await PdfDocument.openFile(filePath);
+    _cachedPdfDoc = doc;
+    _cachedPdfPath = filePath;
+    return doc;
+  }
+
+  Future<void> _closePdfCache() async {
+    if (_cachedPdfDoc != null) {
+      await _cachedPdfDoc!.dispose();
+      _cachedPdfDoc = null;
+      _cachedPdfPath = null;
+    }
+  }
+
   /// Render a single PDF page to PNG.
   Future<Uint8List> _renderPdfPage(String pdfPath, String pdfCacheKey, int pageIndex) async {
     final pdfFilePath = await _ensurePdfFile(pdfPath, pdfCacheKey);
-
     _log.info('Rendering PDF page $pageIndex from $pdfPath');
-    final doc = await PdfDocument.openFile(pdfFilePath);
+    return _renderPdfPageFrom(pdfFilePath, pageIndex, scale: 2.0);
+  }
+
+  /// Render a PDF page to PNG at given scale.
+  Future<Uint8List> _renderPdfPageFrom(String filePath, int pageIndex, {required double scale}) async {
+    final doc = await _openPdfCached(filePath);
+    final page = doc.pages[pageIndex];
+    final pdfImage = await page.render(
+      fullWidth: page.width * scale,
+      fullHeight: page.height * scale,
+    );
+    if (pdfImage == null) {
+      throw StateError('Failed to render PDF page $pageIndex');
+    }
     try {
-      final page = doc.pages[pageIndex];
-      // Render at 2x page size for good quality
-      final pdfImage = await page.render(
-        fullWidth: page.width * 2,
-        fullHeight: page.height * 2,
-      );
-      if (pdfImage == null) {
-        throw StateError('Failed to render PDF page $pageIndex');
-      }
+      final image = await pdfImage.createImage();
       try {
-        final image = await pdfImage.createImage();
-        try {
-          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-          if (byteData == null) {
-            throw StateError('Failed to encode PDF page $pageIndex as PNG');
-          }
-          final png = byteData.buffer.asUint8List();
-          _log.info('Rendered PDF page $pageIndex: ${(png.length / 1024).toStringAsFixed(0)} KB');
-          return png;
-        } finally {
-          image.dispose();
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) {
+          throw StateError('Failed to encode PDF page $pageIndex as PNG');
         }
+        final png = byteData.buffer.asUint8List();
+        _log.info('Rendered PDF page $pageIndex: ${(png.length / 1024).toStringAsFixed(0)} KB');
+        return png;
       } finally {
-        pdfImage.dispose();
+        image.dispose();
       }
     } finally {
-      await doc.dispose();
+      pdfImage.dispose();
     }
   }
 
@@ -594,41 +616,18 @@ class SmbSource extends ImageSourceProvider {
 
   /// Render PDF page 0 as a thumbnail with long edge [_thumbnailMaxSize] px.
   Future<Uint8List> _renderPdfThumbnail(String filePath) async {
-    final doc = await PdfDocument.openFile(filePath);
-    try {
-      final page = doc.pages[0];
-      final longEdge = page.width > page.height ? page.width : page.height;
-      final scale = _thumbnailMaxSize / longEdge;
-      final pdfImage = await page.render(
-        fullWidth: page.width * scale,
-        fullHeight: page.height * scale,
-      );
-      if (pdfImage == null) {
-        throw StateError('Failed to render PDF page 0');
-      }
-      try {
-        final image = await pdfImage.createImage();
-        try {
-          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-          if (byteData == null) {
-            throw StateError('Failed to encode PDF page 0 as PNG');
-          }
-          return byteData.buffer.asUint8List();
-        } finally {
-          image.dispose();
-        }
-      } finally {
-        pdfImage.dispose();
-      }
-    } finally {
-      await doc.dispose();
-    }
+    final doc = await _openPdfCached(filePath);
+    final page = doc.pages[0];
+    final longEdge = page.width > page.height ? page.width : page.height;
+    final scale = _thumbnailMaxSize / longEdge;
+    return _renderPdfPageFrom(filePath, 0, scale: scale);
   }
 
   @override
   Future<void> dispose() async {
     _zipReaderFutures.clear();
     _pdfFilePathCache.clear();
+    await _closePdfCache();
     _connectFuture = null;
     if (_client != null) {
       await _client!.disconnect();
