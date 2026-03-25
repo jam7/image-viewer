@@ -156,7 +156,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
   void _preloadAround(int index) {
     final pages = _pages;
     if (pages == null) return;
-    for (var i = index - 1; i <= index + 4; i++) {
+    // PDF rendering is slow (~500ms/page, serial), so reduce lookahead
+    final isPdf = pages.isNotEmpty && pages.first.metadata?['isPdfPage'] == true;
+    final ahead = isPdf ? 2 : 4;
+    for (var i = index - 1; i <= index + ahead; i++) {
       if (i >= 0 && i < pages.length) {
         _loadFullImage(pages[i]);
       }
