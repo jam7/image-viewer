@@ -56,6 +56,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
   final Map<String, bool> _loadingStates = {};
   final Map<String, (int received, int total)> _loadProgress = {};
   bool _showOverlay = true;
+  bool _sidebarActive = false;
   bool _isDownloading = false;
   (int received, int total)? _downloadProgress;
   final _focusNode = FocusNode();
@@ -890,53 +891,77 @@ class _ViewerScreenState extends State<ViewerScreen> {
   }
 
   Widget _buildPageSidebar(List<ImageSource> pages) {
-    return GestureDetector(
-      onVerticalDragUpdate: (details) {
-        final renderBox = details.localPosition;
-        final height = context.size?.height ?? 1;
-        final ratio = (renderBox.dy / height).clamp(0.0, 1.0);
-        final targetPage = (ratio * (pages.length - 1)).round();
-        if (targetPage != _pageIndex) {
+    final active = _sidebarActive;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _sidebarActive = true),
+      onExit: (_) => setState(() => _sidebarActive = false),
+      child: GestureDetector(
+        onVerticalDragStart: (_) => setState(() => _sidebarActive = true),
+        onVerticalDragEnd: (_) => setState(() => _sidebarActive = false),
+        onVerticalDragUpdate: (details) {
+          final renderBox = details.localPosition;
+          final height = context.size?.height ?? 1;
+          final ratio = (renderBox.dy / height).clamp(0.0, 1.0);
+          final targetPage = (ratio * (pages.length - 1)).round();
+          if (targetPage != _pageIndex) {
+            _goToPage(targetPage);
+          }
+        },
+        onTapDown: (details) {
+          final height = context.size?.height ?? 1;
+          final ratio = (details.localPosition.dy / height).clamp(0.0, 1.0);
+          final targetPage = (ratio * (pages.length - 1)).round();
           _goToPage(targetPage);
-        }
-      },
-      onTapDown: (details) {
-        final height = context.size?.height ?? 1;
-        final ratio = (details.localPosition.dy / height).clamp(0.0, 1.0);
-        final targetPage = (ratio * (pages.length - 1)).round();
-        _goToPage(targetPage);
-      },
-      child: Container(
-        width: 40,
-        color: Colors.black26,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final totalHeight = constraints.maxHeight;
-            final indicatorPos = pages.length > 1
-                ? (_pageIndex / (pages.length - 1)) * (totalHeight - 24)
-                : 0.0;
-            return Stack(
-              children: [
-                Positioned(
-                  top: indicatorPos,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    height: 24,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(4),
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: active ? 40 : 6,
+          color: active ? Colors.black26 : Colors.transparent,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final totalHeight = constraints.maxHeight;
+              final indicatorPos = pages.length > 1
+                  ? (_pageIndex / (pages.length - 1)) * (totalHeight - 24)
+                  : 0.0;
+              return Stack(
+                children: [
+                  // Thin track line (always visible)
+                  if (!active)
+                    Positioned(
+                      top: indicatorPos,
+                      right: 0,
+                      child: Container(
+                        width: 4,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: Colors.white38,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                    child: Text(
-                      '${_pageIndex + 1}',
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                  // Full indicator (hover/drag)
+                  if (active)
+                    Positioned(
+                      top: indicatorPos,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${_pageIndex + 1}',
+                          style: const TextStyle(color: Colors.white, fontSize: 10),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
