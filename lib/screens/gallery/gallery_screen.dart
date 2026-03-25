@@ -686,63 +686,67 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return const Center(child: Text('画像が見つかりませんでした'));
     }
 
-    return GridView.builder(
+    return Scrollbar(
       controller: _scrollController,
-      padding: const EdgeInsets.all(4),
-      gridDelegate: galleryGridDelegate,
-      itemCount: _images.length + (_isLoading ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= _images.length) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final image = _images[index];
-        final thumbnail = _thumbnailData[image.id];
-        final pageCount = image.metadata?['pageCount'] as int? ?? 1;
+      thumbVisibility: true,
+      child: GridView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(4),
+        gridDelegate: galleryGridDelegate,
+        itemCount: _images.length + (_isLoading ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index >= _images.length) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final image = _images[index];
+          final thumbnail = _thumbnailData[image.id];
+          final pageCount = image.metadata?['pageCount'] as int? ?? 1;
 
-        return GestureDetector(
-          onTap: () => _openViewer(index),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              thumbnail != null
-                  ? Image.memory(thumbnail, fit: BoxFit.cover)
-                  : Container(
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                ),
-              if (pageCount > 1)
-                Positioned(
-                  right: 4,
-                  bottom: 4,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.layers, color: Colors.white, size: 12),
-                        const SizedBox(width: 2),
-                        Text(
-                          '$pageCount',
-                          style: const TextStyle(color: Colors.white, fontSize: 11),
+          return GestureDetector(
+            onTap: () => _openViewer(index),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                thumbnail != null
+                    ? Image.memory(thumbnail, fit: BoxFit.cover)
+                    : Container(
+                        color: Colors.grey[300],
+                        child: const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         ),
-                      ],
+                      ),
+                if (pageCount > 1)
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.layers, color: Colors.white, size: 12),
+                          const SizedBox(width: 2),
+                          Text(
+                            '$pageCount',
+                            style: const TextStyle(color: Colors.white, fontSize: 11),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
