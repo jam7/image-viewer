@@ -229,34 +229,35 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _loadVideoThumbnails(List<ImageSource> videos) async {
-    for (final video in videos) {
-      if (!mounted) return;
-      final thumbKey = 'thumb:${video.id}';
-      try {
-        // Check cache first
-        final cached = await widget.cacheManager.get(thumbKey);
-        if (cached != null) {
-          if (mounted) {
-            setState(() => _thumbnailData[video.id] = ThumbnailData(Uint8List.fromList(cached.data)));
-          }
-          continue;
-        }
+    if (videos.isEmpty) return;
 
-        // Capture first frame via proxy + media_kit
-        final url = await widget.proxyServer.registerSession(widget.source, video.uri);
-        final token = url.split('/').last;
+    // Reuse a single Player instance for all thumbnails
+    final player = Player();
+    VideoController(player);
+    await player.setVolume(0);
+
+    try {
+      for (final video in videos) {
+        if (!mounted) return;
+        final thumbKey = 'thumb:${video.id}';
         try {
-          final player = Player();
-          // VideoController is needed for screenshot to work
-          VideoController(player);
+          // Check cache first
+          final cached = await widget.cacheManager.get(thumbKey);
+          if (cached != null) {
+            if (mounted) {
+              setState(() => _thumbnailData[video.id] = ThumbnailData(Uint8List.fromList(cached.data)));
+            }
+            continue;
+          }
+
+          // Capture first frame via proxy + media_kit
+          final url = await widget.proxyServer.registerSession(widget.source, video.uri);
+          final token = url.split('/').last;
           try {
-            await player.setVolume(0);
             await player.open(Media(url));
-            // Wait for video dimensions to be available
             await player.stream.width
                 .firstWhere((w) => w != null && w > 0)
                 .timeout(const Duration(seconds: 15));
-            // Brief delay for frame decode
             await Future.delayed(const Duration(milliseconds: 300));
             await player.pause();
             final bytes = await player.screenshot(format: 'image/jpeg');
@@ -267,17 +268,17 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
               _log.info('Video thumbnail: ${video.name} (${(bytes.length / 1024).toStringAsFixed(0)} KB)');
             }
           } finally {
-            await player.dispose();
+            widget.proxyServer.invalidateToken(token);
           }
-        } finally {
-          widget.proxyServer.invalidateToken(token);
-        }
-      } catch (e, st) {
-        _log.warning('Video thumbnail failed: ${video.name}', e, st);
-        if (mounted) {
-          setState(() => _thumbnailData[video.id] = ThumbnailFailed(ThumbnailFailReason.timeout));
+        } catch (e, st) {
+          _log.warning('Video thumbnail failed: ${video.name}', e, st);
+          if (mounted) {
+            setState(() => _thumbnailData[video.id] = ThumbnailFailed(ThumbnailFailReason.timeout));
+          }
         }
       }
+    } finally {
+      await player.dispose();
     }
   }
 
