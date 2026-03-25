@@ -707,9 +707,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
         },
         onHorizontalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0;
-          if (velocity < -300) {
+          if (velocity < -500) {
             _nextItem(); // 左スワイプ → 次の作品
-          } else if (velocity > 300) {
+          } else if (velocity > 500) {
             _prevItem(); // 右スワイプ → 前の作品
           }
         },
