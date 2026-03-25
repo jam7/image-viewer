@@ -4,7 +4,6 @@ import 'package:archive_reader/archive_reader.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
 import 'package:flutter/painting.dart';
-import 'package:image/image.dart' as img;
 import 'package:logging/logging.dart';
 import 'dart:ui' as ui;
 
@@ -522,7 +521,7 @@ class SmbSource extends ImageSourceProvider {
     return _renderPdfPageFrom(pdfFilePath, pageIndex, scale: 2.0);
   }
 
-  /// Render a PDF page to JPEG at given scale.
+  /// Render a PDF page to PNG at given scale.
   Future<Uint8List> _renderPdfPageFrom(String filePath, int pageIndex, {required double scale}) async {
     final doc = await _openPdfCached(filePath);
     final page = doc.pages[pageIndex];
@@ -536,22 +535,13 @@ class SmbSource extends ImageSourceProvider {
     try {
       final image = await pdfImage.createImage();
       try {
-        final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) {
-          throw StateError('Failed to get raw pixels for PDF page $pageIndex');
+          throw StateError('Failed to encode PDF page $pageIndex as PNG');
         }
-        final rgba = byteData.buffer.asUint8List();
-        final w = image.width;
-        final h = image.height;
-        final imgData = img.Image.fromBytes(
-          width: w,
-          height: h,
-          bytes: rgba.buffer,
-          numChannels: 4,
-        );
-        final jpeg = Uint8List.fromList(img.encodeJpg(imgData, quality: 90));
-        _log.info('Rendered PDF page $pageIndex: ${(jpeg.length / 1024).toStringAsFixed(0)} KB');
-        return jpeg;
+        final png = byteData.buffer.asUint8List();
+        _log.info('Rendered PDF page $pageIndex: ${(png.length / 1024).toStringAsFixed(0)} KB');
+        return png;
       } finally {
         image.dispose();
       }
