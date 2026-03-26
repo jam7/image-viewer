@@ -268,6 +268,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             await Future.delayed(const Duration(milliseconds: 300));
             await player.pause();
             final bytes = await player.screenshot(format: 'image/jpeg');
+            await player.stop();
             if (bytes != null && mounted) {
               final resized = await widget.source.resizeToThumbnail(bytes);
               widget.cacheManager.l1.put(thumbKey, resized);
