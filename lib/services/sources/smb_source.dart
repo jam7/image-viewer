@@ -39,7 +39,9 @@ class SmbSource extends ImageSourceProvider {
 
   static const _zipExtensions = {'.zip'};
   static const _pdfExtensions = {'.pdf'};
-  static const _videoExtensions = {'.mp4'};
+  static const _videoExtensions = {
+    '.mp4', '.mkv', '.avi', '.webm', '.flv', '.mov', '.wmv', '.mpg', '.mpeg', '.m4v', '.ts',
+  };
 
   /// Cached PDF file paths keyed by PDF source path.
   final Map<String, String> _pdfFilePathCache = {};
