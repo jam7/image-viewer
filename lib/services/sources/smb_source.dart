@@ -316,7 +316,7 @@ class SmbSource extends ImageSourceProvider {
         }
         final firstImage = await zipReader.readEntry(imageEntries.first);
         _log.info('ZIP thumbnail: ${imageEntries.first.name} (${firstImage.length} bytes)');
-        return _resizeToThumbnail(firstImage);
+        return resizeToThumbnail(firstImage);
       } catch (e, st) {
         if (e is ThumbnailNotSupportedException) rethrow;
         _log.warning('ZIP thumbnail failed: ${source.name}', e, st);
@@ -339,7 +339,7 @@ class SmbSource extends ImageSourceProvider {
             final exifSize = await _getImageSize(exifBytes);
             if (exifSize != null && (exifSize.width >= _thumbnailMaxSize || exifSize.height >= _thumbnailMaxSize)) {
               _log.info('EXIF thumbnail: ${source.name} (${exifSize.width}x${exifSize.height})');
-              return _resizeToThumbnail(exifBytes);
+              return resizeToThumbnail(exifBytes);
             }
             _log.info('EXIF thumbnail too small (${exifSize?.width}x${exifSize?.height}), using full image: ${source.name}');
           }
@@ -351,7 +351,7 @@ class SmbSource extends ImageSourceProvider {
 
     // Fallback: full image → resize
     final fullData = await fetchFullImage(source);
-    return _resizeToThumbnail(fullData);
+    return resizeToThumbnail(fullData);
   }
 
   /// ファイルの先頭 [length] バイトだけ読み込む。
@@ -611,7 +611,7 @@ class SmbSource extends ImageSourceProvider {
 
   /// Resize image data so the long edge is at most [_thumbnailMaxSize] px.
   /// Returns PNG bytes.
-  Future<Uint8List> _resizeToThumbnail(Uint8List data) async {
+  Future<Uint8List> resizeToThumbnail(Uint8List data) async {
     final buffer = await ui.ImmutableBuffer.fromUint8List(data);
     int? origW, origH;
     final codec = await PaintingBinding.instance.instantiateImageCodecWithSize(

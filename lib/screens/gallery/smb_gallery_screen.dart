@@ -261,10 +261,11 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             await player.pause();
             final bytes = await player.screenshot(format: 'image/jpeg');
             if (bytes != null && mounted) {
-              widget.cacheManager.l1.put(thumbKey, bytes);
-              await widget.cacheManager.l2.put(thumbKey, bytes);
-              setState(() => _thumbnailData[video.id] = ThumbnailData(bytes));
-              _log.info('Video thumbnail: ${video.name} (${(bytes.length / 1024).toStringAsFixed(0)} KB)');
+              final resized = await widget.source.resizeToThumbnail(bytes);
+              widget.cacheManager.l1.put(thumbKey, resized);
+              await widget.cacheManager.l2.put(thumbKey, resized);
+              setState(() => _thumbnailData[video.id] = ThumbnailData(resized));
+              _log.info('Video thumbnail: ${video.name} (${(bytes.length / 1024).toStringAsFixed(0)} KB → ${(resized.length / 1024).toStringAsFixed(0)} KB)');
             }
           } finally {
             widget.proxyServer.invalidateToken(token);
