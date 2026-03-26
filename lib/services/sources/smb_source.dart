@@ -612,8 +612,16 @@ class SmbSource extends ImageSourceProvider {
   }
 
   /// Resize image data so the long edge is at most [_thumbnailMaxSize] px.
-  /// Returns PNG bytes.
+  /// If data is <= [_thumbnailMaxBytes], returns as-is (avoids JPEG→PNG size increase).
+  /// Otherwise returns PNG bytes.
+  static const _thumbnailMaxBytes = 400 * 1024; // 400KB
+
   Future<Uint8List> resizeToThumbnail(Uint8List data) async {
+    if (data.length <= _thumbnailMaxBytes) {
+      _log.info('Thumbnail skip resize: ${(data.length / 1024).toStringAsFixed(0)} KB <= ${_thumbnailMaxBytes ~/ 1024} KB');
+      return data;
+    }
+
     final buffer = await ui.ImmutableBuffer.fromUint8List(data);
     int? origW, origH;
     final codec = await PaintingBinding.instance.instantiateImageCodecWithSize(
