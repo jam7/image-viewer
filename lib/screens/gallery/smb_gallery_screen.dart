@@ -230,6 +230,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   Future<void> _loadVideoThumbnails(List<ImageSource> videos) async {
     if (videos.isEmpty) return;
+    _log.info('Video thumbnails: starting ${videos.length} videos');
 
     // Reuse a single Player instance for all thumbnails
     final player = Player();
@@ -238,7 +239,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
     try {
       for (final video in videos) {
-        if (!mounted) return;
+        if (!mounted) {
+          _log.info('Video thumbnails: aborted (unmounted)');
+          return;
+        }
         final thumbKey = 'thumb:${video.id}';
         try {
           // Check cache first
@@ -278,7 +282,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         }
       }
     } finally {
+      _log.info('Video thumbnails: disposing player');
       await player.dispose();
+      _log.info('Video thumbnails: done');
     }
   }
 
