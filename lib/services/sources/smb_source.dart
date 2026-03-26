@@ -45,6 +45,8 @@ class SmbSource extends ImageSourceProvider {
 
   /// Cached PDF file paths keyed by PDF source path.
   final Map<String, String> _pdfFilePathCache = {};
+  /// Future cache to prevent duplicate concurrent PDF downloads.
+  final Map<String, Future<String>> _pdfDownloadFutures = {};
 
   /// Cached PdfDocument for avoiding repeated open/close on large PDFs.
   String? _cachedPdfPath;
@@ -486,11 +488,18 @@ class SmbSource extends ImageSourceProvider {
   }
 
   /// Ensure PDF file is available on local disk. Returns file path.
-  Future<String> _ensurePdfFile(String pdfPath, String pdfCacheKey) async {
-    // Check in-memory path cache
+  /// Uses Future cache to prevent duplicate concurrent downloads.
+  Future<String> _ensurePdfFile(String pdfPath, String pdfCacheKey) {
+    // Check in-memory path cache (synchronous)
     final cachedPath = _pdfFilePathCache[pdfPath];
-    if (cachedPath != null) return cachedPath;
+    if (cachedPath != null) return Future.value(cachedPath);
 
+    // Use Future cache to prevent duplicate downloads
+    return _pdfDownloadFutures[pdfPath] ??= _ensurePdfFileImpl(pdfPath, pdfCacheKey)
+        .whenComplete(() => _pdfDownloadFutures.remove(pdfPath));
+  }
+
+  Future<String> _ensurePdfFileImpl(String pdfPath, String pdfCacheKey) async {
     // Check L2/L3 cache for existing file
     if (cacheManager != null) {
       final filePath = cacheManager!.getFilePath(pdfCacheKey);
@@ -659,6 +668,7 @@ class SmbSource extends ImageSourceProvider {
   Future<void> dispose() async {
     _zipReaderFutures.clear();
     _pdfFilePathCache.clear();
+    _pdfDownloadFutures.clear();
     await _closePdfCache();
     _connectFuture = null;
     if (_client != null) {

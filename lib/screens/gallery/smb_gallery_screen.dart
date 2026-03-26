@@ -315,15 +315,11 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         ),
       ));
     } else {
-      // 画像/ZIP/PDFをフィルタしてビューアに渡す（動画を除外）
-      final viewerItems = _items.where((i) =>
-          i.metadata?['isDirectory'] != true &&
-          i.metadata?['isVideo'] != true).toList();
-      final index = viewerItems.indexWhere((i) => i.id == item.id);
+      final index = _imageFiles.indexWhere((i) => i.id == item.id);
       if (index >= 0) {
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ViewerScreen(
-            items: viewerItems,
+            items: _imageFiles,
             initialIndex: index,
             registry: widget.registry,
             cacheManager: widget.cacheManager,
