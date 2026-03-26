@@ -107,7 +107,14 @@ class SmbProxyServer {
       int remaining = length;
       while (remaining > 0) {
         final readLen = remaining < chunkSize ? remaining : chunkSize;
-        final data = await session.source.readRange(session.filePath, offset, readLen);
+        Uint8List data;
+        try {
+          data = await session.source.readRange(session.filePath, offset, readLen);
+        } catch (e) {
+          // Retry once on connection error (triggers SMB reconnect)
+          _log.info('readRange failed, retrying: $e');
+          data = await session.source.readRange(session.filePath, offset, readLen);
+        }
         request.response.add(data);
         offset += data.length;
         remaining -= data.length;
