@@ -131,7 +131,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ? Center(
                       child: Text(_error!, style: const TextStyle(color: Colors.red)),
                     )
-                  : Video(controller: _controller),
+                  : MaterialVideoControlsTheme(
+                      normal: const MaterialVideoControlsThemeData(
+                        padding: EdgeInsets.only(bottom: 100.0),
+                        seekBarContainerHeight: 72.0,
+                      ),
+                      fullscreen: const MaterialVideoControlsThemeData(),
+                      child: SafeArea(child: Video(controller: _controller)),
+                    ),
         ),
       ),
     );
