@@ -60,6 +60,14 @@
 - [ ] DL 済み ZIP のローカル RangeReader での閲覧（SMB 不要）
 - [ ] DL 済み PDF のローカル閲覧
 
+## 動画
+- [x] media_kit による SMB 動画再生（ローカル HTTP プロキシ経由）
+- [x] 動画サムネイル: 3 秒地点のフレームをキャプチャ、リサイズして thumb: に保存
+- [x] 対応フォーマット: MP4, MKV, AVI, WebM, FLV, MOV, WMV, MPEG, M4V, TS
+- [x] プロキシの SMB 接続断リトライ
+- [ ] 動画プレーヤー UI 改善（シークバー、再生時間表示、フルスクリーン切り替え）
+- [ ] PDF レンダラーの独立化（SmbSource → 共通ユーティリティ、Pixiv/DLsite 等でも利用可能に）
+
 ## ネットワーク
 - [ ] Range Request対応（ZIPファイル内の個別画像取得に必要）
 - [ ] ZIPファイル対応（Pixiv ugoira等）

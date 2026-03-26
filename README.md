@@ -46,7 +46,8 @@
 |---|---|---|
 | 画像 | JPEG, PNG, GIF, WebP, BMP | 直接表示 |
 | アーカイブ | ZIP | Range Read で個別エントリ取得（全体DL不要）。ZIP in ZIP は非対応表示 |
-| ドキュメント | PDF | PDFium でページレンダリング（`pdfrx` fork 使用） |
+| ドキュメント | PDF | PDFium でページレンダリング（`pdfrx` 使用） |
+| 動画 | MP4, MKV, AVI, WebM, FLV, MOV, WMV, MPEG, M4V, TS | media_kit（FFmpeg）でストリーミング再生 |
 
 ## 対象サーバー
 
