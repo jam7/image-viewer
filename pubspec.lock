@@ -36,10 +36,10 @@ packages:
     dependency: transitive
     description:
       name: async
-      sha256: "758e6d74e971c3e5aceb4110bfd6698efc7f501675bcfe0c775459a8140750eb"
+      sha256: e2eb0491ba5ddb6177742d2da23904574082139b07c1e33b8503b9f46f3e1a37
       url: "https://pub.dev"
     source: hosted
-    version: "2.13.0"
+    version: "2.13.1"
   boolean_selector:
     dependency: transitive
     description:
@@ -815,10 +815,10 @@ packages:
     dependency: transitive
     description:
       name: volume_controller
-      sha256: "109c31a8d4f8cb0e18a1a231b1db97cdbc7084cb4f43928051e9fad59916dd09"
+      sha256: ce25d4e02dd6f0b6d5d02dc1daa8de11b2d42d0f5afab8b1eda6aa0ebab3937a
       url: "https://pub.dev"
     source: hosted
-    version: "3.4.3"
+    version: "3.4.4"
   wakelock_plus:
     dependency: transitive
     description:
@@ -855,26 +855,26 @@ packages:
     dependency: transitive
     description:
       name: webview_flutter_android
-      sha256: db8b8b52eb9f33d4c85064f78774e16717442629c68f48d6b8b2538dfd63e21c
+      sha256: "0f7fcd2c86bf36bdcf94881f7941ce0cbc4f8d104b9fdcd5fcbef90e2199db76"
       url: "https://pub.dev"
     source: hosted
-    version: "4.10.14"
+    version: "4.10.15"
   webview_flutter_platform_interface:
     dependency: transitive
     description:
       name: webview_flutter_platform_interface
-      sha256: "653c5eb45f6e2a716ebefd9df8006f583e6db146f5e0f5d70ca6213ca24070dd"
+      sha256: "1221c1b12f5278791042f2ec2841743784cf25c5a644e23d6680e5d718824f04"
       url: "https://pub.dev"
     source: hosted
-    version: "2.15.0"
+    version: "2.15.1"
   webview_flutter_wkwebview:
     dependency: transitive
     description:
       name: webview_flutter_wkwebview
-      sha256: "0d85e8bc5db9a7c49f6ff57cbeafc6cd8216ad9c9ebc70b2c4579d955698933a"
+      sha256: d7219cfabc6f5fc2032e0fa980ec36d71f308a35a823395af1abc34d9a2ede83
       url: "https://pub.dev"
     source: hosted
-    version: "3.24.1"
+    version: "3.24.2"
   webview_windows:
     dependency: "direct main"
     description:
