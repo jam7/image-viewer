@@ -45,9 +45,9 @@ dependencies:
   webview_flutter: ^4.13.1
   exif: ^3.3.0
   pdfrx: ^2.2.24
-  media_kit: ^1.1.11
-  media_kit_video: ^1.2.5
-  media_kit_libs_video: ^1.0.5
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
   archive_reader:
     path: packages/archive_reader
 
