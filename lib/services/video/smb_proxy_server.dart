@@ -25,6 +25,18 @@ class SmbProxyServer {
   final _random = Random.secure();
 
   Future<void> start() async {
+    if (_server != null) {
+      // Verify the server is still alive (iOS kills background sockets)
+      try {
+        final testSocket = await Socket.connect('127.0.0.1', _server!.port,
+            timeout: const Duration(seconds: 1));
+        testSocket.destroy();
+      } catch (_) {
+        _log.info('Proxy server dead, restarting');
+        try { await _server!.close(); } catch (_) {}
+        _server = null;
+      }
+    }
     if (_server != null) return;
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     _log.info('Proxy started on 127.0.0.1:${_server!.port}');
