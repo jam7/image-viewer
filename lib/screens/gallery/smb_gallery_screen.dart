@@ -271,7 +271,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             _log.info('  position reached: ${player.state.position}');
             await Future.delayed(const Duration(milliseconds: 200));
             await player.pause();
-            final bytes = await player.screenshot(format: 'image/jpeg');
+            // Retry screenshot if null (frame buffer may not be ready yet)
+            Uint8List? bytes;
+            for (var attempt = 0; attempt < 5; attempt++) {
+              bytes = await player.screenshot(format: 'image/jpeg');
+              if (bytes != null) break;
+              _log.info('  screenshot null, retrying (${attempt + 1}/5)...');
+              await Future.delayed(const Duration(milliseconds: 200));
+            }
             _log.info('  screenshot: ${bytes != null ? "${(bytes.length / 1024).toStringAsFixed(0)} KB" : "null"}');
             await player.stop();
             if (bytes != null && mounted) {
