@@ -65,6 +65,7 @@
 - [x] 動画サムネイル: 3 秒地点のフレームをキャプチャ、リサイズして thumb: に保存
 - [x] 対応フォーマット: MP4, MKV, AVI, WebM, FLV, MOV, WMV, MPEG, M4V, TS
 - [x] プロキシの SMB 接続断リトライ
+- [ ] ビューアで動画に到達したら VideoPlayerScreen に遷移（現在は動画を除外）
 - [ ] 動画プレーヤー UI 改善（シークバー、再生時間表示、フルスクリーン切り替え）
 - [ ] ISO 対応: ISO 9660/UDF パースで VOB/M2TS を Range Read → プロキシ経由で再生（暗号化なし前提、archive_reader と同じパターン）
 - [ ] PDF レンダラーの独立化（SmbSource → 共通ユーティリティ、Pixiv/DLsite 等でも利用可能に）
