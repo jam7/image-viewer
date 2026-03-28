@@ -25,6 +25,7 @@ class GalleryScreen extends StatefulWidget {
   final String? initialUserName;
   final PixivTab initialTab;
   final String? initialSearchWord;
+  final String? initialFilterText;
 
   const GalleryScreen({
     super.key,
@@ -36,6 +37,7 @@ class GalleryScreen extends StatefulWidget {
     this.initialUserName,
     this.initialTab = PixivTab.top,
     this.initialSearchWord,
+    this.initialFilterText,
   });
 
   @override
@@ -83,7 +85,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   void _applyFilter() {
     final text = _filterController.text.trim();
-    final match = RegExp(r'>(\d+)').firstMatch(text);
+    // Accept both ">10" and plain "10"
+    final match = RegExp(r'>?(\d+)').firstMatch(text);
     _minPageCount = match != null ? int.parse(match.group(1)!) : 0;
   }
 
@@ -104,6 +107,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
     _log.info('initState: initialTab=${widget.initialTab}, isUserWorks=$_isUserWorksPage, initialUserPath=${widget.initialUserPath}');
     if (widget.initialSearchWord != null) {
       _searchController.text = widget.initialSearchWord!;
+    }
+    if (widget.initialFilterText != null) {
+      _filterController.text = widget.initialFilterText!;
+      _applyFilter();
     }
     _scrollController.addListener(_onScroll);
 
@@ -435,6 +442,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         registry: widget.registry,
         initialTab: tab,
         initialSearchWord: searchWord,
+        initialFilterText: _filterController.text.trim().isNotEmpty ? _filterController.text.trim() : null,
       ),
     ));
   }
@@ -507,6 +515,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         favoritesStore: widget.favoritesStore,
         registry: widget.registry,
         initialSearchWord: input,
+        initialFilterText: _filterController.text.trim().isNotEmpty ? _filterController.text.trim() : null,
         initialUserPath: searchPath,
       ),
     ));
