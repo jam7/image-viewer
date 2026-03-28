@@ -54,10 +54,15 @@ class VideoThumbnailService {
         await Future.delayed(const Duration(milliseconds: 200));
       }
 
-      await player.stop();
+      if (_player != null) await player.stop();
       return bytes;
     } catch (e, st) {
-      _log.warning('capture failed: $e', e, st);
+      if (_player == null) {
+        // Player was externally disposed (e.g. video playback started)
+        _log.info('capture cancelled');
+      } else {
+        _log.warning('capture failed: $e', e, st);
+      }
       return null;
     }
   }

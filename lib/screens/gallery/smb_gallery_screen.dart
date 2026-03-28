@@ -164,16 +164,22 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
-    // 1行分（crossAxisCount枚）ずつ並列ダウンロード。
-    // 全部同時に投げると帯域を奪い合い単体速度が落ちるため、
-    // 行単位で区切って先に表示可能にする。
+    // 画像は行単位で並列（帯域を有効活用）、動画は末尾で順次（帯域を占有するため）。
     final generation = _loadGeneration;
     final list = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
-    for (int i = 0; i < list.length; i += galleryCrossAxisCount) {
+    final imageItems = list.where((i) => i.metadata?['isVideo'] != true).toList();
+    final videoItems = list.where((i) => i.metadata?['isVideo'] == true).toList();
+
+    for (int i = 0; i < imageItems.length; i += galleryCrossAxisCount) {
       if (!mounted || generation != _loadGeneration) return;
-      final end = (i + galleryCrossAxisCount).clamp(0, list.length);
-      final row = list.sublist(i, end);
+      final end = (i + galleryCrossAxisCount).clamp(0, imageItems.length);
+      final row = imageItems.sublist(i, end);
       await Future.wait(row.map(_loadOneThumbnail));
+    }
+
+    for (final video in videoItems) {
+      if (!mounted || generation != _loadGeneration) return;
+      await _loadOneThumbnail(video);
     }
   }
 
@@ -256,7 +262,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         ),
       ));
     } else if (item.metadata?['isVideo'] == true) {
-      // Dispose video thumbnail service to free SMB connection for playback
+      // Cancel in-progress thumbnail batch to free SMB connection for playback.
+      // Reset _thumbnailLoadedCount so interrupted items are retried on return.
+      _loadGeneration++;
+      _isLoadingThumbnails = false;
+      final first = _imageFiles.indexWhere((i) => !_thumbnailData.containsKey(i.id));
+      _thumbnailLoadedCount = first < 0 ? _imageFiles.length : first;
       _videoThumbService?.dispose();
       _videoThumbService = null;
       Navigator.of(context).push(MaterialPageRoute(
