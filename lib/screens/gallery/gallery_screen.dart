@@ -308,6 +308,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
         registry: widget.registry,
         initialUserPath: '/user/$userId',
         initialUserName: userName,
+        initialSearchWord: _searchController.text.trim().isNotEmpty ? _searchController.text.trim() : null,
+        initialFilterText: _filterController.text.trim().isNotEmpty ? _filterController.text.trim() : null,
       ),
     ));
   }
