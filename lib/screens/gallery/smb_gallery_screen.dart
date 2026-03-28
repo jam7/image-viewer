@@ -262,13 +262,15 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           final url = await widget.proxyServer.registerSession(widget.source, video.uri);
           final token = url.split('/').last;
           try {
+            _log.info('  opening: ${video.name}');
             await player.open(Media(url, start: const Duration(seconds: 3)));
+            _log.info('  open done, waiting for position...');
             await player.stream.position
                 .firstWhere((p) => p >= const Duration(seconds: 2))
                 .timeout(const Duration(seconds: 15));
+            _log.info('  position reached: ${player.state.position}');
             await Future.delayed(const Duration(milliseconds: 200));
             await player.pause();
-            _log.info('  frame ready (position=${player.state.position})');
             final bytes = await player.screenshot(format: 'image/jpeg');
             _log.info('  screenshot: ${bytes != null ? "${(bytes.length / 1024).toStringAsFixed(0)} KB" : "null"}');
             await player.stop();
