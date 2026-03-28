@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
@@ -232,7 +233,8 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     if (videos.isEmpty) return;
     _log.info('Video thumbnails: starting ${videos.length} videos');
 
-    // Reuse a single Player instance for all thumbnails
+    // Reuse single Player + VideoController.
+    // Proxy abort ensures previous video's stream stops immediately.
     final player = Player();
     VideoController(player);
     await player.setVolume(0);
@@ -254,20 +256,18 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             continue;
           }
 
-          // Capture first frame via proxy + media_kit
           final url = await widget.proxyServer.registerSession(widget.source, video.uri);
           final token = url.split('/').last;
           try {
-            await player.open(Media(url));
-            await player.stream.width
-                .firstWhere((w) => w != null && w > 0)
+            await player.open(Media(url, start: const Duration(seconds: 3)));
+            await player.stream.position
+                .firstWhere((p) => p >= const Duration(seconds: 2))
                 .timeout(const Duration(seconds: 15));
-            // Seek past potential black intro frames
-            await player.seek(const Duration(seconds: 3));
-            // Wait for frame to be decoded after seek
-            await Future.delayed(const Duration(milliseconds: 300));
+            await Future.delayed(const Duration(milliseconds: 200));
             await player.pause();
+            _log.info('  frame ready (position=${player.state.position})');
             final bytes = await player.screenshot(format: 'image/jpeg');
+            _log.info('  screenshot: ${bytes != null ? "${(bytes.length / 1024).toStringAsFixed(0)} KB" : "null"}');
             await player.stop();
             if (bytes != null && mounted) {
               final resized = await widget.source.resizeToThumbnail(bytes);
