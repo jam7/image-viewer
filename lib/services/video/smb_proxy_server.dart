@@ -12,6 +12,7 @@ class _ProxySession {
   final SmbSource source;
   final String filePath;
   final int fileSize;
+  bool cancelled = false;
   _ProxySession(this.source, this.filePath, this.fileSize);
 }
 
@@ -59,7 +60,10 @@ class SmbProxyServer {
   }
 
   void invalidateToken(String token) {
-    _sessions.remove(token);
+    final session = _sessions.remove(token);
+    if (session != null) {
+      session.cancelled = true;
+    }
     _log.info('Token invalidated');
   }
 
@@ -81,10 +85,13 @@ class SmbProxyServer {
         : '';
     final session = _sessions[token];
     if (session == null) {
+      _log.info('403: invalid token (${request.method} ${request.headers.value('range') ?? 'no-range'})');
       request.response.statusCode = HttpStatus.forbidden;
       await request.response.close();
       return;
     }
+    final rangeLog = request.headers.value('range') ?? 'full';
+    _log.info('Request: ${session.filePath.split('\\').last} $rangeLog');
 
     try {
       final rangeHeader = request.headers.value('range');
@@ -117,7 +124,7 @@ class SmbProxyServer {
       const chunkSize = 1024 * 1024; // 1MB
       int offset = start;
       int remaining = length;
-      while (remaining > 0) {
+      while (remaining > 0 && !session.cancelled) {
         final readLen = remaining < chunkSize ? remaining : chunkSize;
         Uint8List data;
         try {
@@ -132,8 +139,13 @@ class SmbProxyServer {
         remaining -= data.length;
       }
       await request.response.close();
+      if (session.cancelled) {
+        _log.info('Response aborted: ${session.filePath.split('\\').last}');
+      } else {
+        _log.info('Response done: ${session.filePath.split('\\').last} ${length ~/ 1024}KB');
+      }
     } catch (e, st) {
-      _log.warning('Proxy request error', e, st);
+      _log.warning('Proxy request error: ${session.filePath.split('\\').last}', e, st);
       try {
         request.response.statusCode = HttpStatus.internalServerError;
         await request.response.close();
