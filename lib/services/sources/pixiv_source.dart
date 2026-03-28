@@ -19,7 +19,7 @@ class PixivSource extends ImageSourceProvider {
   Future<List<ImageSource>> listImages({String? path}) async {
     final PixivIllustList result;
 
-    final effectivePath = path ?? '/recommended';
+    final effectivePath = path ?? '/top';
 
     if (effectivePath.startsWith('/bookmarks')) {
       final userId = _client.userId;
@@ -40,7 +40,7 @@ class PixivSource extends ImageSourceProvider {
       if (word.isEmpty) throw Exception('検索ワードが必要です');
       result = await _client.searchIllust(word, page: _nextOffset ?? 1);
     } else {
-      result = await _client.illustRecommended(offset: _nextOffset ?? 0);
+      result = await _client.illustTop();
     }
 
     _nextOffset = result.nextOffset;

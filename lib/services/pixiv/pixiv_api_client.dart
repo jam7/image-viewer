@@ -54,24 +54,52 @@ class PixivApiClient {
         .toList();
   }
 
-  /// おすすめイラストを取得。
-  Future<PixivIllustList> illustRecommended({int offset = 0, int limit = 30}) async {
+  /// トップページ全体を取得（キャッシュして複数タブで共有）。
+  Map<String, dynamic>? _cachedTopBody;
+
+  Future<Map<String, dynamic>> _fetchTopBody() async {
+    if (_cachedTopBody != null) return _cachedTopBody!;
     final data = await _webClient.fetchJson(
       '$_baseUrl/ajax/top/illust?mode=all&lang=ja',
     );
     _checkError(data);
-    final body = data['body'] as Map<String, dynamic>;
-    // Filter out non-artwork entries (ads, promos) that lack an id field
+    _cachedTopBody = data['body'] as Map<String, dynamic>;
+    return _cachedTopBody!;
+  }
+
+  /// トップページキャッシュをクリア（リロード時に呼ぶ）。
+  void clearTopCache() => _cachedTopBody = null;
+
+  /// トップページ（requests を除外）。
+  Future<PixivIllustList> illustTop() async {
+    final body = await _fetchTopBody();
+    // Collect request IDs to exclude (paid request promotions)
+    // Exclude paid request promotions (postWork.postWorkId)
+    final requests = body['requests'] as List<dynamic>? ?? [];
+    final requestIds = <String>{};
+    for (final r in requests) {
+      if (r is Map<String, dynamic>) {
+        final postWork = r['postWork'];
+        if (postWork is Map<String, dynamic>) {
+          final id = postWork['postWorkId'];
+          if (id != null) requestIds.add(id.toString());
+        }
+      }
+    }
+    final illusts = _thumbnailsFromBody(body)
+        .where((a) => !requestIds.contains(a.id.toString()))
+        .toList();
+    return PixivIllustList(illusts: illusts, nextOffset: null);
+  }
+
+  /// thumbnails.illust を全て PixivArtwork に変換。
+  List<PixivArtwork> _thumbnailsFromBody(Map<String, dynamic> body) {
     final thumbnails = (body['thumbnails']?['illust'] as List<dynamic>? ?? [])
         .where((t) => t is Map<String, dynamic> && t['id'] != null)
         .toList();
-    final illusts = thumbnails
+    return thumbnails
         .map((t) => PixivArtwork.fromThumbnailJson(t as Map<String, dynamic>))
         .toList();
-    return PixivIllustList(
-      illusts: illusts,
-      nextOffset: offset + limit < illusts.length ? offset + limit : null,
-    );
   }
 
   /// ユーザーのブックマークを取得。

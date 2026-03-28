@@ -34,7 +34,7 @@ class GalleryScreen extends StatefulWidget {
     required this.registry,
     this.initialUserPath,
     this.initialUserName,
-    this.initialTab = PixivTab.recommended,
+    this.initialTab = PixivTab.top,
     this.initialSearchWord,
   });
 
@@ -42,7 +42,7 @@ class GalleryScreen extends StatefulWidget {
   State<GalleryScreen> createState() => _GalleryScreenState();
 }
 
-enum PixivTab { recommended, bookmarks, favorites, search }
+enum PixivTab { top, bookmarks, favorites, search }
 
 /// Per-tab state: independent source, images, thumbnails, and scroll position.
 class _TabState {
@@ -253,8 +253,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String get _currentPath {
     if (_isUserWorksPage) return widget.initialUserPath!;
     switch (_currentTab) {
-      case PixivTab.recommended:
-        return '/recommended';
+      case PixivTab.top:
+        return '/top';
       case PixivTab.bookmarks:
         return '/bookmarks';
       case PixivTab.favorites:
@@ -563,7 +563,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         preferredSize: const Size.fromHeight(48),
         child: Row(
           children: [
-            _tabButton('おすすめ', PixivTab.recommended),
+            _tabButton('トップ', PixivTab.top),
             _tabButton('ブックマーク', PixivTab.bookmarks),
             _tabButton('お気に入り', PixivTab.favorites),
             _tabButton('検索', PixivTab.search),
