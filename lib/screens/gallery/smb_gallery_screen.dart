@@ -221,14 +221,16 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   /// 動画再生で中断されたサムネイルをリトライする。
   /// _thumbnailLoadedCount は変えず、_thumbnailData にエントリがない
   /// アイテム（中断された分）だけを対象にする。
-  void _retryInterruptedThumbnails() {
+  Future<void> _retryInterruptedThumbnails() async {
     if (!mounted) return;
     final retryItems = _imageFiles.sublist(0, _thumbnailLoadedCount).where((img) {
       return !_thumbnailData.containsKey(img.id);
     }).toList();
     if (retryItems.isEmpty) return;
     _log.info('Retrying ${retryItems.length} interrupted thumbnails');
-    _loadThumbnails(retryItems);
+    _isLoadingThumbnails = true;
+    await _loadThumbnails(retryItems);
+    _isLoadingThumbnails = false;
   }
 
   /// ビューアから戻った後、notSupported だったサムネイルを再取得する。
