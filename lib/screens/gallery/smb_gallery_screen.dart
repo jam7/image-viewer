@@ -166,9 +166,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
     // 画像は行単位で並列（帯域を有効活用）、動画は末尾で順次（帯域を占有するため）。
     final generation = _loadGeneration;
+    final batchCount = images.length;
     final list = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
+    final skipped = batchCount - list.length;
     final imageItems = list.where((i) => i.metadata?['isVideo'] != true).toList();
     final videoItems = list.where((i) => i.metadata?['isVideo'] == true).toList();
+    _log.info('Batch: ${imageItems.length} images + ${videoItems.length} videos ($skipped already loaded)');
 
     for (int i = 0; i < imageItems.length; i += galleryCrossAxisCount) {
       if (!mounted || generation != _loadGeneration) return;
@@ -213,6 +216,19 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         setState(() => _thumbnailData[image.id] = ThumbnailFailed(ThumbnailFailReason.timeout));
       }
     }
+  }
+
+  /// 動画再生で中断されたサムネイルをリトライする。
+  /// _thumbnailLoadedCount は変えず、_thumbnailData にエントリがない
+  /// アイテム（中断された分）だけを対象にする。
+  void _retryInterruptedThumbnails() {
+    if (!mounted) return;
+    final retryItems = _imageFiles.sublist(0, _thumbnailLoadedCount).where((img) {
+      return !_thumbnailData.containsKey(img.id);
+    }).toList();
+    if (retryItems.isEmpty) return;
+    _log.info('Retrying ${retryItems.length} interrupted thumbnails');
+    _loadThumbnails(retryItems);
   }
 
   /// ビューアから戻った後、notSupported だったサムネイルを再取得する。
@@ -266,8 +282,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       // Reset _thumbnailLoadedCount so interrupted items are retried on return.
       _loadGeneration++;
       _isLoadingThumbnails = false;
-      final first = _imageFiles.indexWhere((i) => !_thumbnailData.containsKey(i.id));
-      _thumbnailLoadedCount = first < 0 ? _imageFiles.length : first;
       _videoThumbService?.dispose();
       _videoThumbService = null;
       Navigator.of(context).push(MaterialPageRoute(
@@ -276,7 +290,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           source: widget.source,
           proxyServer: widget.proxyServer,
         ),
-      )).then((_) => _retryUnsupportedThumbnails());
+      )).then((_) {
+        _retryUnsupportedThumbnails();
+        _retryInterruptedThumbnails();
+      });
     } else {
       final viewerItems = _imageFiles.where((i) => i.metadata?['isVideo'] != true).toList();
       final index = viewerItems.indexWhere((i) => i.id == item.id);
