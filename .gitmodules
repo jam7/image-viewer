@@ -1,0 +1,3 @@
+[submodule "dart_smb2"]
+	path = dart_smb2
+	url = git@github.com:jam7/dart_smb2.git
