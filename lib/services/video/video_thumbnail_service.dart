@@ -13,7 +13,6 @@ final _log = Logger('VideoThumbnail');
 /// Call [dispose] when no longer needed.
 class VideoThumbnailService {
   Player? _player;
-  bool _initialized = false;
   Completer<void>? _lock;
 
   /// Capture a thumbnail from the given video URL at 3 seconds.
@@ -64,11 +63,11 @@ class VideoThumbnailService {
   }
 
   void _ensurePlayer() {
-    if (_player == null || _initialized == false) {
+    if (_player == null) {
       _player = Player();
+      // VideoController は Player.dispose() 時に内部的にクリーンアップされる
       VideoController(_player!);
       _player!.setVolume(0);
-      _initialized = true;
     }
   }
 
@@ -76,7 +75,6 @@ class VideoThumbnailService {
     if (_player != null) {
       await _player!.dispose();
       _player = null;
-      _initialized = false;
     }
   }
 }
