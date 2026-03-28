@@ -48,6 +48,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   List<ImageSource> _imageFiles = []; // サムネイル読み込み対象（ディレクトリ除外、動画含む）
+  Map<String, int> _imageFileIndex = {}; // id → _imageFiles 内の index（O(1) ルックアップ）
   int _thumbnailLoadedCount = 0; // サムネイル読み込み済みの数
   VideoThumbnailService? _videoThumbService;
   bool _isLoading = false;
@@ -122,6 +123,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     try {
       final items = await widget.source.listImages(path: widget.initialPath);
       _imageFiles = items.where((i) => i.metadata?['isDirectory'] != true).toList();
+      _imageFileIndex = {for (var i = 0; i < _imageFiles.length; i++) _imageFiles[i].id: i};
       setState(() {
         _items.addAll(items);
         _isLoading = false;
@@ -411,7 +413,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           final thumb = _thumbnailData[item.id];
 
           // Trigger next batch when an item beyond current batch becomes visible.
-          final itemIndex = _imageFiles.indexOf(item);
+          final itemIndex = _imageFileIndex[item.id] ?? -1;
           if (!isDir && itemIndex >= _thumbnailLoadedCount && !_isLoadingThumbnails) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && !_isLoadingThumbnails) _loadNextBatch();
