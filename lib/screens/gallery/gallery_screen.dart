@@ -42,7 +42,7 @@ class GalleryScreen extends StatefulWidget {
   State<GalleryScreen> createState() => _GalleryScreenState();
 }
 
-enum PixivTab { top, bookmarks, favorites, search }
+enum PixivTab { top, bookmarks, favorites }
 
 /// Per-tab state: independent source, images, thumbnails, and scroll position.
 class _TabState {
@@ -259,12 +259,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
         return '/bookmarks';
       case PixivTab.favorites:
         return '/favorites'; // Local only, no API call
-      case PixivTab.search:
-        final word = _searchController.text.trim();
-        if (word.isEmpty) return '/recommended';
-        final parsed = _parsePixivUrl(word);
-        if (parsed != null) return parsed;
-        return '/search?word=$word';
     }
   }
 
@@ -448,12 +442,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   void _onTabChanged(PixivTab tab) {
     if (_currentTab == tab && !_isUserWorksPage) return;
     if (_isUserWorksPage) {
-      if (tab == PixivTab.search) {
-        // Show search field on user works page without navigating away
-        setState(() => _currentTab = tab);
-      } else {
-        _pushGalleryTab(tab);
-      }
+      _pushGalleryTab(tab);
       return;
     }
 
@@ -509,13 +498,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return;
     }
 
-    if (_isUserWorksPage) {
-      _pushGalleryTab(PixivTab.search, searchWord: input);
-      return;
-    }
-
-    _currentTab = PixivTab.search;
-    _loadImages();
+    // Push a new gallery screen with search results
+    final searchPath = parsed ?? '/search?word=${Uri.encodeComponent(input)}';
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryScreen(
+        source: PixivSource(client: widget.source.client),
+        cacheManager: widget.cacheManager,
+        favoritesStore: widget.favoritesStore,
+        registry: widget.registry,
+        initialSearchWord: input,
+        initialUserPath: searchPath,
+      ),
+    ));
   }
 
   void _openViewer(int index) async {
@@ -566,7 +560,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
             _tabButton('トップ', PixivTab.top),
             _tabButton('ブックマーク', PixivTab.bookmarks),
             _tabButton('お気に入り', PixivTab.favorites),
-            _tabButton('検索', PixivTab.search),
           ],
         ),
       ),
@@ -578,24 +571,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
       padding: const EdgeInsets.all(8),
       child: Row(
         children: [
-          if (_currentTab == PixivTab.search)
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'タグ or URL...',
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.search),
-                    onPressed: _onSearch,
-                  ),
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'タグ or URL...',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: _onSearch,
                 ),
-                onSubmitted: (_) => _onSearch(),
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
               ),
+              onSubmitted: (_) => _onSearch(),
             ),
-          if (_currentTab == PixivTab.search)
-            const SizedBox(width: 8),
+          ),
+          const SizedBox(width: 8),
           SizedBox(
             width: 80,
             child: TextField(
