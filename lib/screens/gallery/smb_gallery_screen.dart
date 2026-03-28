@@ -11,8 +11,8 @@ import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../../services/thumbnail/thumbnail_loader.dart';
 import '../../services/video/smb_proxy_server.dart';
-import '../../services/video/video_thumbnail_service.dart';
 import '../../widgets/thumbnail_result.dart';
 import '../video/video_player_screen.dart';
 import '../viewer/viewer_screen.dart';
@@ -49,23 +49,24 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final _focusNode = FocusNode();
   List<ImageSource> _imageFiles = []; // サムネイル読み込み対象（ディレクトリ除外、動画含む）
   Map<String, int> _imageFileIndex = {}; // id → _imageFiles 内の index（O(1) ルックアップ）
-  int _thumbnailLoadedCount = 0; // サムネイル読み込み済みの数
-  VideoThumbnailService? _videoThumbService;
+  late final ThumbnailLoader _thumbLoader;
   bool _isLoading = false;
-  bool _isLoadingThumbnails = false;
   String? _error;
   bool _isPopping = false;
-  /// Incremented in _loadDirectory() to invalidate in-progress thumbnail loops.
-  /// Thumbnail loading must capture this at start and abort if it changes.
-  int _loadGeneration = 0;
-
-  /// 画面に表示される行数から2画面分のアイテム数を計算
-  /// 2画面分のアイテム数。5列 × 6行 = 30。
-  int get _batchSize => galleryCrossAxisCount * 6;
 
   @override
   void initState() {
     super.initState();
+    _thumbLoader = ThumbnailLoader(
+      source: widget.source,
+      cacheManager: widget.cacheManager,
+      proxyServer: widget.proxyServer,
+      batchSize: galleryCrossAxisCount * 6,
+      parallelCount: galleryCrossAxisCount,
+      onResult: (id, result) {
+        if (mounted) setState(() => _thumbnailData[id] = result);
+      },
+    );
     _loadDirectory();
   }
 
@@ -84,9 +85,8 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Future<void> _reloadThumbnailsFromCache() async {
-    final generation = _loadGeneration;
     for (final image in _imageFiles) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}')
@@ -102,7 +102,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   @override
   void dispose() {
-    _videoThumbService?.dispose();
+    _thumbLoader.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -111,24 +111,24 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
 
   Future<void> _loadDirectory() async {
-    _loadGeneration++;
     setState(() {
       _isLoading = true;
       _error = null;
     });
     _items.clear();
     _thumbnailData.clear();
-    _thumbnailLoadedCount = 0;
 
     try {
       final items = await widget.source.listImages(path: widget.initialPath);
       _imageFiles = items.where((i) => i.metadata?['isDirectory'] != true).toList();
       _imageFileIndex = {for (var i = 0; i < _imageFiles.length; i++) _imageFiles[i].id: i};
+      _thumbLoader.setItems(_imageFiles);
       setState(() {
         _items.addAll(items);
         _isLoading = false;
       });
-      _loadNextBatch();
+      await _thumbLoader.loadNextBatch();
+      _loadMoreIfNeeded();
     } catch (e, st) {
       _log.warning('loadDirectory error', e, st);
       setState(() {
@@ -138,132 +138,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     }
   }
 
-  Future<void> _loadNextBatch() async {
-    if (_isLoadingThumbnails || _thumbnailLoadedCount >= _imageFiles.length) return;
-    _isLoadingThumbnails = true;
-
-    final end = (_thumbnailLoadedCount + _batchSize).clamp(0, _imageFiles.length);
-    final batch = _imageFiles.sublist(_thumbnailLoadedCount, end);
-    _thumbnailLoadedCount = end;
-
-    await _loadThumbnails(batch);
-    _isLoadingThumbnails = false;
-
-    // 画面を埋めきれなければ追加読み込み
-    _loadMoreIfNeeded();
-  }
-
   void _loadMoreIfNeeded() {
-    if (_thumbnailLoadedCount >= _imageFiles.length) return;
+    if (_thumbLoader.allDispatched) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      if (!mounted || !_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent <= 0) {
-        _loadNextBatch();
+        _thumbLoader.loadNextBatch();
       }
     });
-  }
-
-  Future<void> _loadThumbnails(Iterable<ImageSource> images) async {
-    // 画像は行単位で並列（帯域を有効活用）、動画は末尾で順次（帯域を占有するため）。
-    final generation = _loadGeneration;
-    final batchCount = images.length;
-    final list = images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
-    final skipped = batchCount - list.length;
-    final imageItems = list.where((i) => i.metadata?['isVideo'] != true).toList();
-    final videoItems = list.where((i) => i.metadata?['isVideo'] == true).toList();
-    _log.info('Batch: ${imageItems.length} images + ${videoItems.length} videos ($skipped already loaded)');
-
-    for (int i = 0; i < imageItems.length; i += galleryCrossAxisCount) {
-      if (!mounted || generation != _loadGeneration) return;
-      final end = (i + galleryCrossAxisCount).clamp(0, imageItems.length);
-      final row = imageItems.sublist(i, end);
-      await Future.wait(row.map(_loadOneThumbnail));
-    }
-
-    for (final video in videoItems) {
-      if (!mounted || generation != _loadGeneration) return;
-      await _loadOneThumbnail(video);
-    }
-  }
-
-  Future<void> _loadOneThumbnail(ImageSource image) async {
-    final thumbKey = 'thumb:${image.id}';
-    try {
-      final cached = await widget.cacheManager.get(thumbKey);
-      if (cached != null) {
-        if (mounted) {
-          setState(() =>
-              _thumbnailData[image.id] = ThumbnailData(Uint8List.fromList(cached.data)));
-        }
-      } else if (image.metadata?['isVideo'] == true) {
-        await _loadVideoThumbnail(image, thumbKey);
-      } else {
-        final data = await widget.source.fetchThumbnail(image);
-        widget.cacheManager.l1.put(thumbKey, data);
-        await widget.cacheManager.l2.put(thumbKey, data);
-        if (mounted) {
-          setState(() => _thumbnailData[image.id] = ThumbnailData(data));
-        }
-      }
-    } on ThumbnailNotSupportedException {
-      _log.info('Thumbnail not supported: ${image.name}');
-      if (mounted) {
-        setState(() => _thumbnailData[image.id] = ThumbnailFailed(ThumbnailFailReason.notSupported));
-      }
-    } catch (e, st) {
-      _log.warning('thumbnail error (${image.name})', e, st);
-      if (mounted) {
-        setState(() => _thumbnailData[image.id] = ThumbnailFailed(ThumbnailFailReason.timeout));
-      }
-    }
-  }
-
-  /// 動画再生で中断されたサムネイルをリトライする。
-  /// _thumbnailLoadedCount は変えず、_thumbnailData にエントリがない
-  /// アイテム（中断された分）だけを対象にする。
-  Future<void> _retryInterruptedThumbnails() async {
-    if (!mounted) return;
-    final retryItems = _imageFiles.sublist(0, _thumbnailLoadedCount).where((img) {
-      return !_thumbnailData.containsKey(img.id);
-    }).toList();
-    if (retryItems.isEmpty) return;
-    _log.info('Retrying ${retryItems.length} interrupted thumbnails');
-    _isLoadingThumbnails = true;
-    await _loadThumbnails(retryItems);
-    _isLoadingThumbnails = false;
-  }
-
-  /// ビューアから戻った後、notSupported だったサムネイルを再取得する。
-  /// PDF はビューア表示中に L2 にキャッシュされるため、戻った時に取得可能になる。
-  void _retryUnsupportedThumbnails() {
-    if (!mounted) return;
-    final retryItems = _imageFiles.where((img) {
-      final thumb = _thumbnailData[img.id];
-      return thumb is ThumbnailFailed && thumb.reason == ThumbnailFailReason.notSupported;
-    }).toList();
-    if (retryItems.isEmpty) return;
-    for (final img in retryItems) {
-      _thumbnailData.remove(img.id);
-    }
-    _loadThumbnails(retryItems);
-  }
-
-  Future<void> _loadVideoThumbnail(ImageSource image, String thumbKey) async {
-    final url = await widget.proxyServer.registerSession(widget.source, image.uri);
-    final token = url.split('/').last;
-    try {
-      _videoThumbService ??= VideoThumbnailService();
-      final bytes = await _videoThumbService!.capture(url);
-      if (bytes != null && mounted) {
-        final resized = await widget.source.resizeToThumbnail(bytes);
-        widget.cacheManager.l1.put(thumbKey, resized);
-        await widget.cacheManager.l2.put(thumbKey, resized);
-        setState(() => _thumbnailData[image.id] = ThumbnailData(resized));
-        _log.info('Video thumbnail: ${image.name} (${(bytes.length / 1024).toStringAsFixed(0)} KB → ${(resized.length / 1024).toStringAsFixed(0)} KB)');
-      }
-    } finally {
-      widget.proxyServer.invalidateToken(token);
-    }
   }
 
   void _onItemTap(ImageSource item) {
@@ -280,12 +162,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         ),
       ));
     } else if (item.metadata?['isVideo'] == true) {
-      // Cancel in-progress thumbnail batch to free SMB connection for playback.
-      // Reset _thumbnailLoadedCount so interrupted items are retried on return.
-      _loadGeneration++;
-      _isLoadingThumbnails = false;
-      _videoThumbService?.dispose();
-      _videoThumbService = null;
+      _thumbLoader.cancel();
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           item: item,
@@ -293,8 +170,15 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           proxyServer: widget.proxyServer,
         ),
       )).then((_) {
-        _retryUnsupportedThumbnails();
-        _retryInterruptedThumbnails();
+        _thumbLoader.retryUnsupported((id) {
+          final thumb = _thumbnailData[id];
+          if (thumb is ThumbnailFailed && thumb.reason == ThumbnailFailReason.notSupported) {
+            _thumbnailData.remove(id);
+            return true;
+          }
+          return false;
+        });
+        _thumbLoader.retryInterrupted();
       });
     } else {
       final viewerItems = _imageFiles.where((i) => i.metadata?['isVideo'] != true).toList();
@@ -308,7 +192,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             cacheManager: widget.cacheManager,
             favoritesStore: widget.favoritesStore,
           ),
-        )).then((_) => _retryUnsupportedThumbnails());
+        )).then((_) => _thumbLoader.retryUnsupported((id) {
+          final thumb = _thumbnailData[id];
+          if (thumb is ThumbnailFailed && thumb.reason == ThumbnailFailReason.notSupported) {
+            _thumbnailData.remove(id);
+            return true;
+          }
+          return false;
+        }));
       }
     }
   }
@@ -444,9 +335,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
           // Trigger next batch when an item beyond current batch becomes visible.
           final itemIndex = _imageFileIndex[item.id] ?? -1;
-          if (!isDir && itemIndex >= _thumbnailLoadedCount && !_isLoadingThumbnails) {
+          if (!isDir && _thumbLoader.needsBatch(itemIndex)) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && !_isLoadingThumbnails) _loadNextBatch();
+              if (mounted) _thumbLoader.loadNextBatch();
             });
           }
 
