@@ -93,8 +93,11 @@ lib/
 │   │   └── favorites_store.dart       # お気に入り（URLのみ記録、トグル式）
 │   ├── prefetch/
 │   │   └── prefetch_manager.dart      # スライディングウィンドウ制御
+│   ├── thumbnail/
+│   │   └── thumbnail_loader.dart      # サムネイルバッチ読み込み（キャンセル・リトライ管理）
 │   └── video/
-│       └── smb_proxy_server.dart      # SMB→HTTP プロキシ（media_kit 用、localhost:ランダムポート、トークン認証）
+│       ├── smb_proxy_server.dart      # SMB→HTTP プロキシ（media_kit 用、localhost:ランダムポート、トークン認証）
+│       └── video_thumbnail_service.dart # 動画サムネイルキャプチャ（media_kit Player 再利用）
 ├── screens/                           # 画面（画面固有のウィジェットも同フォルダに置く）
 │   ├── gallery/gallery_screen.dart    # Pixiv サムネイル一覧（タブ独立、per-tab state）
 │   ├── gallery/smb_gallery_screen.dart # SMB ディレクトリブラウズ（ZIP/PDF/画像/動画/フォルダ）
@@ -116,169 +119,45 @@ packages/
 
 ## アーキテクチャ
 
-### 画像ロードパイプライン（3段階）
+詳細は `docs/` 以下のドキュメントを参照。
 
-```
-BlurHash表示（即座、~30バイト）
-    ↓
-サムネイル取得（50〜100KB）
-    ↓
-フル解像度取得（Range Request でストリーミング）
-    ↓
-ズーム時 → リージョンデコード（可視領域のみ）
-```
+| ドキュメント | 内容 |
+|---|---|
+| [docs/thumbnail_architecture.md](docs/thumbnail_architecture.md) | ThumbnailLoader、バッチ処理、動画サムネイル、プロキシ |
+| [docs/viewer_architecture.md](docs/viewer_architecture.md) | ViewerScreen、VideoPlayerScreen、プリフェッチ、キャッシュ、PDF/ZIP 処理 |
+| [docs/pixiv_auth.md](docs/pixiv_auth.md) | Pixiv 認証フロー（WebView 2台構成） |
 
-### プリフェッチ（スライディングウィンドウ方式）
-
-```
-[破棄][ N-1 ][ 現在 ][ N+1 ][ N+2 ][ N+3 ][ N+4 ][未取得]
-                ↑表示中
-     ← 後方1枚 →         ← 前方4枚 →
-```
-
-- ロード順: 表示中ページ → 前方 → 後方（表示ページを最優先）
-- 前方: 画像/ZIP は 4枚、PDF は 2枚（PDFium レンダリングがシリアルで遅いため）
-- 後方: 1枚をキャッシュ保持
-- ダウンロード中は進捗リング + KB 表示。キャッシュヒット時は即表示
-- 高速スクロール中はサムネイルのみ取得し、停止後にフル解像度を取得
-
-### キャッシュ（3層 + お気に入り）
+### キャッシュ概要
 
 | 層 | 保存先 | 内容 | 排出 |
 |---|---|---|---|
-| L1: 短期 | メモリ | デコード済み画像 〜10枚 | LRU自動 |
-| L2: 中期 | ディスク | 圧縮画像 500MB〜5GB（設定可） | LRU自動 |
-| L3: DL | ディスク | ユーザーが明示的にDLした作品 | 手動トグル |
+| L1 | メモリ | デコード済み画像 〜10枚 | LRU自動 |
+| L2 | ディスク | 圧縮画像 500MB〜5GB（設定可） | LRU自動 |
+| L3 | ディスク | ユーザーが明示的にDLした作品 | 手動トグル |
 | お気に入り | JSON | URL+メタデータのみ（画像なし） | 手動トグル |
 
-- CacheManager が L1→L2→L3→ネットワークの順に検索
-- メタデータは `_metadata.json` でatomic write管理
+CacheManager が L1→L2→L3→ネットワークの順に検索。キー命名: `thumb:<id>`（サムネイル）、`full:<id>`（表示用データ）。
 
-#### サムネイル生成
+### Pixiv 認証
 
-ギャラリー一覧で表示するサムネイルは `thumb:` キーで L1+L2 に保存。`full:` キーは検索しない（PDF/ZIP は `full:` にコンテナ本体が入るため）。
+- WebView 2台構成（ログイン用 + API 用）、Cookie ストア共有
+- `webview_flutter`（iOS/Android）、`webview_windows`（Windows）
+- 詳細は [docs/pixiv_auth.md](docs/pixiv_auth.md)
 
-| 種別 | 生成方法 |
-|---|---|
-| JPEG（EXIF ≥ 600px） | EXIF サムネイルを `instantiateImageCodecWithSize` で長辺 600px にリサイズ |
-| JPEG（EXIF < 600px / なし） | フル画像を全DL → 同上でリサイズ |
-| PNG, GIF, WebP, BMP | フル画像を全DL → 同上でリサイズ |
-| ZIP | 最初の画像を Range Read で展開 → 同上でリサイズ |
-| PDF（L2/L3 にキャッシュあり） | `PdfDocument.openFile` → page 0 を長辺 600px でレンダリング |
-| PDF（キャッシュなし） | アイコン表示。ビューアで開いた後に戻ると自動リトライ |
+### SMB
 
-- `instantiateImageCodecWithSize` は JPEG IDCT スケーリング（1/2, 1/4, 1/8）を利用。600px なら 1920px ソースから 1/2（960px）でデコードするため高品質
-- サムネイルは PNG でエンコードして保存
-
-#### キー命名規則
-
-| プレフィックス | 用途 | 例 |
-|---|---|---|
-| `thumb:<id>` | サムネイル（長辺 600px PNG） | `thumb:smb:...:image.jpg` |
-| `full:<id>` | 表示用データ | `full:smb:...:image.jpg` |
-
-`full:` は全種別で統一。ID 部分で内容を区別する：
-
-| 対象 | キー例 | 内容 |
-|---|---|---|
-| 画像 | `full:smb:...:image.jpg` | 画像バイト |
-| ZIPエントリ | `full:smb:...:archive.zip#entry/001.jpg` | 展開済み画像 |
-| PDFバイト本体 | `full:smb:...:1.pdf` | PDF ファイル全体 |
-| PDFレンダリング | `full:smb:...:1.pdf#page0` | レンダリング済み PNG |
-| Pixivページ | `full:142601425_p0` | ダウンロード済み画像 |
-
-#### L3 ダウンロードの構造
-
-DL はビューアで作品単位。L3 のストレージはフラットで、閲覧 UI 側でメタデータによりグルーピングする設計。
-
-| 作品種別 | L3 保存内容 |
-|---|---|
-| 画像1枚 | `full:<work id>` に画像バイト |
-| ZIP | `full:<work id>` に ZIP バイト全体 |
-| PDF | `full:<work id>` に PDF バイト全体 |
-| 複数ページ（Pixiv等） | 各ページを `full:<page id>` で個別保存 + `full:<work id>` に空データ（DL 済みマーカー） |
-
-- 複数ページ作品の work マーカーはデータ 0 バイト + メタデータ（作品名、ソース等）
-- DL トグルオフ時は work マーカーと全ページを一括削除
-- PDF の L2 キャッシュ: PDF バイト本体とレンダリング済み PNG の両方を L2 に保持（再表示時にキャッシュヒット）
-
-### Pixiv 認証 & API（WebView 2台構成）
-
-- ログイン用 WebView（PixivLoginScreen）と API 用 WebView（PixivWebClient）の2台構成
-- Cookie ストアを共有。ログイン用でログインすれば API 用も認証済みになる
-- **重要**: `webview_flutter` は Windows 非対応。Windows は `webview_windows` を使う
-- PixivWebClient → PixivApiClient → PixivSource の順に抽象化
-- CSRF トークンはログイン WebView の HTML から抽出（エスケープ済み JSON 内の `token\":\"hex\"`）
-- お気に入り追加時に Pixiv ブックマークも同時追加（`POST /ajax/illusts/bookmarks/add`、best-effort）
-- 認証フローの詳細は [docs/pixiv_auth.md](docs/pixiv_auth.md) を参照
-
-### SMB ファイルブラウズ
-
-- `dart_smb2`（自作ライブラリ）で SMB 2.0/2.1 対応
-- 接続設定は JSON ファイルに保存（パスワード除外）
-- パスワードは `flutter_secure_storage`（iOS: Keychain、Windows: Credential Manager）に保存
-- ディレクトリ一覧→画像フィルタ→サムネイル/フル画像取得の流れ
-- ビューアでは同一ディレクトリ内の画像を連続閲覧可能（ホイール/キー操作）
-- プリロード: 現在 + 前方4枚 + 後方1枚（キャッシュヒット時はDL不要）
-- **ZIP 対応**: `archive_reader` パッケージ（自作）と `SmbSource` の連携で実現
-  - `archive_reader` が ZIP セントラルディレクトリを解析し、個別エントリを Range Read + 展開
-  - `dart_smb2` の `readRange` を `RangeReader` として渡す（dart_smb2 自体は ZIP を知らない）
-  - サムネイル: 自然順ソートで最初の画像だけ取得（ZIP 全体のダウンロード不要）
-  - ビューア: 全非ディレクトリエントリをページ化。非画像（ZIP in ZIP 等）は「非対応」表示でスキップ可能
-  - 各ページを個別に Range Read → L2 キャッシュ格納
-- **PDF 対応**: `pdfrx`（PDFium ベース、upstream 版）でページレンダリング
-  - `printing` は `Printing.raster()` がプラットフォームチャネル経由で UI スレッドをブロックするため不採用
-  - `pdfrx` は FFI ベースで非同期レンダリング（UI ブロックなし、ESC でキャンセル可能）
-  - PDF 全体を SMB からダウンロード → L2 にファイル保存 → `PdfDocument.openFile` で開く
-  - `openFile` は `FPDF_LoadDocument` を使用（PDFium がネイティブにファイルを読む。メモリに全体を載せない）
-  - `PdfDocument` を 1 つキャッシュし、同じ PDF なら開き直さない（大容量 PDF のページめくり高速化）
-  - 各ページを `page.render()` → PNG 変換して表示
-  - レンダリング済み PNG と PDF ファイル本体の両方を L2 に保持（再表示時にキャッシュヒット、LRU で自動排出）
-  - レンダリング速度: 約 500ms/ページ（大容量 PDF）。PDFium はシリアル処理のため先読み枚数を 2 に制限
-- **動画対応**: `media_kit`（libmpv / FFmpeg）でストリーミング再生
-  - SMB → ローカル HTTP プロキシ（`SmbProxyServer`）→ media_kit の構成
-  - プロキシは `127.0.0.1:ランダムポート` にバインド、ワンタイムトークンで認証
-  - Range Request 対応でシーク可能。SMB 接続断時は 1 回リトライ
-  - 対応形式: MP4, MKV, AVI, WebM, FLV, MOV, WMV, MPEG, M4V, TS
-  - サムネイル: 3 秒地点のフレームを screenshot で取得、長辺 600px にリサイズ（400KB 以下はそのまま保存）
+- `dart_smb2`（自作）で SMB 2.0/2.1 対応
+- ZIP: `archive_reader`（自作）で Range Read ベースの個別エントリ展開
+- PDF: `pdfrx`（PDFium）で `PdfDocument.openFile` → ページレンダリング
+- 動画: `media_kit` + `SmbProxyServer`（localhost HTTP プロキシ）
 
 ### 認証情報の保存場所
 
 | プラットフォーム | Pixiv セッション | SMB パスワード |
 |---|---|---|
-| Windows | WebView2 ユーザーデータフォルダ（`%LOCALAPPDATA%`配下、平文SQLite、OSユーザー権限で保護） | Credential Manager |
-| iOS/macOS | WKWebView サンドボックス内（アプリ間アクセス不可） | Keychain |
-| Android | WebView サンドボックス内 | EncryptedSharedPreferences |
-
-- Pixiv パスワードはアプリ側で一切保存しない。WebView のログインページでユーザーが入力する
-- Pixiv の Cookie はブラウザと同等のセキュリティレベル（暗号化なし、OS権限で保護）
-- SMB パスワードはプラットフォームの暗号化ストレージを使用
-
-### ビューア操作
-
-| 入力 | 動作 |
-|---|---|
-| 上スワイプ / ↓ / Space | 次ページ（最後のページなら次の作品） |
-| 下スワイプ / ↑ | 前ページ（最初のページなら前の作品） |
-| Page Down / Page Up | 10ページ飛ばし |
-| Home / End | 先頭ページ / 末尾ページ |
-| マウスホイール | ページ送り（端で作品送り） |
-| Ctrl + ホイール | ズーム |
-| ← → | 作品送り |
-| Escape / マウスバック | 一覧に戻る |
-| 右端サイドバー | ホバー/ドラッグでページジャンプ（普段は薄いインジケーター） |
-
-### ネットワーク
-
-- HTTP/2 マルチプレクシング優先（1接続で複数ストリーム、優先度制御可能）
-- HTTP/1.1 フォールバック時は同一ホストに4〜6本のコネクションプール
-- 優先度キュー: 表示中画像 > 次の画像 > 先読み画像
-
-### メモリ管理
-
-- サブサンプリング: 画面サイズに応じて縮小デコード（メモリ大幅削減）
-- RGB565フォーマット: 透過不要な画像は2バイト/ピクセルで50%削減
-- リージョンデコード: ズーム時は可視領域のみデコード
+| Windows | WebView2 ユーザーデータフォルダ | Credential Manager |
+| iOS/macOS | WKWebView サンドボックス | Keychain |
+| Android | WebView サンドボックス | EncryptedSharedPreferences |
 
 ## 主要パッケージ
 
