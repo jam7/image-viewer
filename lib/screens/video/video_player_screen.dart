@@ -40,6 +40,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
+    _player.setPlaylistMode(PlaylistMode.single);
     _startPlayback();
   }
 
