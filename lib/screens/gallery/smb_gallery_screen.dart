@@ -1,12 +1,9 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
@@ -15,6 +12,7 @@ import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
+import '../../services/video/video_thumbnail_service.dart';
 import '../../widgets/thumbnail_result.dart';
 import '../video/video_player_screen.dart';
 import '../viewer/viewer_screen.dart';
@@ -49,8 +47,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final Map<String, ThumbnailResult> _thumbnailData = {};
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
-  List<ImageSource> _imageFiles = []; // サムネイル読み込み対象（ディレクトリ除外）
+  List<ImageSource> _imageFiles = []; // サムネイル読み込み対象（ディレクトリ除外、動画含む）
   int _thumbnailLoadedCount = 0; // サムネイル読み込み済みの数
+  VideoThumbnailService? _videoThumbService;
   bool _isLoading = false;
   bool _isLoadingThumbnails = false;
   String? _error;
@@ -58,8 +57,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   /// Incremented in _loadDirectory() to invalidate in-progress thumbnail loops.
   /// Thumbnail loading must capture this at start and abort if it changes.
   int _loadGeneration = 0;
-  int _videoThumbGeneration = 0; // Incremented to cancel video thumbnail generation
-  List<ImageSource> _videoFiles = []; // For restart after playback
 
   /// 画面に表示される行数から2画面分のアイテム数を計算
   int get _batchSize {
@@ -109,6 +106,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   @override
   void dispose() {
+    _videoThumbService?.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -128,16 +126,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
     try {
       final items = await widget.source.listImages(path: widget.initialPath);
-      _imageFiles = items.where((i) =>
-          i.metadata?['isDirectory'] != true &&
-          i.metadata?['isVideo'] != true).toList();
-      _videoFiles = items.where((i) => i.metadata?['isVideo'] == true).toList();
+      _imageFiles = items.where((i) => i.metadata?['isDirectory'] != true).toList();
       setState(() {
         _items.addAll(items);
         _isLoading = false;
       });
       _loadNextBatch();
-      _loadVideoThumbnails();
     } catch (e, st) {
       _log.warning('loadDirectory error', e, st);
       setState(() {
@@ -195,6 +189,8 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           setState(() =>
               _thumbnailData[image.id] = ThumbnailData(Uint8List.fromList(cached.data)));
         }
+      } else if (image.metadata?['isVideo'] == true) {
+        await _loadVideoThumbnail(image, thumbKey);
       } else {
         final data = await widget.source.fetchThumbnail(image);
         widget.cacheManager.l1.put(thumbKey, data);
@@ -231,77 +227,21 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     _loadThumbnails(retryItems);
   }
 
-  Future<void> _loadVideoThumbnails() async {
-    // Filter to videos that don't have thumbnails yet
-    final videos = _videoFiles.where((v) => !_thumbnailData.containsKey(v.id)).toList();
-    if (videos.isEmpty) return;
-    _log.info('Video thumbnails: starting ${videos.length} videos');
-
-    final generation = ++_videoThumbGeneration;
-    final player = Player();
-    VideoController(player);
-    await player.setVolume(0);
-
+  Future<void> _loadVideoThumbnail(ImageSource image, String thumbKey) async {
+    final url = await widget.proxyServer.registerSession(widget.source, image.uri);
+    final token = url.split('/').last;
     try {
-      for (final video in videos) {
-        if (!mounted || generation != _videoThumbGeneration) {
-          _log.info('Video thumbnails: cancelled');
-          return;
-        }
-        final thumbKey = 'thumb:${video.id}';
-        try {
-          // Check cache first
-          final cached = await widget.cacheManager.get(thumbKey);
-          if (cached != null) {
-            if (mounted) {
-              setState(() => _thumbnailData[video.id] = ThumbnailData(Uint8List.fromList(cached.data)));
-            }
-            continue;
-          }
-
-          final url = await widget.proxyServer.registerSession(widget.source, video.uri);
-          final token = url.split('/').last;
-          try {
-            _log.info('  opening: ${video.name}');
-            await player.open(Media(url, start: const Duration(seconds: 3)));
-            _log.info('  open done, waiting for position...');
-            await player.stream.position
-                .firstWhere((p) => p >= const Duration(seconds: 2))
-                .timeout(const Duration(seconds: 15));
-            _log.info('  position reached: ${player.state.position}');
-            await Future.delayed(const Duration(milliseconds: 200));
-            await player.pause();
-            // Retry screenshot if null (frame buffer may not be ready yet)
-            Uint8List? bytes;
-            for (var attempt = 0; attempt < 5; attempt++) {
-              bytes = await player.screenshot(format: 'image/jpeg');
-              if (bytes != null) break;
-              _log.info('  screenshot null, retrying (${attempt + 1}/5)...');
-              await Future.delayed(const Duration(milliseconds: 200));
-            }
-            _log.info('  screenshot: ${bytes != null ? "${(bytes.length / 1024).toStringAsFixed(0)} KB" : "null"}');
-            await player.stop();
-            if (bytes != null && mounted) {
-              final resized = await widget.source.resizeToThumbnail(bytes);
-              widget.cacheManager.l1.put(thumbKey, resized);
-              await widget.cacheManager.l2.put(thumbKey, resized);
-              setState(() => _thumbnailData[video.id] = ThumbnailData(resized));
-              _log.info('Video thumbnail: ${video.name} (${(bytes.length / 1024).toStringAsFixed(0)} KB → ${(resized.length / 1024).toStringAsFixed(0)} KB)');
-            }
-          } finally {
-            widget.proxyServer.invalidateToken(token);
-          }
-        } catch (e, st) {
-          _log.warning('Video thumbnail failed: ${video.name}', e, st);
-          if (mounted) {
-            setState(() => _thumbnailData[video.id] = ThumbnailFailed(ThumbnailFailReason.timeout));
-          }
-        }
+      _videoThumbService ??= VideoThumbnailService();
+      final bytes = await _videoThumbService!.capture(url);
+      if (bytes != null && mounted) {
+        final resized = await widget.source.resizeToThumbnail(bytes);
+        widget.cacheManager.l1.put(thumbKey, resized);
+        await widget.cacheManager.l2.put(thumbKey, resized);
+        setState(() => _thumbnailData[image.id] = ThumbnailData(resized));
+        _log.info('Video thumbnail: ${image.name} (${(bytes.length / 1024).toStringAsFixed(0)} KB → ${(resized.length / 1024).toStringAsFixed(0)} KB)');
       }
     } finally {
-      _log.info('Video thumbnails: disposing player');
-      await player.dispose();
-      _log.info('Video thumbnails: done');
+      widget.proxyServer.invalidateToken(token);
     }
   }
 
@@ -319,24 +259,23 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         ),
       ));
     } else if (item.metadata?['isVideo'] == true) {
-      // Cancel thumbnail generation to free SMB connection for playback
-      _videoThumbGeneration++;
+      // Dispose video thumbnail service to free SMB connection for playback
+      _videoThumbService?.dispose();
+      _videoThumbService = null;
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           item: item,
           source: widget.source,
           proxyServer: widget.proxyServer,
         ),
-      )).then((_) {
-        // Restart thumbnail generation for remaining videos
-        _loadVideoThumbnails();
-      });
+      )).then((_) => _retryUnsupportedThumbnails());
     } else {
-      final index = _imageFiles.indexWhere((i) => i.id == item.id);
+      final viewerItems = _imageFiles.where((i) => i.metadata?['isVideo'] != true).toList();
+      final index = viewerItems.indexWhere((i) => i.id == item.id);
       if (index >= 0) {
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ViewerScreen(
-            items: _imageFiles,
+            items: viewerItems,
             initialIndex: index,
             registry: widget.registry,
             cacheManager: widget.cacheManager,
@@ -476,15 +415,15 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           final isDir = item.metadata?['isDirectory'] == true;
           final thumb = _thumbnailData[item.id];
 
-          // Trigger next batch when an untried item becomes visible.
-          if (!isDir && thumb == null && !_isLoadingThumbnails) {
+          // Trigger next batch when an item beyond current batch becomes visible.
+          final itemIndex = _imageFiles.indexOf(item);
+          if (!isDir && itemIndex >= _thumbnailLoadedCount && !_isLoadingThumbnails) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && !_isLoadingThumbnails) _loadNextBatch();
             });
           }
 
           final isVideo = item.metadata?['isVideo'] == true;
-
           final videoThumb = isVideo ? _thumbnailData[item.id] : null;
 
           return GestureDetector(
