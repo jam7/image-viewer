@@ -59,13 +59,8 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   int _loadGeneration = 0;
 
   /// 画面に表示される行数から2画面分のアイテム数を計算
-  int get _batchSize {
-    if (!_scrollController.hasClients) return galleryCrossAxisCount * 6; // 初回のフォールバック
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final itemHeight = (viewportHeight / galleryCrossAxisCount).ceilToDouble(); // 正方形グリッド
-    final rowsPerScreen = (viewportHeight / (itemHeight + gallerySpacing)).ceil();
-    return galleryCrossAxisCount * rowsPerScreen * 2; // 2画面分
-  }
+  /// 2画面分のアイテム数。5列 × 6行 = 30。
+  int get _batchSize => galleryCrossAxisCount * 6;
 
   @override
   void initState() {
