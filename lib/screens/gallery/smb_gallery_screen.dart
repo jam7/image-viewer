@@ -58,6 +58,8 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   /// Incremented in _loadDirectory() to invalidate in-progress thumbnail loops.
   /// Thumbnail loading must capture this at start and abort if it changes.
   int _loadGeneration = 0;
+  int _videoThumbGeneration = 0; // Incremented to cancel video thumbnail generation
+  List<ImageSource> _videoFiles = []; // For restart after playback
 
   /// 画面に表示される行数から2画面分のアイテム数を計算
   int get _batchSize {
@@ -129,13 +131,13 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       _imageFiles = items.where((i) =>
           i.metadata?['isDirectory'] != true &&
           i.metadata?['isVideo'] != true).toList();
-      final videoFiles = items.where((i) => i.metadata?['isVideo'] == true).toList();
+      _videoFiles = items.where((i) => i.metadata?['isVideo'] == true).toList();
       setState(() {
         _items.addAll(items);
         _isLoading = false;
       });
       _loadNextBatch();
-      _loadVideoThumbnails(videoFiles);
+      _loadVideoThumbnails();
     } catch (e, st) {
       _log.warning('loadDirectory error', e, st);
       setState(() {
@@ -229,20 +231,21 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     _loadThumbnails(retryItems);
   }
 
-  Future<void> _loadVideoThumbnails(List<ImageSource> videos) async {
+  Future<void> _loadVideoThumbnails() async {
+    // Filter to videos that don't have thumbnails yet
+    final videos = _videoFiles.where((v) => !_thumbnailData.containsKey(v.id)).toList();
     if (videos.isEmpty) return;
     _log.info('Video thumbnails: starting ${videos.length} videos');
 
-    // Reuse single Player + VideoController.
-    // Proxy abort ensures previous video's stream stops immediately.
+    final generation = ++_videoThumbGeneration;
     final player = Player();
     VideoController(player);
     await player.setVolume(0);
 
     try {
       for (final video in videos) {
-        if (!mounted) {
-          _log.info('Video thumbnails: aborted (unmounted)');
+        if (!mounted || generation != _videoThumbGeneration) {
+          _log.info('Video thumbnails: cancelled');
           return;
         }
         final thumbKey = 'thumb:${video.id}';
@@ -307,13 +310,18 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         ),
       ));
     } else if (item.metadata?['isVideo'] == true) {
+      // Cancel thumbnail generation to free SMB connection for playback
+      _videoThumbGeneration++;
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           item: item,
           source: widget.source,
           proxyServer: widget.proxyServer,
         ),
-      ));
+      )).then((_) {
+        // Restart thumbnail generation for remaining videos
+        _loadVideoThumbnails();
+      });
     } else {
       final index = _imageFiles.indexWhere((i) => i.id == item.id);
       if (index >= 0) {
