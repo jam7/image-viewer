@@ -174,5 +174,44 @@ ViewerScreen._loadFullImage() → registry.resolve(image.sourceKey)
 - `SourceRegistry._pixivLoginVerified`: ログイン確認済みフラグ。
   true になると以降は `_handlePixivLogin` を呼ばずに即 PixivSource を返す
 
+## WebView の制約: パスワード補完・パスキー非対応
+
+ログインは埋め込み WebView (`webview_flutter` / `webview_windows`) 内で行うため、
+ブラウザでは使えるパスワードマネージャー連携が利用できない。これは設計上の制約であり、
+アプリ側コードで解決できない。
+
+### パスキー (WebAuthn / FIDO2) — 原理的に不可
+
+- 埋め込み WebView は WebAuthn の呼び出しを基本的にサポートしない。
+  Android WebView は近年 `WebSettingsCompat.setWebAuthenticationSupport` で
+  限定的に対応したが、利用には **アプリと RP (pixiv.net) の Digital Asset Links による
+  一次パーティ関係** が必要。サードパーティアプリでは pixiv.net 側の
+  `assetlinks.json` を用意できないため成立しない。
+- `webview_windows` (WebView2)、iOS の `WKWebView` も同様に、サードパーティアプリの
+  埋め込みコンテキストでパスキーは使えない。
+- → 実現不可能。回避策なし。
+
+### パスワード補完 (Google パスワードマネージャー / iCloud キーチェーン等) — 不安定
+
+- Android: WebView の自動入力はシステムの Autofill Framework 経由。フォーム認識や
+  キーボード連携の取りこぼしが多く、`webview_flutter` は autofill を制御する API を
+  公開していない。
+- iOS: `WKWebView` の QuickType / キーチェーン補完は OS 任せで、アプリから制御不可。
+- → アプリ側で安定動作させる手段がない。
+
+### 外部ブラウザ / Custom Tabs を採用しない理由
+
+外部ブラウザや Custom Tabs でログインさせればパスワード補完・パスキーは効くが、
+ログイン後の **Cookie をアプリ側 WebView に取り込めない**（上記「WebView 構成」の
+Cookie 共有が成立しない）。pixiv は公開 OAuth を提供していないため、
+リダイレクトでトークンを受け取る方式も使えない。現行の Cookie 共有アーキテクチャを
+破壊するため採用しない。
+
+### 運用方針
+
+ログインは初回および Cookie 失効時のみ発生する。手入力、またはパスワードマネージャーの
+アプリから手動コピペで運用する。利用者向けの記載は [README.md](../README.md) の
+「既知の問題」を参照。
+
 ## 解決済みの課題
 

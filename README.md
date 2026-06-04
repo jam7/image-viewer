@@ -71,3 +71,14 @@
 | Google Drive | OAuth 2.0 + Drive API v3 | 部分ダウンロード対応。APIクォータ制限あり |
 | OneDrive | OAuth 2.0 + Microsoft Graph API | 部分ダウンロード対応（`@microsoft.graph.downloadUrl` 経由） |
 | iCloud Drive | NSFileManager / icloud_storage | iOS/macOS限定。Apple プラットフォームのみ対応 |
+
+## 既知の問題
+
+### Pixiv ログインでパスワード補完・パスキーが使えない
+
+Pixiv のログインは埋め込み WebView (`webview_flutter` / `webview_windows`) 上で行うため、以下が利用できない。
+
+- **パスキー (WebAuthn/FIDO2)**: 埋め込み WebView では原理的に非対応。利用にはアプリと pixiv.net の Digital Asset Links による一次パーティ関係が必要で、サードパーティアプリでは実現不可能
+- **パスワード補完 (Google パスワードマネージャー等)**: WebView の自動入力はシステムの自動入力サービス経由で取りこぼしが多く、WebView API 側に制御手段がないため安定動作させられない
+
+回避策として外部ブラウザ / Custom Tabs でのログインも考えられるが、ログイン後の Cookie をアプリ側 WebView に取り込めず、現在の Cookie 共有方式 ([docs/pixiv_auth.md](docs/pixiv_auth.md)) が成立しないため採用していない。ログインは初回および Cookie 失効時のみのため、手入力 (またはパスワードマネージャーからの手動コピペ) で運用する。
