@@ -38,7 +38,16 @@ class PixivSource extends ImageSourceProvider {
       final uri = Uri.parse('https://dummy$effectivePath');
       final word = uri.queryParameters['word'] ?? '';
       if (word.isEmpty) throw Exception('検索ワードが必要です');
-      result = await _client.searchIllust(word, page: _nextOffset ?? 1);
+      // s_mode (tag match) and order ride in the path query so the gallery can
+      // change them at runtime. Default to full-tag match / newest.
+      final sMode = uri.queryParameters['s_mode'] ?? 's_tag_full';
+      final order = uri.queryParameters['order'] ?? 'date_d';
+      result = await _client.searchIllust(
+        word,
+        sMode: sMode,
+        sort: order,
+        page: _nextOffset ?? 1,
+      );
     } else {
       result = await _client.illustTop();
     }

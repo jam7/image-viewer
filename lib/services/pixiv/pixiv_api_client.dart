@@ -130,14 +130,17 @@ class PixivApiClient {
   }
 
   /// イラストを検索。
+  /// [sort]: date_d (新着) / date (古い順)。
+  /// [sMode]: s_tag_full (タグ完全一致) / s_tag (タグ部分一致)。
   Future<PixivIllustList> searchIllust(
     String word, {
     String sort = 'date_d',
+    String sMode = 's_tag_full',
     int page = 1,
   }) async {
     final encodedWord = Uri.encodeComponent(word);
     final data = await _transport.getJson(
-      '$_baseUrl/ajax/search/artworks/$encodedWord?word=$encodedWord&order=$sort&s_mode=s_tag_full&p=$page&type=all&lang=ja',
+      '$_baseUrl/ajax/search/artworks/$encodedWord?word=$encodedWord&order=$sort&s_mode=$sMode&p=$page&type=all&lang=ja',
     );
     _checkError(data);
     final body = data['body'] as Map<String, dynamic>;

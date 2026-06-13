@@ -72,6 +72,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
   final _focusNode = FocusNode();
   int _minPageCount = 0;
 
+  // Search options (session-only). Apply to tag searches.
+  String _searchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分一致
+  String _searchOrder = 'date_d'; // date_d=新着 / date=古い順
+
+  bool get _isSearchPage => widget.initialUserPath?.startsWith('/search') ?? false;
+
   /// Per-tab state. Created lazily on first switch.
   late final Map<PixivTab, _TabState> _tabStates;
 
@@ -107,6 +113,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
     _log.info('initState: initialTab=${widget.initialTab}, isUserWorks=$_isUserWorksPage, initialUserPath=${widget.initialUserPath}');
     if (widget.initialSearchWord != null) {
       _searchController.text = widget.initialSearchWord!;
+    }
+    // Seed the toggles from the search path if it carries options (so the
+    // results screen reflects how the search was issued).
+    final initialPath = widget.initialUserPath;
+    if (initialPath != null && initialPath.startsWith('/search')) {
+      final q = Uri.parse('https://dummy$initialPath').queryParameters;
+      _searchMode = q['s_mode'] ?? _searchMode;
+      _searchOrder = q['order'] ?? _searchOrder;
     }
     if (widget.initialFilterText != null) {
       _filterController.text = widget.initialFilterText!;
@@ -258,7 +272,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   String get _currentPath {
-    if (_isUserWorksPage) return widget.initialUserPath!;
+    if (_isUserWorksPage) {
+      final p = widget.initialUserPath!;
+      // Rebuild search path with the current options so toggles take effect.
+      if (p.startsWith('/search')) {
+        final word = Uri.parse('https://dummy$p').queryParameters['word'] ?? '';
+        return '/search?word=${Uri.encodeComponent(word)}'
+            '&s_mode=$_searchMode&order=$_searchOrder';
+      }
+      return p;
+    }
     switch (_currentTab) {
       case PixivTab.top:
         return '/top';
@@ -508,8 +531,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return;
     }
 
-    // Push a new gallery screen with search results
-    final searchPath = parsed ?? '/search?word=${Uri.encodeComponent(input)}';
+    // Push a new gallery screen with search results, carrying the options.
+    final searchPath = parsed ??
+        '/search?word=${Uri.encodeComponent(input)}'
+            '&s_mode=$_searchMode&order=$_searchOrder';
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => GalleryScreen(
         source: PixivSource(client: widget.source.client),
@@ -577,7 +602,28 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
+  /// Cycle the tag-match mode (完全 <-> 部分). Reloads if on a search page.
+  void _toggleSearchMode() {
+    setState(() {
+      _searchMode = _searchMode == 's_tag_full' ? 's_tag' : 's_tag_full';
+    });
+    if (_isSearchPage) _loadImages();
+  }
+
+  /// Cycle the order (新着 <-> 古い順). Reloads if on a search page.
+  void _toggleSearchOrder() {
+    setState(() {
+      _searchOrder = _searchOrder == 'date_d' ? 'date' : 'date_d';
+    });
+    if (_isSearchPage) _loadImages();
+  }
+
   Widget _buildFilterBar() {
+    final optionButtonStyle = OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      minimumSize: const Size(0, 48),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Row(
@@ -599,7 +645,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 80,
+            width: 60,
             child: TextField(
               controller: _filterController,
               decoration: const InputDecoration(
@@ -609,6 +655,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
               onSubmitted: (_) => _loadImages(),
             ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: _toggleSearchMode,
+            style: optionButtonStyle,
+            child: Text(_searchMode == 's_tag_full' ? '完全' : '部分'),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: _toggleSearchOrder,
+            style: optionButtonStyle,
+            child: Text(_searchOrder == 'date_d' ? '新着' : '古い順'),
           ),
         ],
       ),
