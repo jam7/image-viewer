@@ -11,19 +11,22 @@ graph TB
     Registry["SourceRegistry<br/>sourceKey → Provider 解決"]
     Source["PixivSource<br/>(ImageSourceProvider 実装、画面ごとに生成)"]
     API["PixivApiClient<br/>(アプリに1つ、全画面で共有)"]
-    Web["PixivWebClient<br/>(非表示 WebView、fetch() 実行)"]
-    Dio["Dio<br/>(画像ダウンロード専用)"]
+    Transport["PixivJsonTransport<br/>(WebView版 / Dio版を<br/>プラットフォームで選択)"]
+    Web["PixivWebClient<br/>(非表示 WebView、fetch()・Cookie・UA)"]
+    ImgDio["Dio<br/>(画像ダウンロード専用)"]
     Pixiv["www.pixiv.net<br/>/ajax/* API"]
     Pximg["i.pximg.net<br/>画像 CDN"]
 
     Screens --> Registry --> Source --> API
-    API --> Web --> Pixiv
-    API --> Dio --> Pximg
+    API --> Transport --> Web --> Pixiv
+    Transport -. "Android: Dio + native Cookie" .-> Pixiv
+    API --> ImgDio --> Pximg
 ```
 
 | クラス | ファイル | 役割 |
 |---|---|---|
-| `PixivWebClient` | `lib/services/pixiv/pixiv_web_client.dart` | 非表示 WebView 上で `fetch()` を実行し JSON を返す低レベル層 |
+| `PixivWebClient` | `lib/services/pixiv/pixiv_web_client.dart` | 非表示 WebView 上で `fetch()` を実行し JSON を返す。Cookie/UA の供給元 |
+| `PixivJsonTransport` | `lib/services/pixiv/pixiv_json_transport.dart` | JSON 取得の抽象化。`WebViewJsonTransport` / `DioJsonTransport` を `forPlatform()` で選択 |
 | `PixivApiClient` | `lib/services/pixiv/pixiv_api_client.dart` | Pixiv Web Ajax API のエンドポイント別メソッド + 画像ダウンロード |
 | `PixivSource` | `lib/services/sources/pixiv_source.dart` | `ImageSourceProvider` 実装。パス解釈とページネーション状態を持つ |
 | `SourceRegistry` | `lib/services/sources/source_registry.dart` | `"pixiv:default"` の解決とログインのゲートキーパー |
@@ -36,6 +39,23 @@ graph TB
 Pixiv の Web Ajax API (`/ajax/*`) は httpOnly Cookie によるセッション認証のため、
 Dart の HTTP クライアントからは Cookie を送信できない。そこで、ログイン済み Cookie を
 持つ非表示 WebView 内で JavaScript の `fetch()` を実行し、結果を取り出す。
+
+#### トランスポート抽象化 (`PixivJsonTransport`)
+
+JSON 取得は `PixivJsonTransport` で抽象化され、プラットフォームで実装を切り替える
+(`PixivApiClient` が `forPlatform()` で選択)。
+
+| 実装 | 経路 | 使用プラットフォーム |
+|---|---|---|
+| `WebViewJsonTransport` | WebView の `fetch()` (下記) | Windows、iOS、フォールバック |
+| `DioJsonTransport` | Dio 直接 + native Cookie (後述「1b」) | Android |
+
+WebView の `fetch()` 経路は、大きなレスポンス (例: `top/illust` は 1〜1.5MB) で
+**Android だと遅い** (WebView メインスレッド競合 + 100ms ポーリング + 巨大文字列の
+JS→Dart ブリッジ転送で 5〜6 秒)。Windows は CPU/回線が速くこの影響が小さい。
+そのため Android のみ Dio 直接取得に切り替え、~2 倍高速化している
+(設計判断の詳細はメモ `project_pixiv_dio_transport` を参照)。POST (ブックマーク) は
+頻度が低く性能要件もないため、全プラットフォームで WebView 経路に委譲する。
 
 #### fetch 実行の仕組み (`PixivWebClient`)
 
@@ -72,6 +92,29 @@ GET のヘッダに加えて `Content-Type: application/json` と `x-csrf-token`
 CSRF トークンはログイン画面 (`PixivLoginScreen._extractCsrfToken`) が
 `www.pixiv.net` のページ HTML から抽出して `PixivWebClient.csrfToken` に設定する。
 トークン未設定で `postJson` を呼ぶと例外を throw。
+
+### 1b. JSON API (Android): Dio 直接 + native Cookie
+
+Android では GET を `DioJsonTransport` が直接 HTTP で取得する。WebView の
+オーバーヘッド (ポーリング・ブリッジ転送・SPA スレッド競合) を回避でき、
+残るのは純粋なネットワーク転送時間だけになる。
+
+仕組み:
+
+1. **Cookie**: `PixivWebClient.getNativeCookie(url)` が MethodChannel `pixiv/cookies`
+   (`MainActivity.kt`) 経由で Android の `CookieManager.getCookie()` を呼ぶ。
+   これは `document.cookie` (JS) では見えない **httpOnly Cookie (`PHPSESSID` 等) も返す**。
+   `__cf_bm` 等は更新されるため **リクエストごとに最新を読む**
+2. **User-Agent**: `loadPixivPage()` 完了時に WebView の `navigator.userAgent` を取得して
+   `PixivWebClient.userAgent` に保持し、Dio で流用する。Cloudflare の `__cf_bm` は
+   Cookie を取得した UA に紐づくため、**UA を一致させないとチャレンジで弾かれる**
+3. ヘッダ: 上記 `Cookie` + `User-Agent` に加え `Referer`, `X-Requested-With`,
+   `Accept: application/json`
+4. レスポンスが JSON でない (Cloudflare チャレンジ等) 場合は `FormatException` を
+   検知し、先頭 200 文字を warning ログに出して例外を throw
+
+> iOS も遅いが、`WKHTTPCookieStore` からの httpOnly Cookie 取り出しは未検証のため
+> 現状は WebView 経路。検証できれば同様に Dio 化できる。
 
 ### 2. 画像ダウンロード: Dio 直接
 

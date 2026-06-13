@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/pixiv_artwork.dart';
+import 'pixiv_json_transport.dart';
 import 'pixiv_web_client.dart';
 
 final _log = Logger('PixivAPI');
@@ -19,11 +20,15 @@ class PixivApiClient {
 
   final PixivWebClient _webClient;
   final Dio _imageDio;
+  // JSON transport for /ajax endpoints. Dio-based on Android (fast for large
+  // payloads), WebView fetch elsewhere. See PixivJsonTransport.forPlatform.
+  final PixivJsonTransport _transport;
 
   String? get userId => _webClient.userId;
 
   PixivApiClient({required PixivWebClient webClient})
       : _webClient = webClient,
+        _transport = PixivJsonTransport.forPlatform(webClient),
         _imageDio = Dio(BaseOptions(
           headers: {
             'Referer': _referer,
@@ -34,7 +39,7 @@ class PixivApiClient {
 
   /// 作品詳細を取得。
   Future<PixivArtwork> illustDetail(int illustId) async {
-    final data = await _webClient.fetchJson(
+    final data = await _transport.getJson(
       '$_baseUrl/ajax/illust/$illustId',
     );
     _checkError(data);
@@ -44,7 +49,7 @@ class PixivApiClient {
 
   /// 作品の全ページ情報を取得。
   Future<List<PixivPage>> illustPages(int illustId) async {
-    final data = await _webClient.fetchJson(
+    final data = await _transport.getJson(
       '$_baseUrl/ajax/illust/$illustId/pages',
     );
     _checkError(data);
@@ -59,7 +64,7 @@ class PixivApiClient {
 
   Future<Map<String, dynamic>> _fetchTopBody() async {
     if (_cachedTopBody != null) return _cachedTopBody!;
-    final data = await _webClient.fetchJson(
+    final data = await _transport.getJson(
       '$_baseUrl/ajax/top/illust?mode=all&lang=ja',
     );
     _checkError(data);
@@ -109,7 +114,7 @@ class PixivApiClient {
     int offset = 0,
     int limit = 48,
   }) async {
-    final data = await _webClient.fetchJson(
+    final data = await _transport.getJson(
       '$_baseUrl/ajax/user/$userId/illusts/bookmarks?tag=&offset=$offset&limit=$limit&rest=$restrict&lang=ja',
     );
     _checkError(data);
@@ -131,7 +136,7 @@ class PixivApiClient {
     int page = 1,
   }) async {
     final encodedWord = Uri.encodeComponent(word);
-    final data = await _webClient.fetchJson(
+    final data = await _transport.getJson(
       '$_baseUrl/ajax/search/artworks/$encodedWord?word=$encodedWord&order=$sort&s_mode=s_tag_full&p=$page&type=all&lang=ja',
     );
     _checkError(data);
@@ -157,7 +162,7 @@ class PixivApiClient {
     int limit = 48,
   }) async {
     // まずユーザーの全作品IDを取得
-    final profileData = await _webClient.fetchJson(
+    final profileData = await _transport.getJson(
       '$_baseUrl/ajax/user/$userId/profile/all?lang=ja',
     );
     _checkError(profileData);
@@ -195,7 +200,7 @@ class PixivApiClient {
     final idsParam = pageIds.map((id) => 'ids%5B%5D=$id').join('&');
     final url = '$_baseUrl/ajax/user/$userId/profile/illusts?$idsParam&work_category=illustManga&is_first_page=0&lang=ja';
     _log.info('userIllusts: ${pageIds.length} ids, offset=$offset, total=${uniqueIds.length}');
-    final worksData = await _webClient.fetchJson(url);
+    final worksData = await _transport.getJson(url);
     _checkError(worksData);
     final worksBody = worksData['body'] as Map<String, dynamic>? ?? {};
     final works = worksBody['works'] as Map<String, dynamic>? ?? {};
@@ -227,7 +232,7 @@ class PixivApiClient {
   /// [restrict]: 0 = public, 1 = private.
   Future<void> bookmarkAdd(int illustId, {int restrict = 0}) async {
     _log.info('bookmarkAdd: illustId=$illustId, restrict=$restrict');
-    final data = await _webClient.postJson(
+    final data = await _transport.postJson(
       '$_baseUrl/ajax/illusts/bookmarks/add',
       {
         'illust_id': '$illustId',
@@ -250,5 +255,6 @@ class PixivApiClient {
 
   void dispose() {
     _imageDio.close();
+    _transport.dispose();
   }
 }

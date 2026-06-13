@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:webview_flutter/webview_flutter.dart' as mobile;
 import 'package:webview_windows/webview_windows.dart' as win;
@@ -64,6 +65,37 @@ class PixivWebClient {
     }
     _isReady = true;
     _log.info('pixiv.net loaded, ready for API calls');
+
+    // Capture the WebView's User-Agent so the direct-HTTP (Dio) transport can
+    // reuse it — Cloudflare cookies (__cf_bm) are tied to the UA that obtained
+    // them, so a mismatched UA on the Dio request risks being challenged.
+    try {
+      final raw = (await _evaluateScript('navigator.userAgent')).toString();
+      _userAgent = (raw.startsWith('"') && raw.endsWith('"'))
+          ? jsonDecode(raw) as String
+          : raw;
+      _log.info('captured WebView UA: ${_userAgent?.length} chars');
+    } catch (e, st) {
+      _log.warning('failed to capture WebView UA', e, st);
+    }
+  }
+
+  static const _cookieChannel = MethodChannel('pixiv/cookies');
+
+  String? _userAgent;
+  String? get userAgent => _userAgent;
+
+  /// Read the cookie header for [url] from the native WebView cookie store.
+  /// Includes httpOnly cookies (e.g. PHPSESSID). Android only; returns null
+  /// where the platform channel is not implemented.
+  Future<String?> getNativeCookie(String url) async {
+    try {
+      return await _cookieChannel
+          .invokeMethod<String>('getCookie', {'url': url});
+    } catch (e, st) {
+      _log.warning('getNativeCookie failed', e, st);
+      return null;
+    }
   }
 
   Future<void> _loadPageWindows(String url) async {
