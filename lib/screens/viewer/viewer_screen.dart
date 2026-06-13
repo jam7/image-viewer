@@ -11,6 +11,7 @@ import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../gallery/gallery_screen.dart';
 
 final _log = Logger('Viewer');
 
@@ -618,6 +619,52 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   // --- UI ---
 
+  /// Open a tag search in a new gallery screen. Tags come from the Pixiv work
+  /// being viewed; tapping one searches that tag, mirroring the gallery's own
+  /// search-by-tag flow.
+  void _searchTag(String tag) {
+    final source = widget.registry.createPixivSource();
+    if (source == null) {
+      _log.warning('searchTag: pixiv source unavailable');
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryScreen(
+        source: source,
+        cacheManager: widget.cacheManager,
+        favoritesStore: widget.favoritesStore,
+        registry: widget.registry,
+        initialSearchWord: tag,
+        initialUserPath: '/search?word=${Uri.encodeComponent(tag)}',
+      ),
+    ));
+  }
+
+  /// Horizontal, scrollable row of tappable tag chips for the current work.
+  Widget _buildTagBar(List<String> tags) {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: tags.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final tag = tags[i];
+          return ActionChip(
+            label: Text(tag),
+            onPressed: () => _searchTag(tag),
+            backgroundColor: Colors.white.withValues(alpha: 0.85),
+            labelStyle: const TextStyle(color: Colors.black87, fontSize: 12),
+            side: BorderSide.none,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isResolvingPages) {
@@ -687,6 +734,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
     final pages = _pages!;
     final currentImage = pages[_pageIndex];
+    // Tags of the current work (Pixiv only; empty for other sources).
+    final tags = (widget.items[_itemIndex].metadata?['tags'] as List?)
+            ?.cast<String>() ??
+        const <String>[];
     final data = _fullImages[currentImage.id];
     final isFav = widget.favoritesStore.isFavorite(currentImage.id);
     final isDl = _isWorkDownloaded();
@@ -771,32 +822,39 @@ class _ViewerScreenState extends State<ViewerScreen> {
                         ),
                       ),
                       child: SafeArea(
-                        child: Row(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.arrow_back,
-                                  color: Colors.white),
-                              onPressed: () => Navigator.of(context).pop(),
-                            ),
-                            Expanded(
-                              child: Text(
-                                currentImage.name,
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 14),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (cacheSource != null)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: Icon(
-                                  cacheSource == CacheSource.network
-                                      ? Icons.cloud_download
-                                      : Icons.storage,
-                                  color: Colors.white70,
-                                  size: 16,
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_back,
+                                      color: Colors.white),
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(),
                                 ),
-                              ),
+                                Expanded(
+                                  child: Text(
+                                    currentImage.name,
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 14),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (cacheSource != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: Icon(
+                                      cacheSource == CacheSource.network
+                                          ? Icons.cloud_download
+                                          : Icons.storage,
+                                      color: Colors.white70,
+                                      size: 16,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            if (tags.isNotEmpty) _buildTagBar(tags),
                           ],
                         ),
                       ),
