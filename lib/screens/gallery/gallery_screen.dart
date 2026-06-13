@@ -580,12 +580,17 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
+  String _appBarTitle() {
+    if (_isSearchPage) return '検索結果一覧';
+    if (_isUserWorksPage) return '${widget.initialUserName ?? ""} の作品';
+    if (_currentTab == PixivTab.bookmarks) return 'ブックマーク一覧';
+    return 'Pixiv';
+  }
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       title: Text(
-        _isUserWorksPage
-            ? '${widget.initialUserName ?? ""} の作品'
-            : 'Pixiv',
+        _appBarTitle(),
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
       ),

@@ -878,30 +878,41 @@ class _ViewerScreenState extends State<ViewerScreen> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  final authorId = currentImage.metadata?['authorId'];
-                                  final authorName = currentImage.metadata?['author'] as String? ?? '';
-                                  if (authorId != null) {
-                                    _log.info('pop with showUser: authorId=$authorId, authorName=$authorName');
-                                    Navigator.of(context).pop({
-                                      'action': 'showUser',
-                                      'userId': authorId,
-                                      'userName': authorName,
-                                    });
-                                  }
-                                },
-                                child: Text(
-                                  currentImage.metadata?['author']
-                                          as String? ??
-                                      '',
-                                  style: const TextStyle(
-                                    color: Colors.lightBlueAccent,
-                                    fontSize: 12,
-                                    decoration: TextDecoration.underline,
-                                    decorationColor: Colors.lightBlueAccent,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: ActionChip(
+                                  avatar: const Icon(Icons.person,
+                                      size: 16, color: Colors.black54),
+                                  label: Text(
+                                    currentImage.metadata?['author']
+                                            as String? ??
+                                        '',
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  overflow: TextOverflow.ellipsis,
+                                  onPressed: () {
+                                    final authorId =
+                                        currentImage.metadata?['authorId'];
+                                    final authorName = currentImage
+                                            .metadata?['author'] as String? ??
+                                        '';
+                                    if (authorId != null) {
+                                      _log.info(
+                                          'pop with showUser: authorId=$authorId, authorName=$authorName');
+                                      Navigator.of(context).pop({
+                                        'action': 'showUser',
+                                        'userId': authorId,
+                                        'userName': authorName,
+                                      });
+                                    }
+                                  },
+                                  backgroundColor:
+                                      Colors.white.withValues(alpha: 0.85),
+                                  labelStyle: const TextStyle(
+                                      color: Colors.black87, fontSize: 12),
+                                  side: BorderSide.none,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
                                 ),
                               ),
                             ),
@@ -930,7 +941,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                               tooltip: 'ダウンロード',
                             ),
                             Text(
-                              _buildPositionText(pages),
+                              _buildPositionText(),
                               style: const TextStyle(
                                   color: Colors.white70, fontSize: 12),
                             ),
@@ -1025,14 +1036,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
     );
   }
 
-  String _buildPositionText(List<ImageSource> pages) {
-    final parts = <String>[];
-    if (pages.length > 1) {
-      parts.add('${_pageIndex + 1}/${pages.length}');
-    }
+  /// Position within the work list. The page number within the work (e.g.
+  /// "1/10") is already shown in the top bar via the work name, so it is not
+  /// repeated here.
+  String _buildPositionText() {
     if (widget.items.length > 1) {
-      parts.add('[${_itemIndex + 1}/${widget.items.length}]');
+      return '[${_itemIndex + 1}/${widget.items.length}]';
     }
-    return parts.join(' ');
+    return '';
   }
 }
