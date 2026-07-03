@@ -211,18 +211,10 @@ class SmbSource extends ImageSourceProvider {
   Future<Smb2Tree> connectForProxy() => _connect();
 
   /// Range read for a specific file path via SMB.
+  /// Small ranges go out as a compound Create+Read+Close (1 round trip).
   Future<Uint8List> readRange(String path, int offset, int length) async {
     final tree = await _connect();
-    final reader = await tree.openRead(path).timeout(_ioTimeout);
-    try {
-      return await reader.readRange(offset, length).timeout(_ioTimeout);
-    } finally {
-      try {
-        await reader.close();
-      } catch (e, st) {
-        _log.warning('close error in readRange', e, st);
-      }
-    }
+    return tree.readRange(path, offset: offset, length: length).timeout(_ioTimeout);
   }
 
   @override
@@ -361,18 +353,10 @@ class SmbSource extends ImageSourceProvider {
   }
 
   /// ファイルの先頭 [length] バイトだけ読み込む。
+  /// Compound Create+Read+Close (1 round trip) for small lengths.
   Future<Uint8List> _readPartial(String path, int length) async {
     final tree = await _connect();
-    final reader = await tree.openRead(path).timeout(_ioTimeout);
-    try {
-      return await reader.readRange(0, length).timeout(_ioTimeout);
-    } finally {
-      try {
-        await reader.close();
-      } catch (e, st) {
-        _log.warning('close error in _readPartial', e, st);
-      }
-    }
+    return tree.readRange(path, offset: 0, length: length).timeout(_ioTimeout);
   }
 
   @override
