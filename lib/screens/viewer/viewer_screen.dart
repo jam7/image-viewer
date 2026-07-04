@@ -239,6 +239,25 @@ class _ViewerScreenState extends State<ViewerScreen> {
     _evictDistantPages(index, pages);
   }
 
+  /// 48x48 spinner with caption lines below, shared by the loading and
+  /// download progress overlays.
+  Widget _progressColumn(double? fraction, List<Text> captions) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: CircularProgressIndicator(value: fraction),
+        ),
+        for (var i = 0; i < captions.length; i++) ...[
+          SizedBox(height: i == 0 ? 12 : 4),
+          captions[i],
+        ],
+      ],
+    );
+  }
+
   Widget _buildLoadingIndicator(String imageId) {
     final progress = _loadProgress[imageId];
     if (progress == null) {
@@ -248,21 +267,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final fraction = total > 0 ? received / total : null;
     final receivedKB = (received / 1024).toStringAsFixed(0);
     final totalKB = total > 0 ? (total / 1024).toStringAsFixed(0) : '?';
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 48,
-          height: 48,
-          child: CircularProgressIndicator(value: fraction),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          '$receivedKB / $totalKB KB',
-          style: const TextStyle(color: Colors.white38, fontSize: 12),
-        ),
-      ],
-    );
+    return _progressColumn(fraction, [
+      Text(
+        '$receivedKB / $totalKB KB',
+        style: const TextStyle(color: Colors.white38, fontSize: 12),
+      ),
+    ]);
   }
 
   Widget _buildDownloadProgress() {
@@ -274,26 +284,16 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final progressText = isPagesProgress
         ? '$received / $total pages'
         : '${(received / 1024).toStringAsFixed(0)} / ${(total / 1024).toStringAsFixed(0)} KB';
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 48,
-          height: 48,
-          child: CircularProgressIndicator(value: fraction),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Downloading ${item.name}',
-          style: const TextStyle(color: Colors.white54, fontSize: 14),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          progressText,
-          style: const TextStyle(color: Colors.white38, fontSize: 12),
-        ),
-      ],
-    );
+    return _progressColumn(fraction, [
+      Text(
+        'Downloading ${item.name}',
+        style: const TextStyle(color: Colors.white54, fontSize: 14),
+      ),
+      Text(
+        progressText,
+        style: const TextStyle(color: Colors.white38, fontSize: 12),
+      ),
+    ]);
   }
 
   /// Release image data for pages far from [currentIndex] to prevent OOM
@@ -464,26 +464,35 @@ class _ViewerScreenState extends State<ViewerScreen> {
   }
 
   Future<void> _toggleDownload(ImageSource currentImage) async {
-    final item = widget.items[_itemIndex];
     final workKey = _workDownloadKey();
-
-    // Already downloaded → remove work and its pages
     if (widget.cacheManager.l3.isDownloaded(workKey)) {
-      _log.info('Removing download: ${item.name} key=$workKey');
-      final pages = _pages;
-      if (pages != null) {
-        for (final page in pages) {
-          final pageKey = 'full:${page.id}';
-          if (widget.cacheManager.l3.isDownloaded(pageKey)) {
-            await widget.cacheManager.l3.remove(pageKey);
-          }
+      await _removeDownload(workKey);
+    } else {
+      await _downloadWork(currentImage, workKey);
+    }
+  }
+
+  /// Remove the downloaded work and all of its downloaded pages from L3.
+  Future<void> _removeDownload(String workKey) async {
+    final item = widget.items[_itemIndex];
+    _log.info('Removing download: ${item.name} key=$workKey');
+    final pages = _pages;
+    if (pages != null) {
+      for (final page in pages) {
+        final pageKey = 'full:${page.id}';
+        if (widget.cacheManager.l3.isDownloaded(pageKey)) {
+          await widget.cacheManager.l3.remove(pageKey);
         }
       }
-      await widget.cacheManager.l3.remove(workKey);
-      setState(() {});
-      return;
     }
+    await widget.cacheManager.l3.remove(workKey);
+    setState(() {});
+  }
 
+  /// Download the current work to L3 (single image, PDF, ZIP stream, or
+  /// page-by-page depending on the work type).
+  Future<void> _downloadWork(ImageSource currentImage, String workKey) async {
+    final item = widget.items[_itemIndex];
     _log.info('Downloading work: ${item.name} key=$workKey');
 
     final meta = {

@@ -323,31 +323,44 @@ class SmbSource extends ImageSourceProvider {
     // JPEG: try EXIF thumbnail first
     final name = source.name.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
-      try {
-        final header = await _readPartial(source.uri, 65536);
-        final exifData = await readExifFromBytes(header);
-        final thumbnail = exifData['JPEGThumbnail'];
-        if (thumbnail != null) {
-          final bytes = thumbnail.values.toList();
-          if (bytes.isNotEmpty) {
-            final exifBytes = Uint8List.fromList(bytes.cast<int>());
-            // Check if EXIF thumbnail is large enough
-            final exifSize = await _getImageSize(exifBytes);
-            if (exifSize != null && (exifSize.width >= _thumbnailMaxSize || exifSize.height >= _thumbnailMaxSize)) {
-              _log.info('EXIF thumbnail: ${source.name} (${exifSize.width}x${exifSize.height})');
-              return resizeToThumbnail(exifBytes);
-            }
-            _log.info('EXIF thumbnail too small (${exifSize?.width}x${exifSize?.height}), using full image: ${source.name}');
-          }
-        }
-      } catch (e, st) {
-        _log.warning('EXIF parse error, using full image: ${source.name}', e, st);
+      final exifBytes = await _tryExifThumbnail(source);
+      if (exifBytes != null) {
+        return resizeToThumbnail(exifBytes);
       }
     }
 
     // Fallback: full image → resize
     final fullData = await fetchFullImage(source);
     return resizeToThumbnail(fullData);
+  }
+
+  /// JPEG ヘッダ部の EXIF サムネイルを試す。十分な解像度のものが取れなければ
+  /// null を返し、呼び出し側がフル画像にフォールバックする。
+  Future<Uint8List?> _tryExifThumbnail(ImageSource source) async {
+    try {
+      final header = await _readPartial(source.uri, 65536);
+      final exifData = await readExifFromBytes(header);
+      final thumbnail = exifData['JPEGThumbnail'];
+      if (thumbnail == null) return null;
+      final bytes = thumbnail.values.toList();
+      if (bytes.isEmpty) return null;
+
+      final exifBytes = Uint8List.fromList(bytes.cast<int>());
+      final exifSize = await _getImageSize(exifBytes);
+      if (exifSize == null ||
+          (exifSize.width < _thumbnailMaxSize &&
+              exifSize.height < _thumbnailMaxSize)) {
+        _log.info('EXIF thumbnail too small '
+            '(${exifSize?.width}x${exifSize?.height}), using full image: ${source.name}');
+        return null;
+      }
+      _log.info('EXIF thumbnail: ${source.name} '
+          '(${exifSize.width}x${exifSize.height})');
+      return exifBytes;
+    } catch (e, st) {
+      _log.warning('EXIF parse error, using full image: ${source.name}', e, st);
+      return null;
+    }
   }
 
   /// ファイルの先頭 [length] バイトだけ読み込む。
