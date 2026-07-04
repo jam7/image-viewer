@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import 'app.dart';
@@ -31,9 +30,9 @@ void main() async {
   Logger('Smb2Tree').level = Level.WARNING;
   Logger('Smb2FileReader').level = Level.WARNING;
 
-  // pdfrx: set cache directory for PDFium engine
-  final cacheDir = await getTemporaryDirectory();
-  Pdfrx.getCacheDirectory = () => cacheDir.path;
+  // pdfrx 2.4+: explicit initialization sets the PDFium cache directory
+  // (temporary directory via path_provider) and loads the engine.
+  await pdfrxFlutterInitialize();
 
   runApp(const ImageViewerApp());
 }
