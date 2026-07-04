@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 文章規約
+- 日本語の文章中でも括弧は半角 `()` を使う。全角 `（）` は使わない。
+
 ## プロジェクト概要
 
 Flutter製のクロスプラットフォーム画像ビューアアプリ (iOS/iPad/Android/Windows)。
