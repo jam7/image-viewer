@@ -127,24 +127,23 @@ class DownloadStore {
   }
 
   Future<Uint8List?> get(String key) async {
-    if (!_initialized || !_entries.containsKey(key)) return null;
-    final file = _fileFor(key);
-    if (!file.existsSync()) {
-      _entries.remove(key);
-      return null;
-    }
-    return file.readAsBytes();
+    final file = _validFile(key);
+    return file?.readAsBytes();
   }
 
   /// キーに対応するファイルパスを返す。エントリが存在しファイルがあれば返す。
-  String? getFilePath(String key) {
+  String? getFilePath(String key) => _validFile(key)?.path;
+
+  /// エントリと実ファイルの存在を検証してファイルを返す。ファイルが消えて
+  /// いた場合はエントリを取り除く (サイズ集計は現状維持で触らない)。
+  File? _validFile(String key) {
     if (!_initialized || !_entries.containsKey(key)) return null;
     final file = _fileFor(key);
     if (!file.existsSync()) {
       _entries.remove(key);
       return null;
     }
-    return file.path;
+    return file;
   }
 
   Future<CacheStats> getStats() async {

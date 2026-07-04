@@ -40,28 +40,17 @@ class DiskCache {
   }
 
   Future<Uint8List?> get(String key) async {
-    if (!_initialized) return null;
-    final entry = _entries[key];
-    if (entry == null) return null;
-
-    final file = _fileFor(key);
-    if (!file.existsSync()) {
-      _entries.remove(key);
-      _totalSizeBytes -= entry.sizeBytes;
-      _scheduleFlush();
-      return null;
-    }
-
-    // アクセス時間を更新
-    _entries[key] = entry.copyWith(lastAccessTime: DateTime.now());
-    _scheduleFlush();
-
-    return file.readAsBytes();
+    final file = _touchValidFile(key);
+    return file?.readAsBytes();
   }
 
-  /// キーに対応するファイルパスを返す。エントリが存在しファイルがあれば返す。
-  /// アクセス時間は更新しない（読み取りは呼び出し側が行う）。
-  String? getFilePath(String key) {
+  /// キーに対応するファイルパスを返す。エントリが存在しファイルがあれば返す
+  /// (読み取りは呼び出し側が行う)。アクセス時間は get と同様に更新する。
+  String? getFilePath(String key) => _touchValidFile(key)?.path;
+
+  /// エントリと実ファイルの存在を検証し、アクセス時間を更新してファイルを返す。
+  /// ファイルが消えていた場合はエントリとサイズ集計から取り除く (自己修復)。
+  File? _touchValidFile(String key) {
     if (!_initialized) return null;
     final entry = _entries[key];
     if (entry == null) return null;
@@ -74,11 +63,9 @@ class DiskCache {
       return null;
     }
 
-    // アクセス時間を更新
     _entries[key] = entry.copyWith(lastAccessTime: DateTime.now());
     _scheduleFlush();
-
-    return file.path;
+    return file;
   }
 
   Future<void> put(String key, Uint8List data) async {
