@@ -18,8 +18,9 @@ class DownloadStore {
   int _totalSizeBytes = 0;
   bool _initialized = false;
 
-  Future<void> init() async {
-    final appDir = await getApplicationDocumentsDirectory();
+  /// [baseDir] overrides the app documents directory (tests only).
+  Future<void> init({Directory? baseDir}) async {
+    final appDir = baseDir ?? await getApplicationDocumentsDirectory();
     _dlDir = Directory('${appDir.path}/cache/downloads');
     if (!_dlDir.existsSync()) {
       _dlDir.createSync(recursive: true);

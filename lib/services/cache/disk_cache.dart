@@ -28,8 +28,9 @@ class DiskCache {
 
   int get maxSizeBytes => _maxSizeBytes;
 
-  Future<void> init() async {
-    final appDir = await getApplicationDocumentsDirectory();
+  /// [baseDir] overrides the app documents directory (tests only).
+  Future<void> init({Directory? baseDir}) async {
+    final appDir = baseDir ?? await getApplicationDocumentsDirectory();
     _cacheDir = Directory('${appDir.path}/cache/l2');
     if (!_cacheDir.existsSync()) {
       _cacheDir.createSync(recursive: true);
