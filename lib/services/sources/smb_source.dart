@@ -491,9 +491,15 @@ class SmbSource extends ImageSourceProvider {
     final cachedPath = _pdfFilePathCache[pdfPath];
     if (cachedPath != null) return Future.value(cachedPath);
 
-    // Use Future cache to prevent duplicate downloads
+    // Use Future cache to prevent duplicate downloads.
+    // The cleanup callback MUST NOT return Map.remove's result: the removed
+    // value is this very future, and whenComplete waits for a returned
+    // future before completing — i.e. `() => _pdfDownloadFutures.remove(...)`
+    // deadlocks on itself and the caller's await never resumes.
     return _pdfDownloadFutures[pdfPath] ??= _ensurePdfFileImpl(pdfPath, pdfCacheKey)
-        .whenComplete(() => _pdfDownloadFutures.remove(pdfPath));
+        .whenComplete(() {
+      _pdfDownloadFutures.remove(pdfPath);
+    });
   }
 
   Future<String> _ensurePdfFileImpl(String pdfPath, String pdfCacheKey) async {
