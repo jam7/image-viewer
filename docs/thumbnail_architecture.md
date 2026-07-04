@@ -14,7 +14,7 @@ SmbGalleryScreen (UI)
             │       ├── JPEG: EXIF サムネイル抽出 → リサイズ
             │       ├── PNG/GIF/WebP/BMP: フルDL → リサイズ
             │       ├── ZIP: 最初の画像を Range Read → リサイズ
-            │       └── PDF: ページ0をレンダリング（キャッシュ必須）
+            │       └── PDF: ページ0をレンダリング (キャッシュ必須)
             │
             ├─→ VideoThumbnailService.capture() ── 動画サムネイル取得
             │       └── Player + VideoController (media_kit)
@@ -38,7 +38,7 @@ SmbGalleryScreen (UI)
 |---|---|
 | `setItems(items)` | 対象アイテム設定。全状態リセット |
 | `loadNextBatch()` | 次のバッチを開始 |
-| `cancel()` | 進行中バッチを中断（動画再生前に呼ぶ） |
+| `cancel()` | 進行中バッチを中断 (動画再生前に呼ぶ) |
 | `retryInterrupted()` | 中断されたアイテムをリトライ |
 | `retryUnsupported(predicate)` | notSupported のアイテムをリトライ |
 | `needsBatch(itemIndex)` | build トリガー用：このアイテムは未ディスパッチか |
@@ -51,7 +51,7 @@ SmbGalleryScreen (UI)
 |---|---|
 | `_items` | 対象アイテム一覧 |
 | `_loadedCount` | ディスパッチ済み位置 |
-| `_resultIds` | 結果を受け取ったアイテムの ID（重複防止） |
+| `_resultIds` | 結果を受け取ったアイテムの ID (重複防止) |
 | `_generation` | キャンセル用カウンター。インクリメントでループが中断 |
 | `_isLoading` | バッチ進行中フラグ。次バッチの多重起動を防止 |
 | `_videoThumbService` | Player の再利用。cancel 時に dispose |
@@ -66,7 +66,7 @@ SmbGalleryScreen (UI)
     │
     └── 動画: 末尾で1枚ずつ順次処理
           帯域を占有するため並列にしない
-          cancel() で即中断可能（generation チェック）
+          cancel() で即中断可能 (generation チェック)
 ```
 
 ### Result Callback
@@ -80,9 +80,9 @@ ThumbnailLoader(
 ```
 
 画面側は `_thumbnailData` マップだけ管理。結果は `ThumbnailResult` sealed class:
-- `null` → ローディング中（スピナー表示）
-- `ThumbnailData(bytes)` → 成功（画像表示）
-- `ThumbnailFailed(notSupported)` → 未対応（ビューア表示後にリトライ可能）
+- `null` → ローディング中 (スピナー表示)
+- `ThumbnailData(bytes)` → 成功 (画像表示)
+- `ThumbnailFailed(notSupported)` → 未対応 (ビューア表示後にリトライ可能)
 - `ThumbnailFailed(timeout)` → エラー
 
 ## VideoThumbnailService
@@ -91,7 +91,7 @@ media_kit の Player を再利用して動画サムネイルをキャプチャ�
 
 ### Serialization
 
-`Completer<void>` ロックで直列化。複数の capture 呼び出しが同時に来ても、1つずつ処理する（Player.open の並行実行を防止）。
+`Completer<void>` ロックで直列化。複数の capture 呼び出しが同時に来ても、1つずつ処理する (Player.open の並行実行を防止)。
 
 ### Capture Flow
 
@@ -105,7 +105,7 @@ media_kit の Player を再利用して動画サムネイルをキャプチャ�
 7. JPEG bytes を返す
 ```
 
-外部から dispose された場合（動画再生開始時）、`_player == null` を検知して info ログのみ出力。
+外部から dispose された場合 (動画再生開始時)、`_player == null` を検知して info ログのみ出力。
 
 ## SmbProxyServer
 
@@ -120,7 +120,7 @@ media_kit → HTTP GET http://127.0.0.1:{port}/{token}
 ```
 
 - ランダムポート + ワンタイムトークンで認証
-- Range Request 対応（シーク可能）
+- Range Request 対応 (シーク可能)
 - `invalidateToken()` で `cancelled = true` → ストリーミング中断
 
 ## Batch Trigger (Build)
@@ -149,7 +149,7 @@ if (!isDir && _thumbLoader.needsBatch(itemIndex)) {
 4. 戻る
 5. _thumbLoader.retryUnsupported() → notSupported のリトライ
 6. _thumbLoader.retryInterrupted() → 中断されたアイテムのリトライ
-   → _isLoading = true（次バッチの起動をブロック）
+   → _isLoading = true (次バッチの起動をブロック)
    → リトライ完了 → _isLoading = false
    → build トリガーが必要に応じて次バッチを起動
 ```
@@ -158,7 +158,7 @@ if (!isDir && _thumbLoader.needsBatch(itemIndex)) {
 
 | プレフィックス | 用途 |
 |---|---|
-| `thumb:<id>` | サムネイル（長辺 600px PNG） |
-| `full:<id>` | 表示用データ（画像/ZIP/PDF バイト） |
+| `thumb:<id>` | サムネイル (長辺 600px PNG) |
+| `full:<id>` | 表示用データ (画像/ZIP/PDF バイト) |
 
-サムネイル取得時は `thumb:` キーのみ検索。`full:` は検索しない（PDF/ZIP は `full:` にコンテナ本体が入るため）。
+サムネイル取得時は `thumb:` キーのみ検索。`full:` は検索しない (PDF/ZIP は `full:` にコンテナ本体が入るため)。

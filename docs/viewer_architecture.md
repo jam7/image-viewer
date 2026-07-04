@@ -2,8 +2,8 @@
 
 ## Overview
 
-フルスクリーンの画像ビューア（ViewerScreen）と動画プレーヤー（VideoPlayerScreen）。
-画像ビューアは多ページ対応（Pixiv複数ページ、ZIP、PDF）でプリフェッチ・キャッシュを管理する。
+フルスクリーンの画像ビューア (ViewerScreen) と動画プレーヤー (VideoPlayerScreen)。
+画像ビューアは多ページ対応 (Pixiv複数ページ、ZIP、PDF) でプリフェッチ・キャッシュを管理する。
 動画プレーヤーは media_kit + SMB プロキシでストリーミング再生する。
 
 ## Class Structure
@@ -14,7 +14,7 @@ ViewerScreen (フルスクリーン画像ビューア)
     ├─→ SourceRegistry.resolve(sourceKey)
     │       └─→ ImageSourceProvider (SmbSource / PixivSource)
     │               ├── resolvePages()  ── 作品をページに展開
-    │               ├── fetchFullImage() ── フル画像取得（進捗コールバック付き）
+    │               ├── fetchFullImage() ── フル画像取得 (進捗コールバック付き)
     │               └── openReadStream() ── 大容量DL用ストリーム
     │
     ├─→ CacheManager (L1 → L2 → L3 → ネットワーク)
@@ -22,7 +22,7 @@ ViewerScreen (フルスクリーン画像ビューア)
     │       ├── fetchAndCache()   ── DL＋キャッシュ保存
     │       └── l3.toggle()       ── ダウンロード管理
     │
-    └─→ FavoritesStore ── お気に入りトグル（Pixiv はブックマーク API も呼ぶ）
+    └─→ FavoritesStore ── お気に入りトグル (Pixiv はブックマーク API も呼ぶ)
 
 
 VideoPlayerScreen (動画プレーヤー)
@@ -40,14 +40,14 @@ VideoPlayerScreen (動画プレーヤー)
 
 ### Page Resolution
 
-作品（ImageSource）をページに展開する。作品の種類によって展開結果が異なる。
+作品 (ImageSource) をページに展開する。作品の種類によって展開結果が異なる。
 
 | 作品種別 | resolvePages() の結果 |
 |---|---|
-| 単一画像 | `[image]`（1ページ） |
-| Pixiv 複数ページ | `[page0, page1, ...]`（各ページの高解像度URL） |
-| ZIP | `[entry0, entry1, ...]`（画像エントリのみ、自然順ソート） |
-| PDF | `[page0, page1, ...]`（各ページの metadata に pageIndex） |
+| 単一画像 | `[image]` (1ページ) |
+| Pixiv 複数ページ | `[page0, page1, ...]` (各ページの高解像度URL) |
+| ZIP | `[entry0, entry1, ...]` (画像エントリのみ、自然順ソート) |
+| PDF | `[page0, page1, ...]` (各ページの metadata に pageIndex) |
 
 ### Preload Strategy (Sliding Window)
 
@@ -57,10 +57,10 @@ VideoPlayerScreen (動画プレーヤー)
      ← 後方1枚 →         ← 前方4枚 →
 ```
 
-- ロード順: 現在ページ → 前方 → 後方（表示ページを最優先）
-- 前方枚数: 画像/ZIP は 4枚、PDF は 2枚（PDFium レンダリングが遅いため）
+- ロード順: 現在ページ → 前方 → 後方 (表示ページを最優先)
+- 前方枚数: 画像/ZIP は 4枚、PDF は 2枚 (PDFium レンダリングが遅いため)
 - 後方: 1枚をキャッシュ保持
-- ±5 ページを超えた画像はメモリから破棄（OOM 防止）
+- ±5 ページを超えた画像はメモリから破棄 (OOM 防止)
 
 ### Image Load Flow
 
@@ -85,28 +85,28 @@ _loadFullImage(page)
 | 作品種別 | L3 保存内容 |
 |---|---|
 | 単一画像 | `full:<work id>` に画像バイト |
-| ZIP | `full:<work id>` に ZIP バイト全体（ストリームで保存） |
-| PDF | `full:<work id>` に PDF バイト全体（L2 から読み出し） |
+| ZIP | `full:<work id>` に ZIP バイト全体 (ストリームで保存) |
+| PDF | `full:<work id>` に PDF バイト全体 (L2 から読み出し) |
 | 複数ページ | 各ページを `full:<page id>` で個別保存 + `full:<work id>` に空マーカー |
 
 ### Navigation
 
 | 入力 | 動作 |
 |---|---|
-| ↑ / Space | 次ページ（最後のページなら次の作品） |
-| ↓ | 前ページ（最初のページなら前の作品） |
+| ↑ / Space | 次ページ (最後のページなら次の作品) |
+| ↓ | 前ページ (最初のページなら前の作品) |
 | PageDown / PageUp | 10ページ飛ばし |
 | Home / End | 先頭ページ / 末尾ページ |
 | ← → | 作品送り |
-| マウスホイール | ページ送り（端で作品送り） |
-| Ctrl + ホイール | ズーム（0.5x〜8.0x） |
+| マウスホイール | ページ送り (端で作品送り) |
+| Ctrl + ホイール | ズーム (0.5x〜8.0x) |
 | ESC / マウスバック | 一覧に戻る |
 | 上下スワイプ (>300 px/s) | ページ送り |
 | 左右スワイプ (>500 px/s) | 作品送り |
 
 ### Page Sidebar
 
-右端に常時薄いインジケーター（4px）。ホバーで拡大（40px）してページ番号表示。ドラッグで任意ページにジャンプ。
+右端に常時薄いインジケーター (4px)。ホバーで拡大 (40px) してページ番号表示。ドラッグで任意ページにジャンプ。
 
 ```
 通常:   |     (4px, 不透明度 0.3)
@@ -128,7 +128,7 @@ _startPlayback()
     │
     └── _player.open(Media(url))
             → media_kit が HTTP GET → プロキシが SMB を中継
-            → Range Request 対応（シーク可能）
+            → Range Request 対応 (シーク可能)
 ```
 
 ### Keyboard Controls
@@ -169,8 +169,8 @@ abstract class ImageSourceProvider {
 |---|---|
 | `listImages` | ディレクトリ一覧 / フィード取得 |
 | `fetchThumbnail` | サムネイル取得 |
-| `fetchFullImage` | フル画像取得（進捗コールバック付き） |
-| `openReadStream` | 大容量ファイルのストリームDL（L3保存用） |
+| `fetchFullImage` | フル画像取得 (進捗コールバック付き) |
+| `openReadStream` | 大容量ファイルのストリームDL (L3保存用) |
 | `resolvePages` | 作品 → ページ展開 |
 
 ### Implementations
@@ -201,9 +201,9 @@ class ImageSource {
 | `isVideo` | bool | SmbSource | 動画判定 |
 | `isZip` | bool | SmbSource | ZIP アーカイブ |
 | `isPdf` | bool | SmbSource | PDF ファイル |
-| `isZipEntry` | bool | SmbSource | ZIP 内のエントリ（viewer 用） |
+| `isZipEntry` | bool | SmbSource | ZIP 内のエントリ (viewer 用) |
 | `isPdfPage` | bool | SmbSource | PDF レンダリング済みページ |
-| `unsupported` | bool | SmbSource | 表示不可（ZIP in ZIP 等） |
+| `unsupported` | bool | SmbSource | 表示不可 (ZIP in ZIP 等) |
 | `illustId` | int | PixivSource | Pixiv 作品 ID |
 | `author` | String | PixivSource | 作者名 |
 | `path` | String | SmbSource | SMB ファイルパス |
@@ -223,16 +223,16 @@ class ImageSource {
 
 | 層 | 保存先 | 排出 | 用途 |
 |---|---|---|---|
-| L1 | メモリ | LRU 自動（~10枚） | 現在表示中 + 近傍ページ |
-| L2 | ディスク | LRU 自動（500MB〜5GB） | セッション中のキャッシュ |
+| L1 | メモリ | LRU 自動 (~10枚) | 現在表示中 + 近傍ページ |
+| L2 | ディスク | LRU 自動 (500MB〜5GB) | セッション中のキャッシュ |
 | L3 | ディスク | 手動トグル | ユーザーが明示的にDLした作品 |
 
 ### Key Convention
 
 | プレフィックス | 用途 |
 |---|---|
-| `thumb:<id>` | サムネイル（長辺 600px PNG） |
-| `full:<id>` | 表示用データ（画像/ZIP/PDF バイト） |
+| `thumb:<id>` | サムネイル (長辺 600px PNG) |
+| `full:<id>` | 表示用データ (画像/ZIP/PDF バイト) |
 
 ## SmbSource: PDF / ZIP の処理
 
@@ -241,7 +241,7 @@ class ImageSource {
 ```
 resolvePages()
     → L2 にキャッシュなければ SMB から全DL → L2 保存
-    → PdfDocument.openFile(path) で開く（メモリに全体を載せない）
+    → PdfDocument.openFile(path) で開く (メモリに全体を載せない)
     → 各ページを ImageSource として返す
 
 fetchFullImage(pdfPage)
@@ -256,7 +256,7 @@ PdfDocument はキャッシュして同一 PDF のページめくりを高速化
 
 ```
 resolvePages()
-    → ZipReader でセントラルディレクトリ解析（Range Read、全体DL不要）
+    → ZipReader でセントラルディレクトリ解析 (Range Read、全体DL不要)
     → 画像エントリを自然順ソートで列挙
 
 fetchFullImage(zipEntry)

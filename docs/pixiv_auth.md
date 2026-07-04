@@ -17,8 +17,8 @@ graph TB
 ```
 
 - ログイン用と API 用は別の WebView だが、Cookie ストアを共有
-- Windows: 両方 `webview_windows`（WebView2）。同一ユーザーデータフォルダで Cookie 共有
-- iOS: 両方 `webview_flutter`（WKWebView）。同一 WKWebsiteDataStore で Cookie 共有
+- Windows: 両方 `webview_windows` (WebView2)。同一ユーザーデータフォルダで Cookie 共有
+- iOS: 両方 `webview_flutter` (WKWebView)。同一 WKWebsiteDataStore で Cookie 共有
 - **重要**: `webview_flutter` は Windows 非対応。Windows は必ず `webview_windows`
 
 ### なぜ WebView が2つ必要か
@@ -27,9 +27,9 @@ graph TB
 - API 用: 非表示。`pixiv.net` をロードして `fetch()` で API を呼ぶ
 - 1つの WebView で両方やると、ログインページの表示と API 呼び出しが干渉する
 
-## 設計原則（プラットフォーム共通）
+## 設計原則 (プラットフォーム共通)
 
-### 1. 固定遅延（`Future.delayed`）を使わない
+### 1. 固定遅延 (`Future.delayed`) を使わない
 
 ページロードや認証完了の待機に `Future.delayed(3秒)` のような固定遅延を使ってはならない。
 ネットワーク速度やサーバー応答時間はプラットフォームや環境で大きく異なり、
@@ -42,7 +42,7 @@ graph TB
 | Windows | `webview_windows` | `controller.loadingState` ストリームで `LoadingState.navigationCompleted` |
 | iOS/Android | `webview_flutter` | `NavigationDelegate.onPageFinished` コールバック |
 
-タイムアウト（10秒）はフォールバックとして設定するが、正常系では使われない。
+タイムアウト (10秒) はフォールバックとして設定するが、正常系では使われない。
 
 ### 2. 処理の完了を確認してから次に進む
 
@@ -63,7 +63,7 @@ WebView の操作はブラックボックスになりやすい。各ステップ
 ### 4. ログイン確認はログイン用 WebView が行う
 
 API 用 WebView で Cookie の有効性を確認しようとすると:
-- `about:blank` からの fetch は Cookie が付かない（Origin=null の制約）
+- `about:blank` からの fetch は Cookie が付かない (Origin=null の制約)
 - `pixiv.net` をロードすると未ログイン時にリダイレクトされて状態が壊れる
 
 ログイン用 WebView で `accounts.pixiv.net/login` にアクセスすれば、
@@ -76,23 +76,23 @@ API WebView の状態が不正になる。必ずログイン確認後に行う�
 
 ## 認証フロー
 
-### 統一フロー（Cookie 有効/無効で分岐しない）
+### 統一フロー (Cookie 有効/無効で分岐しない)
 
 ```
 ユーザーが Pixiv タップ
   → registry.resolve("pixiv:default")
     → SourceRegistry._resolvePixiv(context)
-      → _pixivLoginVerified? → Yes: new PixivSource を返す（2回目以降）
+      → _pixivLoginVerified? → Yes: new PixivSource を返す (2回目以降)
       → No: onPixivLoginRequired(context)
         → _handlePixivLogin(context)  [app.dart]
           → await _webClient.initialize()
-            → API WebView コントローラー作成のみ（ページロードしない）
-          → ログイン画面を push（accounts.pixiv.net/login をロード）
+            → API WebView コントローラー作成のみ (ページロードしない)
+          → ログイン画面を push (accounts.pixiv.net/login をロード)
             → Cookie 有効: pixiv が www.pixiv.net に即リダイレクト
             → Cookie 無効: ユーザーがログイン → www.pixiv.net 到達
-          → userId + CSRF トークン抽出（onPageFinished 後）
+          → userId + CSRF トークン抽出 (onPageFinished 後)
           → await _webClient.loadPixivPage()
-            → API WebView で pixiv.net をロード（Cookie は共有済み）
+            → API WebView で pixiv.net をロード (Cookie は共有済み)
             → ページロード完了を検出
           → pop(true)
           → return PixivApiClient ✓
@@ -108,7 +108,7 @@ API WebView の状態が不正になる。必ずログイン確認後に行う�
    ログイン前にロードすると、未ログインの場合 pixiv がリダイレクトして
    API WebView の状態がおかしくなる。
 
-3. **about:blank からの fetch は Cookie が付かない**（Origin=null）。
+3. **about:blank からの fetch は Cookie が付かない** (Origin=null)。
    API WebView でのログイン状態の事前確認はできない。
 
 4. **Cookie 有効時のログイン画面表示**: ログイン画面は Cookie 有効時に即リダイレクトで
@@ -121,8 +121,8 @@ API WebView の状態が不正になる。必ずログイン確認後に行う�
 accounts.pixiv.net/login をロード
   ↓
 _onUrlChanged で URL を監視:
-  - accounts.pixiv.net → _showWebView = true（ログインフォーム表示）
-  - www.pixiv.net      → _showWebView = false（ローディングに戻す）
+  - accounts.pixiv.net → _showWebView = true (ログインフォーム表示)
+  - www.pixiv.net      → _showWebView = false (ローディングに戻す)
                          → onPageFinished 待ち
                          → userId + CSRF 抽出
                          → API WebView ロード
@@ -131,15 +131,15 @@ _onUrlChanged で URL を監視:
 
 - `_showWebView = false` の間は「Pixiv に接続中...」を表示
 - `_showWebView = true` になるとログイン WebView を表示
-- `www.pixiv.net` 到達で即座に WebView を隠してから pop（pixiv ホームが見えないように）
+- `www.pixiv.net` 到達で即座に WebView を隠してから pop (pixiv ホームが見えないように)
 
 ## ログイン成功の判定
 
-- `accounts.pixiv.net` の別ページ（reCAPTCHA、追加認証）ではまだ完了でない
+- `accounts.pixiv.net` の別ページ (reCAPTCHA、追加認証) ではまだ完了でない
 - `www.pixiv.net` に URL が到達した時点で完了
 - ユーザーID は `PixivLoginScreen._extractUserIdAsync()` でログインページの HTML から取得
-- pop はログイン画面自身の context で行う（`_AppRoot` の context で pop すると
-  HomeScreen が unmount される問題があった）
+- pop はログイン画面自身の context で行う (`_AppRoot` の context で pop すると
+  HomeScreen が unmount される問題があった)
 
 ## API WebView の並行アクセス禁止
 
@@ -151,7 +151,7 @@ _onUrlChanged で URL を監視:
 - JavaScript 実行が干渉してタイムアウトする
 
 したがって:
-- `onLoginSuccess` 内で `waitForUserId` を呼ばない（fetchJson と干渉）
+- `onLoginSuccess` 内で `waitForUserId` を呼ばない (fetchJson と干渉)
 - バックグラウンドで API 呼び出しを同時に走らせない
 
 ## ソースの取得経路
@@ -167,8 +167,8 @@ ViewerScreen._loadFullImage() → registry.resolve(image.sourceKey)
 
 ## PixivSource のライフサイクル
 
-- `PixivApiClient`（WebView ラッパー）: アプリに1つ、全画面で共有
-- `PixivSource`（API + ページネーション状態）: 画面ごとに新規作成
+- `PixivApiClient` (WebView ラッパー): アプリに1つ、全画面で共有
+- `PixivSource` (API + ページネーション状態): 画面ごとに新規作成
   - おすすめ一覧用、検索結果用、作者一覧用がそれぞれ独立
   - ファイルディスクリプタのように「読み進め位置」を持つ
 - `SourceRegistry._pixivLoginVerified`: ログイン確認済みフラグ。
@@ -202,8 +202,8 @@ ViewerScreen._loadFullImage() → registry.resolve(image.sourceKey)
 ### 外部ブラウザ / Custom Tabs を採用しない理由
 
 外部ブラウザや Custom Tabs でログインさせればパスワード補完・パスキーは効くが、
-ログイン後の **Cookie をアプリ側 WebView に取り込めない**（上記「WebView 構成」の
-Cookie 共有が成立しない）。pixiv は公開 OAuth を提供していないため、
+ログイン後の **Cookie をアプリ側 WebView に取り込めない** (上記「WebView 構成」の
+Cookie 共有が成立しない)。pixiv は公開 OAuth を提供していないため、
 リダイレクトでトークンを受け取る方式も使えない。現行の Cookie 共有アーキテクチャを
 破壊するため採用しない。
 

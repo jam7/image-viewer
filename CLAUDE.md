@@ -4,32 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-Flutter製のクロスプラットフォーム画像ビューアアプリ（iOS/iPad/Android/Windows）。
+Flutter製のクロスプラットフォーム画像ビューアアプリ (iOS/iPad/Android/Windows)。
 リモートサーバーから画像をストリーミング表示し、ローカルキャッシュを最小限に抑える。
 
 ## コーディングルール
 
-### 並行実行の安全性（必須）
+### 並行実行の安全性 (必須)
 
 - **インスタンス変数で非同期メソッド間の状態を共有しない**。複数の async 呼び出しが並行実行される場合、インスタンス変数は競合する。戻り値やレコード型で結果を返すこと
 - サムネイルダウンロード等のバッチ処理は並行実行される前提で設計する
-- 共有リソース（ファイル、DB）へのアクセスは排他制御する（`_isFlushing` パターン等）
+- 共有リソース (ファイル、DB) へのアクセスは排他制御する (`_isFlushing` パターン等)
 
-### エラーハンドリング（必須）
+### エラーハンドリング (必須)
 
-- **アプリ・ライブラリ共通**: `package:logging` を使用。`print` は使わない（出力先は `main.dart` のハンドラで設定）
-- **アプリ（lib/ 以下）**: catch ブロックでは必ず `_log.warning('message', e, st)` でログ出力する。`catch (_)` で握りつぶさない。画面に表示するエラーとログ出力の両方を行う
-- **ライブラリ（dart_smb2/ 等）**: 例外を throw/rethrow で呼び出し元に返す。フォールバック処理で catch する場合は具体的な型（`on FormatException` 等）でキャッチし、`catch (_)` で握りつぶさない
-- **dart_smb2 のログレベル**: `main.dart` で設定。接続・認証など頻度の低いログ（`Smb2Client`）は INFO 許可。大量に出る I/O ログ（`Smb2Multiplexer`, `Smb2FileReader`, `Smb2Tree`）は WARNING 以上に制限
-- **ログレベル変更時の原則**: ライブラリのログを抑制する場合、必要なログまで抑制しないか確認する。ワークアラウンド（warning に昇格、アプリ層で代替出力）ではなく、ログレベル設定自体を見直す
+- **アプリ・ライブラリ共通**: `package:logging` を使用。`print` は使わない (出力先は `main.dart` のハンドラで設定)
+- **アプリ (lib/ 以下) **: catch ブロックでは必ず `_log.warning('message', e, st)` でログ出力する。`catch (_)` で握りつぶさない。画面に表示するエラーとログ出力の両方を行う
+- **ライブラリ (dart_smb2/ 等) **: 例外を throw/rethrow で呼び出し元に返す。フォールバック処理で catch する場合は具体的な型 (`on FormatException` 等) でキャッチし、`catch (_)` で握りつぶさない
+- **dart_smb2 のログレベル**: `main.dart` で設定。接続・認証など頻度の低いログ (`Smb2Client`) は INFO 許可。大量に出る I/O ログ (`Smb2Multiplexer`, `Smb2FileReader`, `Smb2Tree`) は WARNING 以上に制限
+- **ログレベル変更時の原則**: ライブラリのログを抑制する場合、必要なログまで抑制しないか確認する。ワークアラウンド (warning に昇格、アプリ層で代替出力) ではなく、ログレベル設定自体を見直す
 
-### バグ調査の進め方（必須）
+### バグ調査の進め方 (必須)
 
 - クラッシュやバグが報告されたら、**まずログを読んで根本原因を特定する**。ガードやフォールバックで隠してはいけない
 - ログから原因が特定できない場合は、**該当箇所にログを追加して再実行し、原因を絞り込む**。推測で修正しない
 - 原因が特定できてから修正する。修正が正しいことをログや再現手順で確認する
 
-### git push の禁止（必須）
+### git push の禁止 (必須)
 
 - **`git push` はユーザーから「push して」と明示的に指示されるまで絶対にしない**
 - commit は自由にしてよいが、push は指示があるまで行わない
@@ -48,9 +48,9 @@ flutter analyze          # 静的解析
 flutter test             # 全テスト実行
 flutter test test/widget_test.dart  # 単一テスト実行
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 # flutterの出力のパースをutf8に
-flutter run -d windows 2>&1 | Tee-Object -FilePath "C:\Users\jam\flutter_log.txt"  # Windows向け（PowerShell、ログは C:\Users\jam\flutter_log.txt）
-flutter run -d <iPad ID> # iOS/iPad向け（flutter devices でID確認）
-flutter run -d chrome    # Web向け（デバッグ用）
+flutter run -d windows 2>&1 | Tee-Object -FilePath "C:\Users\jam\flutter_log.txt"  # Windows向け (PowerShell、ログは C:\Users\jam\flutter_log.txt)
+flutter run -d <iPad ID> # iOS/iPad向け (flutter devices でID確認)
+flutter run -d chrome    # Web向け (デバッグ用)
 ```
 
 iOS/iPad のセットアップは [docs/ios_setup.md](docs/ios_setup.md) を参照。
@@ -67,33 +67,33 @@ iOS/iPad のセットアップは [docs/ios_setup.md](docs/ios_setup.md) を参�
 |---|---|
 | [docs/thumbnail_architecture.md](docs/thumbnail_architecture.md) | ThumbnailLoader、バッチ処理、動画サムネイル、プロキシ |
 | [docs/viewer_architecture.md](docs/viewer_architecture.md) | ViewerScreen、VideoPlayerScreen、プリフェッチ、キャッシュ、PDF/ZIP 処理 |
-| [docs/pixiv_auth.md](docs/pixiv_auth.md) | Pixiv 認証フロー（WebView 2台構成） |
-| [docs/pixiv_connection.md](docs/pixiv_connection.md) | Pixiv 接続仕様（API エンドポイント、fetch 機構、データモデル、PixivSource） |
-| [docs/adr/](docs/adr/README.md) | Architecture Decision Records（設計判断の記録） |
+| [docs/pixiv_auth.md](docs/pixiv_auth.md) | Pixiv 認証フロー (WebView 2台構成) |
+| [docs/pixiv_connection.md](docs/pixiv_connection.md) | Pixiv 接続仕様 (API エンドポイント、fetch 機構、データモデル、PixivSource) |
+| [docs/adr/](docs/adr/README.md) | Architecture Decision Records (設計判断の記録) |
 
 ### キャッシュ概要
 
 | 層 | 保存先 | 内容 | 排出 |
 |---|---|---|---|
 | L1 | メモリ | デコード済み画像 〜10枚 | LRU自動 |
-| L2 | ディスク | 圧縮画像 500MB〜5GB（設定可） | LRU自動 |
+| L2 | ディスク | 圧縮画像 500MB〜5GB (設定可) | LRU自動 |
 | L3 | ディスク | ユーザーが明示的にDLした作品 | 手動トグル |
-| お気に入り | JSON | URL+メタデータのみ（画像なし） | 手動トグル |
+| お気に入り | JSON | URL+メタデータのみ (画像なし) | 手動トグル |
 
-CacheManager が L1→L2→L3→ネットワークの順に検索。キー命名: `thumb:<id>`（サムネイル）、`full:<id>`（表示用データ）。
+CacheManager が L1→L2→L3→ネットワークの順に検索。キー命名: `thumb:<id>` (サムネイル)、`full:<id>` (表示用データ)。
 
 ### Pixiv 認証
 
-- WebView 2台構成（ログイン用 + API 用）、Cookie ストア共有
-- `webview_flutter`（iOS/Android）、`webview_windows`（Windows）
+- WebView 2台構成 (ログイン用 + API 用)、Cookie ストア共有
+- `webview_flutter` (iOS/Android)、`webview_windows` (Windows)
 - 詳細は [docs/pixiv_auth.md](docs/pixiv_auth.md)
 
 ### SMB
 
-- `dart_smb2`（自作）で SMB 2.0/2.1 対応
-- ZIP: `archive_reader`（自作）で Range Read ベースの個別エントリ展開
-- PDF: `pdfrx`（PDFium）で `PdfDocument.openFile` → ページレンダリング
-- 動画: `media_kit` + `SmbProxyServer`（localhost HTTP プロキシ）
+- `dart_smb2` (自作) で SMB 2.0/2.1 対応
+- ZIP: `archive_reader` (自作) で Range Read ベースの個別エントリ展開
+- PDF: `pdfrx` (PDFium) で `PdfDocument.openFile` → ページレンダリング
+- 動画: `media_kit` + `SmbProxyServer` (localhost HTTP プロキシ)
 
 ### 認証情報の保存場所
 
@@ -105,13 +105,13 @@ CacheManager が L1→L2→L3→ネットワークの順に検索。キー命名
 
 ## 主要パッケージ
 
-- `webview_flutter`: iOS/Android 用 WebView（ログイン + API）
-- `webview_windows`: Windows 用 WebView2（ログイン + API）
-- `dart_smb2`: SMB 2.0/2.1 クライアント（自作、dart_smb2/ ディレクトリ）
-- `archive_reader`: Range Read ベースの ZIP リーダー（自作、packages/archive_reader/）
-- `pdfrx`: PDF ページレンダリング（PDFium ベース、upstream 版）
-- `media_kit` / `media_kit_video`: 動画再生（libmpv / FFmpeg ベース、ほぼ全フォーマット対応）
-- `flutter_secure_storage`: パスワード安全保管（Keychain/Credential Manager）
-- `dio`: HTTP通信（画像ダウンロード等）
+- `webview_flutter`: iOS/Android 用 WebView (ログイン + API)
+- `webview_windows`: Windows 用 WebView2 (ログイン + API)
+- `dart_smb2`: SMB 2.0/2.1 クライアント (自作、dart_smb2/ ディレクトリ)
+- `archive_reader`: Range Read ベースの ZIP リーダー (自作、packages/archive_reader/)
+- `pdfrx`: PDF ページレンダリング (PDFium ベース、upstream 版)
+- `media_kit` / `media_kit_video`: 動画再生 (libmpv / FFmpeg ベース、ほぼ全フォーマット対応)
+- `flutter_secure_storage`: パスワード安全保管 (Keychain/Credential Manager)
+- `dio`: HTTP通信 (画像ダウンロード等)
 - `path_provider`: アプリ固有ディレクトリ取得
 - `crypto`: ハッシュ計算

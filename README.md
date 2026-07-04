@@ -19,7 +19,7 @@
 
 選定理由:
 - iOS/Android/Windowsの3プラットフォーム全てで最も成熟している
-- Impellerレンダリングエンジンによる安定した描画性能（画像重視アプリに適する）
+- Impellerレンダリングエンジンによる安定した描画性能 (画像重視アプリに適する)
 - `cached_network_image` 等の画像・ネットワーク系パッケージが充実
 - コミュニティ最大、pub.devに豊富なパッケージ
 
@@ -37,17 +37,17 @@
 - **SMB 接続**: 15秒でタイムアウト。サーバーが応答しない場合はエラー表示
 - **SMB 読み取り**: 各操作 30秒でタイムアウト。ディレクトリ一覧、画像取得、ZIP 解析すべて対象
 - **SMB 再接続**: アイドル中にサーバーが接続を切った場合、次の操作で自動再接続する
-- **Pixiv WebView**: ページロード 10秒でタイムアウト（フォールバックとして設定、通常は数秒で完了）
-- タイムアウトはアプリ層で設定。ライブラリ（dart_smb2, archive_reader）自体はタイムアウトを持たず、呼び出し側がポリシーを決める設計
+- **Pixiv WebView**: ページロード 10秒でタイムアウト (フォールバックとして設定、通常は数秒で完了)
+- タイムアウトはアプリ層で設定。ライブラリ (dart_smb2, archive_reader) 自体はタイムアウトを持たず、呼び出し側がポリシーを決める設計
 
 ## 対応フォーマット
 
 | 種類 | 対応形式 | 備考 |
 |---|---|---|
 | 画像 | JPEG, PNG, GIF, WebP, BMP | 直接表示 |
-| アーカイブ | ZIP | Range Read で個別エントリ取得（全体DL不要）。ZIP in ZIP は非対応表示 |
-| ドキュメント | PDF | PDFium でページレンダリング（`pdfrx` 使用） |
-| 動画 | MP4, MKV, AVI, WebM, FLV, MOV, WMV, MPEG, M4V, TS | media_kit（FFmpeg）でストリーミング再生 |
+| アーカイブ | ZIP | Range Read で個別エントリ取得 (全体DL不要)。ZIP in ZIP は非対応表示 |
+| ドキュメント | PDF | PDFium でページレンダリング (`pdfrx` 使用) |
+| 動画 | MP4, MKV, AVI, WebM, FLV, MOV, WMV, MPEG, M4V, TS | media_kit (FFmpeg) でストリーミング再生 |
 
 ## 対象サーバー
 
@@ -62,14 +62,14 @@
 | プロトコル | 方式 | 備考 |
 |---|---|---|
 | HTTP/HTTPS | 標準対応 | Range Request による部分ダウンロード対応 |
-| SMB2 | `dart_smb2`（自作、SMB 2.0/2.1） | LAN/VPN環境が必要 |
+| SMB2 | `dart_smb2` (自作、SMB 2.0/2.1) | LAN/VPN環境が必要 |
 
 ### クラウドストレージ
 
 | サービス | 方式 | 備考 |
 |---|---|---|
 | Google Drive | OAuth 2.0 + Drive API v3 | 部分ダウンロード対応。APIクォータ制限あり |
-| OneDrive | OAuth 2.0 + Microsoft Graph API | 部分ダウンロード対応（`@microsoft.graph.downloadUrl` 経由） |
+| OneDrive | OAuth 2.0 + Microsoft Graph API | 部分ダウンロード対応 (`@microsoft.graph.downloadUrl` 経由) |
 | iCloud Drive | NSFileManager / icloud_storage | iOS/macOS限定。Apple プラットフォームのみ対応 |
 
 ## 既知の問題

@@ -9,8 +9,8 @@ SMB や HTTP の Range Request を使って、アーカイブ内の任意のフ�
 
 ## 対応フォーマット
 
-- ZIP（Store / Deflate）
-- RAR（将来対応）
+- ZIP (Store / Deflate)
+- RAR (将来対応)
 
 ## 設計方針
 
@@ -25,7 +25,7 @@ typedef RangeReader = Future<Uint8List> Function(int offset, int length);
 
 ### 遅延取得
 
-ZIP のセントラルディレクトリ（末尾にある）だけを読んでファイル一覧を取得し、
+ZIP のセントラルディレクトリ (末尾にある) だけを読んでファイル一覧を取得し、
 必要なファイルだけを Range Read + 展開する。
 
 ```
@@ -43,7 +43,7 @@ ZIP のセントラルディレクトリ（末尾にある）だけを読んで�
 - その画像だけ Range Read + 展開
 
 **ビューアでの即時表示**:
-- ファイル一覧から resolvePages を構築（ZIP 全体のダウンロード不要）
+- ファイル一覧から resolvePages を構築 (ZIP 全体のダウンロード不要)
 - 最初のページだけ Range Read → 即表示
 - 前方数ページをバックグラウンドで先読み
 - 残りはアイドル時にゆっくり取得
@@ -52,10 +52,10 @@ ZIP のセントラルディレクトリ（末尾にある）だけを読んで�
 
 ```dart
 abstract class ArchiveReader {
-  /// ファイル一覧を取得（セントラルディレクトリ等を読む）
+  /// ファイル一覧を取得 (セントラルディレクトリ等を読む)
   Future<List<ArchiveEntry>> listEntries();
 
-  /// 指定エントリのデータを取得（Range Read + 展開）
+  /// 指定エントリのデータを取得 (Range Read + 展開)
   Future<Uint8List> readEntry(ArchiveEntry entry);
 }
 
