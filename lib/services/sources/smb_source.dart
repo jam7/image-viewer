@@ -219,8 +219,6 @@ class SmbSource extends ImageSourceProvider {
 
   @override
   Future<List<ImageSource>> resolvePages(ImageSource source) async {
-    _log.info('resolvePages: ${source.name} '
-        '(isPdf=${source.metadata?['isPdf']}, isZip=${source.metadata?['isZip']})');
     if (source.metadata?['isPdf'] == true) {
       return _resolvePdfPages(source);
     }
@@ -442,12 +440,10 @@ class SmbSource extends ImageSourceProvider {
   Future<List<ImageSource>> _resolvePdfPages(ImageSource source) async {
     final pdfPath = source.uri;
     final smbSourceKey = 'smb:${config.id}';
-    _log.info('resolvePdfPages: start $pdfPath');
 
     // Get PDF file path from cache, or download to L2
     final pdfCacheKey = 'full:${source.id}';
     final pdfFilePath = await _ensurePdfFile(pdfPath, pdfCacheKey);
-    _log.info('resolvePdfPages: PDF file at $pdfFilePath');
 
     // Get page count from PDF metadata (no rasterization)
     final doc = await _openPdfCached(pdfFilePath);
@@ -480,24 +476,11 @@ class SmbSource extends ImageSourceProvider {
   Future<String> _ensurePdfFile(String pdfPath, String pdfCacheKey) {
     // Check in-memory path cache (synchronous)
     final cachedPath = _pdfFilePathCache[pdfPath];
-    if (cachedPath != null) {
-      _log.info('ensurePdf: sync path cache hit');
-      return Future.value(cachedPath);
-    }
-
-    final existing = _pdfDownloadFutures[pdfPath];
-    if (existing != null) {
-      _log.info('ensurePdf: reusing in-flight download future');
-      return existing;
-    }
+    if (cachedPath != null) return Future.value(cachedPath);
 
     // Use Future cache to prevent duplicate downloads
-    _log.info('ensurePdf: starting impl');
-    return _pdfDownloadFutures[pdfPath] = _ensurePdfFileImpl(pdfPath, pdfCacheKey)
-        .whenComplete(() {
-      _log.info('ensurePdf: impl future completed');
-      _pdfDownloadFutures.remove(pdfPath);
-    });
+    return _pdfDownloadFutures[pdfPath] ??= _ensurePdfFileImpl(pdfPath, pdfCacheKey)
+        .whenComplete(() => _pdfDownloadFutures.remove(pdfPath));
   }
 
   Future<String> _ensurePdfFileImpl(String pdfPath, String pdfCacheKey) async {
@@ -505,7 +488,7 @@ class SmbSource extends ImageSourceProvider {
     if (cacheManager != null) {
       final filePath = cacheManager!.getFilePath(pdfCacheKey);
       if (filePath != null) {
-        _log.info('ensurePdf: L2 hit, returning $filePath');
+        _log.info('resolvePages: PDF from cache file');
         _pdfFilePathCache[pdfPath] = filePath;
         return filePath;
       }
@@ -530,11 +513,13 @@ class SmbSource extends ImageSourceProvider {
 
   /// Get or open a cached PdfDocument. Disposes previous if different file.
   Future<PdfDocument> _openPdfCached(String filePath) async {
-    _log.info('openPdf: called for $filePath (cached: $_cachedPdfPath)');
     if (_cachedPdfPath == filePath && _cachedPdfDoc != null) {
       return _cachedPdfDoc!;
     }
     await _closePdfCache();
+    // Deliberate operational logs: document opens are infrequent, and a
+    // hang inside PdfDocument.openFile is invisible without the pair
+    // (pdfrx 2.4.x froze exactly here — see docs/reviews/20260703-...).
     _log.info('openPdf: opening $filePath');
     final doc = await PdfDocument.openFile(filePath);
     _log.info('openPdf: opened ${doc.pages.length} pages');
@@ -545,9 +530,7 @@ class SmbSource extends ImageSourceProvider {
 
   Future<void> _closePdfCache() async {
     if (_cachedPdfDoc != null) {
-      _log.info('openPdf: disposing previous doc ($_cachedPdfPath)');
       await _cachedPdfDoc!.dispose();
-      _log.info('openPdf: disposed');
       _cachedPdfDoc = null;
       _cachedPdfPath = null;
     }
