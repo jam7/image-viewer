@@ -9,3 +9,4 @@
 | [003](003-cache-layers.md) | 3層キャッシュアーキテクチャ | Accepted |
 | [004](004-pixiv-auth.md) | Pixiv 認証に WebView 2台構成を採用 | Accepted |
 | [005](005-webview-platform.md) | WebView のプラットフォーム別実装 | Accepted |
+| [006](006-thumbnail-source-generalization.md) | ギャラリーのサムネイル取得を ImageSourceProvider に一般化 | Proposed |
