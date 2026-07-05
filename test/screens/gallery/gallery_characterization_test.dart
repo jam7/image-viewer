@@ -18,6 +18,7 @@ import 'package:image_viewer/services/favorites/favorites_store.dart';
 import 'package:image_viewer/services/pixiv/pixiv_api_client.dart';
 import 'package:image_viewer/services/pixiv/pixiv_web_client.dart';
 import 'package:image_viewer/services/smb/smb_config_store.dart';
+import 'package:image_viewer/services/sources/image_source_provider.dart';
 import 'package:image_viewer/services/sources/pixiv_source.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
 import 'package:image_viewer/services/sources/source_registry.dart';
@@ -30,7 +31,8 @@ import 'package:image_viewer/services/video/smb_proxy_server.dart';
 /// can be verified as behavior-preserving.
 ///
 /// Design notes that make these tests possible without network / WebView / SMB:
-/// - The fake sources override `listImages` / `fetchThumbnail` only. Both
+/// - The fake sources override the page fetch (`listImages` for SMB via the
+///   default loadPage; `loadPage` for Pixiv) and `fetchThumbnail` only. Both
 ///   screens read thumbnails via `CacheManager.get`, which checks the L1 memory
 ///   cache first, so pre-seeding L1 renders thumbnails through a pure in-memory
 ///   path (no disk I/O, deterministic under the widget-test fake clock).
@@ -351,8 +353,10 @@ class _FakePixivSource extends PixivSource {
   _FakePixivSource(this.items)
       : super(client: PixivApiClient(webClient: PixivWebClient()));
 
+  // GalleryTab pages via loadPage, so override that (not listImages).
   @override
-  Future<List<ImageSource>> listImages({String? path}) async => items;
+  Future<PageResult> loadPage({String? path, Object? cursor}) async =>
+      PageResult(items: items);
 
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async =>

@@ -5,12 +5,15 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
+import 'gallery_tab.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../../services/thumbnail/thumbnail_loader.dart';
+import '../../widgets/thumbnail_result.dart';
 import '../viewer/viewer_screen.dart';
 
 final _log = Logger('Gallery');
@@ -57,13 +60,19 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String _searchOrder = 'date_d'; // date_d=新着 / date=古い順
 
   // Single-page state (one Pixiv page per screen; sections/search/author are
-  // reached by pushing a new screen and navigating back — ADR 007).
-  final List<ImageSource> _images = [];
-  final Map<String, Uint8List> _thumbnailData = {};
-  int _loadGeneration = 0;
+  // reached by pushing a new screen and navigating back — ADR 007). The page's
+  // items / cursor / thumbnail loader live in the GalleryTab.
+  late GalleryTab _tab;
+  final Map<String, ThumbnailResult> _thumbnailData = {};
+  /// id → index within _tab.thumbnailItems (the loader's list), for the batch
+  /// trigger. Rebuilt after each page load.
+  Map<String, int> _thumbIndex = {};
 
   bool get _isSearchPage => _path.startsWith('/search');
   bool get _isFavoritesPage => _path == '/favorites';
+
+  /// Items shown in the grid: loaded items minus the page-count (`>N`) filter.
+  List<ImageSource> get _visibleItems => _filterImages(_tab.loaded);
 
   void _applyFilter() {
     final text = _filterController.text.trim();
@@ -78,6 +87,44 @@ class _GalleryScreenState extends State<GalleryScreen> {
       final pageCount = img.metadata?['pageCount'] as int? ?? 1;
       return pageCount > _minPageCount;
     }).toList();
+  }
+
+  /// Build a fresh tab for the current [_path]. Favorites are a finite local
+  /// list (seedItems); other pages page through the shared source via loadPage.
+  GalleryTab _createTab() {
+    final loader = ThumbnailLoader(
+      source: widget.source,
+      cacheManager: widget.cacheManager,
+      batchSize: galleryCrossAxisCount * 6,
+      parallelCount: galleryCrossAxisCount,
+      onResult: (id, result) {
+        if (mounted) setState(() => _thumbnailData[id] = result);
+      },
+    );
+    return GalleryTab(
+      sourceUri: Uri.parse('pixiv:$_path'),
+      provider: widget.source,
+      thumbnails: loader,
+      path: _path,
+      seedItems: _isFavoritesPage ? _favoriteItems() : null,
+    );
+  }
+
+  List<ImageSource> _favoriteItems() =>
+      widget.favoritesStore.listAll().map((e) => ImageSource(
+            id: e.imageId,
+            name: e.name,
+            uri: e.uri,
+            type: ImageSourceType.pixiv,
+            sourceKey: e.sourceKey,
+            metadata: {...e.sourceInfo, 'thumbnailUrl': e.thumbnailUrl},
+          )).toList();
+
+  void _rebuildThumbIndex() {
+    _thumbIndex = {
+      for (var i = 0; i < _tab.thumbnailItems.length; i++)
+        _tab.thumbnailItems[i].id: i
+    };
   }
 
   /// The Pixiv path this screen shows. Defaults to the top page. Search paths
@@ -111,8 +158,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _filterController.text = widget.initialFilterText!;
       _applyFilter();
     }
+    _tab = _createTab();
     _scrollController.addListener(_onScroll);
-    _loadImages();
+    _loadPage();
   }
 
   @override
@@ -125,20 +173,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void activate() {
     super.activate();
-    if (_images.isNotEmpty && _thumbnailData.isEmpty) {
+    if (_tab.loaded.isNotEmpty && _thumbnailData.isEmpty) {
       _reloadThumbnailsFromCache();
     }
   }
 
   Future<void> _reloadThumbnailsFromCache() async {
-    final generation = _loadGeneration;
-    for (final image in _images) {
-      if (!mounted || generation != _loadGeneration) return;
+    final tab = _tab;
+    for (final image in tab.thumbnailItems) {
+      if (!mounted || _tab != tab) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}');
-        if (cached != null && mounted) {
-          setState(() => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
+        if (cached != null && mounted && _tab == tab) {
+          setState(() => _thumbnailData[image.id] =
+              ThumbnailData(Uint8List.fromList(cached.data)));
         }
       } catch (e, st) {
         _log.warning('reloadThumbnail error', e, st);
@@ -148,6 +197,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   void dispose() {
+    _tab.dispose();
     _searchController.dispose();
     _filterController.dispose();
     _scrollController.dispose();
@@ -159,8 +209,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
         !_isLoading &&
-        widget.source.hasNextPage) {
-      _loadMore();
+        _tab.hasMore) {
+      _loadPage();
     }
   }
 
@@ -209,52 +259,25 @@ class _GalleryScreenState extends State<GalleryScreen> {
     ));
   }
 
-  Future<void> _loadImages() async {
-    if (!mounted) return;
-    _loadGeneration++;
-    _applyFilter();
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    widget.source.resetPagination();
-    _images.clear();
-    _thumbnailData.clear();
-
-    if (_isFavoritesPage) {
-      final entries = widget.favoritesStore.listAll();
-      final images = _filterImages(entries.map((e) => ImageSource(
-        id: e.imageId,
-        name: e.name,
-        uri: e.uri,
-        type: ImageSourceType.pixiv,
-        sourceKey: e.sourceKey,
-        metadata: {
-          ...e.sourceInfo,
-          'thumbnailUrl': e.thumbnailUrl,
-        },
-      )).toList());
-      setState(() {
-        _images.addAll(images);
-        _isLoading = false;
-      });
-      _loadThumbnails(images);
-      return;
-    }
-
+  /// Load the next page (the first page initially) and dispatch its thumbnail
+  /// batch. loadNextPage is a no-op when the list is exhausted, so this is safe
+  /// to call from the scroll trigger.
+  Future<void> _loadPage() async {
+    if (!mounted || _isLoading) return;
+    setState(() => _isLoading = true);
     try {
-      final images = _filterImages(
-        await widget.source.listImages(path: _path),
-      );
+      await _tab.loadNextPage();
+      if (!mounted) return;
+      _rebuildThumbIndex();
       setState(() {
-        _images.addAll(images);
         _isLoading = false;
+        _error = null;
       });
-      _loadThumbnails(images);
+      await _tab.thumbnails.loadNextBatch();
       _loadMoreIfNeeded();
     } catch (e, st) {
-      _log.warning('loadImages error', e, st);
+      _log.warning('loadPage error', e, st);
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -262,79 +285,25 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_isLoading) return;
-    final generation = _loadGeneration;
-    setState(() => _isLoading = true);
-
-    try {
-      final images = _filterImages(
-        await widget.source.listImages(path: _path),
-      );
-      if (!mounted || generation != _loadGeneration) return;
-      setState(() {
-        _images.addAll(images);
-        _isLoading = false;
-      });
-      _loadThumbnails(images);
-      _loadMoreIfNeeded();
-    } catch (e, st) {
-      _log.warning('loadMore error', e, st);
-      if (!mounted || generation != _loadGeneration) return;
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
+  /// Reset to a fresh page (search option / section change): drop the old tab
+  /// and reload from the start.
+  void _reload() {
+    _tab.dispose();
+    _thumbnailData.clear();
+    _tab = _createTab();
+    _thumbIndex = {};
+    _loadPage();
   }
 
   /// コンテンツが画面に収まってスクロールできない場合、追加読み込みする
   void _loadMoreIfNeeded() {
-    if (!widget.source.hasNextPage) return;
+    if (!_tab.hasMore) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      if (!mounted || !_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent <= 0) {
-        _loadMore();
+        _loadPage();
       }
     });
-  }
-
-  /// Load thumbnails for [images] a row at a time in parallel. Serial loading
-  /// made a full page (~48 items) take RTT x count; a row of parallel fetches
-  /// keeps the pipe busy. (Interim P1 fix; to be replaced by the shared
-  /// virtualized loader — see docs/virtualized_gallery/design.md.)
-  Future<void> _loadThumbnails(List<ImageSource> images) async {
-    final generation = _loadGeneration;
-    final source = widget.source;
-    final pending =
-        images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
-    for (var i = 0; i < pending.length; i += galleryCrossAxisCount) {
-      if (!mounted || generation != _loadGeneration) return;
-      final end = (i + galleryCrossAxisCount).clamp(0, pending.length);
-      await Future.wait(
-        pending
-            .sublist(i, end)
-            .map((img) => _loadThumbnail(img, source, generation)),
-      );
-    }
-  }
-
-  Future<void> _loadThumbnail(
-      ImageSource image, PixivSource source, int generation) async {
-    final key = 'thumb:${image.id}';
-    try {
-      final result = await widget.cacheManager.get(key) ??
-          await widget.cacheManager
-              .fetchAndCache(key, () => source.fetchThumbnail(image));
-      if (mounted && generation == _loadGeneration) {
-        setState(
-            () => _thumbnailData[image.id] = Uint8List.fromList(result.data));
-      }
-    } catch (e, st) {
-      _log.warning(
-          'thumbnail error (id=${image.id}, name=${image.name}, uri=${image.uri})',
-          e, st);
-    }
   }
 
   /// Push a new gallery screen for a Pixiv section (top / bookmarks / favorites),
@@ -398,11 +367,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   void _openViewer(int index) async {
-    _log.info('openViewer: index=$index, image=${_images[index].name}');
+    final items = _visibleItems;
+    _log.info('openViewer: index=$index, image=${items[index].name}');
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => ViewerScreen(
-          items: _images,
+          items: items,
           initialIndex: index,
           registry: widget.registry,
           cacheManager: widget.cacheManager,
@@ -418,7 +388,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       });
     } else if (_isFavoritesPage) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み
-      _loadImages();
+      _reload();
     }
   }
 
@@ -464,7 +434,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     setState(() {
       _searchMode = _searchMode == 's_tag_full' ? 's_tag' : 's_tag_full';
     });
-    if (_isSearchPage) _loadImages();
+    if (_isSearchPage) _reload();
   }
 
   /// Cycle the order (新着 <-> 古い順). Reloads if on a search page.
@@ -472,7 +442,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
     setState(() {
       _searchOrder = _searchOrder == 'date_d' ? 'date' : 'date_d';
     });
-    if (_isSearchPage) _loadImages();
+    if (_isSearchPage) _reload();
+  }
+
+  /// Re-apply the page-count (`>N`) filter to the already-loaded items. It is a
+  /// display-only filter, so no refetch — but load more if the view got short.
+  void _onFilterChanged() {
+    setState(_applyFilter);
+    _loadMoreIfNeeded();
   }
 
   Widget _buildFilterBar() {
@@ -510,7 +487,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 border: OutlineInputBorder(),
                 contentPadding: EdgeInsets.symmetric(horizontal: 8),
               ),
-              onSubmitted: (_) => _loadImages(),
+              onSubmitted: (_) => _onFilterChanged(),
             ),
           ),
           const SizedBox(width: 8),
@@ -556,7 +533,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Widget _buildGrid() {
     return GalleryGrid(
       scrollController: _scrollController,
-      itemCount: _images.length,
+      itemCount: _visibleItems.length,
       isLoading: _isLoading,
       showTrailingLoader: _isLoading,
       emptyMessage: '画像が見つかりませんでした',
@@ -565,51 +542,69 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Widget _buildTile(BuildContext context, int index) {
-    final image = _images[index];
-    final thumbnail = _thumbnailData[image.id];
+    final image = _visibleItems[index];
+    final thumb = _thumbnailData[image.id];
     final pageCount = image.metadata?['pageCount'] as int? ?? 1;
+
+    // Trigger the next thumbnail batch when an item beyond the dispatched
+    // range becomes visible (index into the loader's item list).
+    final loaderIndex = _thumbIndex[image.id] ?? -1;
+    if (_tab.thumbnails.needsBatch(loaderIndex)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _tab.thumbnails.loadNextBatch();
+      });
+    }
 
     return GestureDetector(
       onTap: () => _openViewer(index),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          thumbnail != null
-              ? Image.memory(thumbnail, fit: BoxFit.cover)
-              : Container(
-                  color: Colors.grey[300],
-                  child: const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+          switch (thumb) {
+            ThumbnailData(data: final d) => Image.memory(d, fit: BoxFit.cover),
+            ThumbnailFailed() => Container(
+                color: Colors.grey[300],
+                child: Icon(Icons.broken_image, color: Colors.red[300]),
+              ),
+            null => Container(
+                color: Colors.grey[300],
+                child: const Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
-          if (pageCount > 1)
-            Positioned(
-              right: 4,
-              bottom: 4,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.layers, color: Colors.white, size: 12),
-                    const SizedBox(width: 2),
-                    Text(
-                      '$pageCount',
-                      style: const TextStyle(color: Colors.white, fontSize: 11),
-                    ),
-                  ],
-                ),
               ),
-            ),
+          },
+          if (pageCount > 1) _pageCountBadge(pageCount),
         ],
+      ),
+    );
+  }
+
+  /// Bottom-right "N pages" badge for multi-page works.
+  Widget _pageCountBadge(int pageCount) {
+    return Positioned(
+      right: 4,
+      bottom: 4,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.layers, color: Colors.white, size: 12),
+            const SizedBox(width: 2),
+            Text(
+              '$pageCount',
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }

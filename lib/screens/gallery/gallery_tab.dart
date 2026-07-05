@@ -32,6 +32,10 @@ class GalleryTab {
   List<ImageSource> get thumbnailItems => _thumbnailItems;
 
   final bool Function(ImageSource) _thumbnailFilter;
+  /// A finite, already-known list (e.g. favorites) served as the single page
+  /// instead of calling [provider.loadPage]. Thumbnails still come from
+  /// [thumbnails] (ADR 007; interim until a fav:// paged source in Phase 3).
+  final List<ImageSource>? _seedItems;
   Object? _cursor;
   bool _firstPageLoaded = false;
   bool _loadingPage = false;
@@ -42,7 +46,9 @@ class GalleryTab {
     required this.thumbnails,
     this.path,
     bool Function(ImageSource)? thumbnailFilter,
-  }) : _thumbnailFilter = thumbnailFilter ?? ((_) => true);
+    List<ImageSource>? seedItems,
+  })  : _thumbnailFilter = thumbnailFilter ?? ((_) => true),
+        _seedItems = seedItems;
 
   /// True until the first page is loaded, then true while more pages remain.
   bool get hasMore => !_firstPageLoaded || _cursor != null;
@@ -58,7 +64,9 @@ class GalleryTab {
     _loadingPage = true;
     try {
       final firstPage = !_firstPageLoaded;
-      final page = await provider.loadPage(path: path, cursor: _cursor);
+      final page = _seedItems != null
+          ? PageResult(items: firstPage ? _seedItems : const [])
+          : await provider.loadPage(path: path, cursor: _cursor);
       _cursor = page.nextCursor;
       _firstPageLoaded = true;
       loaded.addAll(page.items);
