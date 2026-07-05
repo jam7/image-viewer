@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
-import 'gallery_constants.dart';
+import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
@@ -673,73 +673,62 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Widget _buildGrid() {
-    if (_images.isEmpty && _isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_images.isEmpty && !_isLoading) {
-      return const Center(child: Text('画像が見つかりませんでした'));
-    }
+    return GalleryGrid(
+      scrollController: _scrollController,
+      itemCount: _images.length,
+      isLoading: _isLoading,
+      showTrailingLoader: _isLoading,
+      emptyMessage: '画像が見つかりませんでした',
+      tileBuilder: _buildTile,
+    );
+  }
 
-    return Scrollbar(
-      controller: _scrollController,
-      thumbVisibility: true,
-      child: GridView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(4),
-        gridDelegate: galleryGridDelegate,
-        itemCount: _images.length + (_isLoading ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index >= _images.length) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final image = _images[index];
-          final thumbnail = _thumbnailData[image.id];
-          final pageCount = image.metadata?['pageCount'] as int? ?? 1;
+  Widget _buildTile(BuildContext context, int index) {
+    final image = _images[index];
+    final thumbnail = _thumbnailData[image.id];
+    final pageCount = image.metadata?['pageCount'] as int? ?? 1;
 
-          return GestureDetector(
-            onTap: () => _openViewer(index),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                thumbnail != null
-                    ? Image.memory(thumbnail, fit: BoxFit.cover)
-                    : Container(
-                        color: Colors.grey[300],
-                        child: const Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      ),
-                if (pageCount > 1)
-                  Positioned(
-                    right: 4,
-                    bottom: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.layers, color: Colors.white, size: 12),
-                          const SizedBox(width: 2),
-                          Text(
-                            '$pageCount',
-                            style: const TextStyle(color: Colors.white, fontSize: 11),
-                          ),
-                        ],
-                      ),
+    return GestureDetector(
+      onTap: () => _openViewer(index),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          thumbnail != null
+              ? Image.memory(thumbnail, fit: BoxFit.cover)
+              : Container(
+                  color: Colors.grey[300],
+                  child: const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
-              ],
+                ),
+          if (pageCount > 1)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.layers, color: Colors.white, size: 12),
+                    const SizedBox(width: 2),
+                    Text(
+                      '$pageCount',
+                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          );
-        },
+        ],
       ),
     );
   }

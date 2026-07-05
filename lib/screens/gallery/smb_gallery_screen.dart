@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
+import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
@@ -250,74 +251,65 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Widget _buildGrid() {
-    if (_items.isEmpty && _isLoading) {
-      return const Center(child: CircularProgressIndicator());
+    return GalleryGrid(
+      scrollController: _scrollController,
+      itemCount: _items.length,
+      isLoading: _isLoading,
+      emptyMessage: 'ファイルが見つかりませんでした',
+      tileBuilder: _buildTile,
+    );
+  }
+
+  Widget _buildTile(BuildContext context, int index) {
+    final item = _items[index];
+    final isDir = item.metadata?['isDirectory'] == true;
+    final thumb = _thumbnailData[item.id];
+
+    // Trigger next batch when an item beyond current batch becomes visible.
+    final itemIndex = _imageFileIndex[item.id] ?? -1;
+    if (!isDir && _thumbLoader.needsBatch(itemIndex)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _thumbLoader.loadNextBatch();
+      });
     }
-    if (_items.isEmpty && !_isLoading) {
-      return const Center(child: Text('ファイルが見つかりませんでした'));
-    }
 
-    return Scrollbar(
-      controller: _scrollController,
-      thumbVisibility: true,
-      child: GridView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(4),
-        gridDelegate: galleryGridDelegate,
-        itemCount: _items.length,
-        itemBuilder: (context, index) {
-          final item = _items[index];
-          final isDir = item.metadata?['isDirectory'] == true;
-          final thumb = _thumbnailData[item.id];
+    final isVideo = item.metadata?['isVideo'] == true;
+    final videoThumb = isVideo ? _thumbnailData[item.id] : null;
 
-          // Trigger next batch when an item beyond current batch becomes visible.
-          final itemIndex = _imageFileIndex[item.id] ?? -1;
-          if (!isDir && _thumbLoader.needsBatch(itemIndex)) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _thumbLoader.loadNextBatch();
-            });
-          }
-
-          final isVideo = item.metadata?['isVideo'] == true;
-          final videoThumb = isVideo ? _thumbnailData[item.id] : null;
-
-          return GestureDetector(
-            onTap: () => _onItemTap(item),
-            child: isDir
-                ? _buildIconTile(item.name, Icons.folder, Colors.amber)
-                : isVideo
-                ? (videoThumb is ThumbnailData
-                    ? Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.memory(videoThumb.data, fit: BoxFit.cover),
-                          const Center(
-                            child: Icon(Icons.play_circle_outline, color: Colors.white70, size: 48),
-                          ),
-                        ],
-                      )
-                    : _buildIconTile(item.name, Icons.play_circle_outline, Colors.deepPurple))
-                : switch (thumb) {
-                    ThumbnailData(data: final d) =>
-                      Image.memory(d, fit: BoxFit.cover),
-                    ThumbnailFailed(reason: ThumbnailFailReason.notSupported) =>
-                      _buildIconTile(item.name, Icons.archive, Colors.blueGrey),
-                    ThumbnailFailed(reason: ThumbnailFailReason.timeout) =>
-                      _buildIconTile(item.name, Icons.broken_image, Colors.red[300]!),
-                    null => Container(
-                        color: Colors.grey[300],
-                        child: const Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      ),
-                  },
-          );
-        },
-      ),
+    return GestureDetector(
+      onTap: () => _onItemTap(item),
+      child: isDir
+          ? _buildIconTile(item.name, Icons.folder, Colors.amber)
+          : isVideo
+          ? (videoThumb is ThumbnailData
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.memory(videoThumb.data, fit: BoxFit.cover),
+                    const Center(
+                      child: Icon(Icons.play_circle_outline, color: Colors.white70, size: 48),
+                    ),
+                  ],
+                )
+              : _buildIconTile(item.name, Icons.play_circle_outline, Colors.deepPurple))
+          : switch (thumb) {
+              ThumbnailData(data: final d) =>
+                Image.memory(d, fit: BoxFit.cover),
+              ThumbnailFailed(reason: ThumbnailFailReason.notSupported) =>
+                _buildIconTile(item.name, Icons.archive, Colors.blueGrey),
+              ThumbnailFailed(reason: ThumbnailFailReason.timeout) =>
+                _buildIconTile(item.name, Icons.broken_image, Colors.red[300]!),
+              null => Container(
+                  color: Colors.grey[300],
+                  child: const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+            },
     );
   }
 
