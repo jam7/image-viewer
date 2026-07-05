@@ -43,12 +43,36 @@ Pixiv ギャラリー (`gallery_screen.dart`) と SMB ギャラリー (`smb_gall
 
 | ウィジェット | 責務 | パラメータ (概略) |
 |---|---|---|
-| `GalleryKeyboardScrollable` | `Focus` + `Listener` + キー処理 + `_scrollBy` + マウス戻る | `scrollController`, `onPop`, `child` |
+| `GalleryKeyboardScrollable` | `Focus` + `Listener` + キー処理 + `_scrollBy` + マウス戻る + スワイプ pop | `focusNode`, `scrollController`, `onPop`, `child` |
 | `GalleryGrid` | `Scrollbar` + `GridView` + gridDelegate + empty/loading/error + バッチ/追加ロードのトリガ | `itemCount`, `tileBuilder(index)`, `onTap`, `scrollController`, `isLoading`, `error`, `onLoadMore` |
 
 - `GalleryGrid` は `ThumbnailResult` か `Uint8List` かを知らない。タイル生成は各画面の
   `tileBuilder` に委ねる (アイコン種別・バッジの差分は本質なので共通化しない)。
 - 各画面はコンテンツ管理 (タブ/検索/ページネーション or ディレクトリ) を State に残す。
+
+#### 入力操作は統合してから抽出する (Step 1a → 1b)
+
+2 画面の入力処理はほぼ同一だが、別々に作った経緯で細かく分岐していた。同じ操作感に
+そろえるため、`GalleryKeyboardScrollable` にパラメータで差分を持たせるのではなく、
+**先に両画面の挙動を superset に統合** (Step 1a、挙動変化) してから
+**パラメータ無しの共有ウィジェットへ抽出** (Step 1b、挙動不変) する。
+
+| 操作 | 統合前 Pixiv | 統合前 SMB | 統合後 (両画面) |
+|---|---|---|---|
+| 矢印/Page/Space/Home/End スクロール | あり | あり | あり |
+| Escape で pop | あり | あり | あり |
+| マウス戻るボタンで pop | あり | あり | あり |
+| Backspace で pop | なし | あり | **あり** |
+| 横スワイプ (velocity>300) で pop | あり | なし | **あり** |
+| primaryFocus ガード (入力中はキー無効) | あり | なし | **あり** (SMB では実質 no-op) |
+| 二重 pop ガード (`_popOnce`) | なし | あり | **あり** |
+
+- primaryFocus ガードと二重 pop ガードは両画面に付けてもほぼ挙動不変 (SMB に奪い合う
+  TextField は無く、二重 pop ガードは稀な同時 pop を防ぐだけ)。
+- Backspace pop と横スワイプ pop は挙動変化。Step 1a で characterization に新挙動を
+  ピンしてから入れる。
+- 統合後は `GalleryKeyboardScrollable` に真偽フラグが不要になり、`onPop` (各画面が
+  `_popOnce` を渡す)・`focusNode`・`scrollController`・`child` だけで済む。
 
 ### サムネイルエンジンの一般化 (Step 2 = P1)
 
@@ -85,8 +109,13 @@ Pixiv ギャラリー (`gallery_screen.dart`) と SMB ギャラリー (`smb_gall
 
 ## 影響範囲
 
-### Step 1 (挙動不変)
-- 新規: `lib/screens/gallery/widgets/gallery_grid.dart`, `gallery_keyboard_scrollable.dart`
+### Step 1a (挙動変化: 入力操作の統合)
+- 変更: `gallery_screen.dart` (Backspace pop・`_popOnce` 追加)、
+  `smb_gallery_screen.dart` (primaryFocus ガード・横スワイプ pop 追加)
+- テスト: characterization に新挙動 (Pixiv の Backspace pop、SMB の横スワイプ pop) を追加
+
+### Step 1b (挙動不変: ウィジェット抽出)
+- 新規: `lib/screens/gallery/widgets/gallery_keyboard_scrollable.dart`, `gallery_grid.dart`
 - 変更: `gallery_screen.dart`, `smb_gallery_screen.dart` (抽出先を使う形に)
 
 ### Step 2 (挙動変化 = P1)
@@ -105,7 +134,9 @@ Pixiv ギャラリー (`gallery_screen.dart`) と SMB ギャラリー (`smb_gall
 
 - **Step 0 (済)**: `test/screens/gallery/gallery_characterization_test.dart` で両画面の
   grid 状態・キーボード/スクロール・pop を pin。Step 1/2 の各コミット後に green を維持。
-- **Step 1**: 挙動不変。characterization が green なら OK。
+- **Step 1a**: 挙動変化 (入力統合)。新挙動を characterization に追加してから実装し、
+  既存 + 新規テストが green であることで verify。
+- **Step 1b**: 挙動不変 (ウィジェット抽出)。characterization が green なら OK。
 - **Step 2**: 挙動変化。characterization に加え、
   - 動画サムネイルの生成・**再生前 cancel での接続解放**を実機で verify (proxy セッション/
     トークン無効化が絡むため、テストだけでは不十分)。

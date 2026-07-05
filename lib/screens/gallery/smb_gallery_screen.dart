@@ -222,6 +222,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
+    if (FocusManager.instance.primaryFocus != _focusNode) {
+      return KeyEventResult.ignored;
+    }
     if (!_scrollController.hasClients) return KeyEventResult.ignored;
 
     final key = event.logicalKey;
@@ -281,7 +284,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       onKeyEvent: _onKeyEvent,
       child: Listener(
         onPointerDown: _onPointerDown,
-        child: _buildScaffold(),
+        child: GestureDetector(
+          onHorizontalDragEnd: (details) {
+            if ((details.primaryVelocity ?? 0) > 300) _popOnce();
+          },
+          child: _buildScaffold(),
+        ),
       ),
     );
   }

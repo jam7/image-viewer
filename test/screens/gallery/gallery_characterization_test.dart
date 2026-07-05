@@ -238,6 +238,18 @@ void main() {
 
       expect(find.text('HOME_MARKER'), findsOneWidget);
     });
+
+    testWidgets('horizontal swipe pops the screen', (tester) async {
+      final items = smbImageItems(6);
+      seedThumbnails(items);
+      await pumpPushed(tester, build(_FakeSmbSource(items)));
+
+      await tester.fling(find.byType(GridView), const Offset(300, 0), 1000);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('HOME_MARKER'), findsOneWidget);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -290,6 +302,18 @@ void main() {
       await pumpPushed(tester, build(_FakePixivSource(items)));
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('HOME_MARKER'), findsOneWidget);
+    });
+
+    testWidgets('Backspace pops the screen', (tester) async {
+      final items = pixivItems(6);
+      seedThumbnails(items);
+      await pumpPushed(tester, build(_FakePixivSource(items)));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 

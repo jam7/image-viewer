@@ -71,6 +71,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   int _minPageCount = 0;
+  bool _isPopping = false;
 
   // Search options (session-only). Apply to tag searches.
   String _searchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分一致
@@ -254,8 +255,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
           _scrollController.offset);
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.escape) {
-      Navigator.of(context).pop();
+    if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.backspace) {
+      _popOnce();
       return KeyEventResult.handled;
     }
 
@@ -576,8 +578,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
-      Navigator.of(context).pop();
+      _popOnce();
     }
+  }
+
+  /// Guard against multiple pop calls in the same frame
+  /// (e.g. ESC key and mouse back button firing simultaneously).
+  void _popOnce() {
+    if (_isPopping) return;
+    _isPopping = true;
+    Navigator.of(context).pop();
   }
 
   String _appBarTitle() {
@@ -689,7 +699,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         child: GestureDetector(
           onHorizontalDragEnd: (details) {
             if ((details.primaryVelocity ?? 0) > 300) {
-              Navigator.of(context).pop();
+              _popOnce();
             }
           },
           child: Scaffold(
