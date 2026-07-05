@@ -1,12 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
+import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
@@ -206,68 +205,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
 
 
-  void _scrollBy(double delta) {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      (_scrollController.offset + delta).clamp(
-        0.0,
-        _scrollController.position.maxScrollExtent,
-      ),
-      duration: const Duration(milliseconds: 100),
-      curve: Curves.easeOut,
-    );
-  }
-
-  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-    if (FocusManager.instance.primaryFocus != _focusNode) {
-      return KeyEventResult.ignored;
-    }
-    if (!_scrollController.hasClients) return KeyEventResult.ignored;
-
-    final key = event.logicalKey;
-    final viewportHeight = _scrollController.position.viewportDimension;
-
-    if (key == LogicalKeyboardKey.arrowDown) {
-      _scrollBy(100);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowUp) {
-      _scrollBy(-100);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.pageDown || key == LogicalKeyboardKey.space) {
-      _scrollBy(viewportHeight * 0.9);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.pageUp) {
-      _scrollBy(-viewportHeight * 0.9);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.home) {
-      _scrollBy(-_scrollController.offset);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.end) {
-      _scrollBy(_scrollController.position.maxScrollExtent - _scrollController.offset);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.escape) {
-      _popOnce();
-      return KeyEventResult.handled;
-    }
-
-    return KeyEventResult.ignored;
-  }
-
-  void _onPointerDown(PointerDownEvent event) {
-    if (event.buttons == kBackMouseButton) {
-      _popOnce();
-    }
-  }
-
   /// Guard against multiple pop calls in the same frame
   /// (e.g. ESC key and mouse back button firing simultaneously).
   void _popOnce() {
@@ -278,19 +215,11 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Focus(
+    return GalleryKeyboardScrollable(
       focusNode: _focusNode,
-      autofocus: true,
-      onKeyEvent: _onKeyEvent,
-      child: Listener(
-        onPointerDown: _onPointerDown,
-        child: GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if ((details.primaryVelocity ?? 0) > 300) _popOnce();
-          },
-          child: _buildScaffold(),
-        ),
-      ),
+      scrollController: _scrollController,
+      onPop: _popOnce,
+      child: _buildScaffold(),
     );
   }
 

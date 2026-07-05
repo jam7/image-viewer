@@ -1,12 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
+import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
@@ -198,70 +197,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
-  }
-
-  void _scrollBy(double delta) {
-    _scrollController.animateTo(
-      (_scrollController.offset + delta).clamp(
-        0.0,
-        _scrollController.position.maxScrollExtent,
-      ),
-      duration: const Duration(milliseconds: 100),
-      curve: Curves.easeOut,
-    );
-  }
-
-  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-
-    // TextFieldにフォーカスがある時はキーナビゲーション無効
-    if (FocusManager.instance.primaryFocus != _focusNode) {
-      return KeyEventResult.ignored;
-    }
-
-    // ScrollControllerがまだアタッチされていない場合はスキップ
-    if (!_scrollController.hasClients) {
-      return KeyEventResult.ignored;
-    }
-
-    final key = event.logicalKey;
-    final viewportHeight = _scrollController.position.viewportDimension;
-
-    if (key == LogicalKeyboardKey.arrowDown) {
-      _scrollBy(100);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowUp) {
-      _scrollBy(-100);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.pageDown ||
-        key == LogicalKeyboardKey.space) {
-      _scrollBy(viewportHeight * 0.9);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.pageUp) {
-      _scrollBy(-viewportHeight * 0.9);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.home) {
-      _scrollBy(-_scrollController.offset);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.end) {
-      _scrollBy(_scrollController.position.maxScrollExtent -
-          _scrollController.offset);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.backspace) {
-      _popOnce();
-      return KeyEventResult.handled;
-    }
-
-    return KeyEventResult.ignored;
   }
 
   void _onScroll() {
@@ -576,12 +511,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
 
-  void _onPointerDown(PointerDownEvent event) {
-    if (event.buttons == kBackMouseButton) {
-      _popOnce();
-    }
-  }
-
   /// Guard against multiple pop calls in the same frame
   /// (e.g. ESC key and mouse back button firing simultaneously).
   void _popOnce() {
@@ -690,32 +619,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Focus(
+    return GalleryKeyboardScrollable(
       focusNode: _focusNode,
-      autofocus: true,
-      onKeyEvent: _onKeyEvent,
-      child: Listener(
-        onPointerDown: _onPointerDown,
-        child: GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if ((details.primaryVelocity ?? 0) > 300) {
-              _popOnce();
-            }
-          },
-          child: Scaffold(
-            appBar: _buildAppBar(),
-            body: Column(
-              children: [
-                _buildFilterBar(),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text(_error!, style: const TextStyle(color: Colors.red)),
-                  ),
-                Expanded(child: _buildGrid()),
-              ],
-            ),
-          ),
+      scrollController: _scrollController,
+      onPop: _popOnce,
+      child: Scaffold(
+        appBar: _buildAppBar(),
+        body: Column(
+          children: [
+            _buildFilterBar(),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              ),
+            Expanded(child: _buildGrid()),
+          ],
         ),
       ),
     );
