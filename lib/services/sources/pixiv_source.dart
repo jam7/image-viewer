@@ -15,24 +15,28 @@ class PixivSource extends ImageSourceProvider {
 
   PixivApiClient get client => _client;
 
+  /// Stateless page fetch (ADR 007). [cursor] is the Pixiv offset (bookmarks /
+  /// user works, in item count) or page number (search, 1-based); null = first
+  /// page. Returns the expanded items plus [PageResult.nextCursor] (from the
+  /// endpoint's nextOffset), null at the end.
   @override
-  Future<List<ImageSource>> listImages({String? path}) async {
-    final PixivIllustList result;
-
+  Future<PageResult> loadPage({String? path, Object? cursor}) async {
     final effectivePath = path ?? '/top';
+    final offset = cursor as int?;
+    final PixivIllustList result;
 
     if (effectivePath.startsWith('/bookmarks')) {
       final userId = _client.userId;
       if (userId == null) throw Exception('Pixiv userId not available');
       result = await _client.userBookmarksIllust(
         int.parse(userId),
-        offset: _nextOffset ?? 0,
+        offset: offset ?? 0,
       );
     } else if (effectivePath.startsWith('/user/')) {
       final userId = effectivePath.substring('/user/'.length);
       result = await _client.userIllusts(
         int.parse(userId),
-        offset: _nextOffset ?? 0,
+        offset: offset ?? 0,
       );
     } else if (effectivePath.startsWith('/search')) {
       final uri = Uri.parse('https://dummy$effectivePath');
@@ -46,15 +50,25 @@ class PixivSource extends ImageSourceProvider {
         word,
         sMode: sMode,
         sort: order,
-        page: _nextOffset ?? 1,
+        page: offset ?? 1,
       );
     } else {
       result = await _client.illustTop();
     }
 
-    _nextOffset = result.nextOffset;
+    return PageResult(
+      items: _expandArtworks(result.illusts),
+      nextCursor: result.nextOffset,
+    );
+  }
 
-    return _expandArtworks(result.illusts);
+  @override
+  Future<List<ImageSource>> listImages({String? path}) async {
+    // Stateful wrapper over loadPage for the current (non-virtualized) screen:
+    // carry the cursor in _nextOffset. GalleryTab will call loadPage directly.
+    final page = await loadPage(path: path, cursor: _nextOffset);
+    _nextOffset = page.nextCursor as int?;
+    return page.items;
   }
 
   bool get hasNextPage => _nextOffset != null;
@@ -65,6 +79,7 @@ class PixivSource extends ImageSourceProvider {
 
   /// 作品の全ページをImageSourceリストとして返す。
   /// ビューアで作品タップ時に呼ぶ。高解像度URLを取得する。
+  @override
   Future<List<ImageSource>> resolvePages(ImageSource source) async {
     final illustId = source.metadata?['illustId'] as int?;
     if (illustId == null) return [source];
