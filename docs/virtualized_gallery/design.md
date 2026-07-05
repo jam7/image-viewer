@@ -1,7 +1,7 @@
-# 仮想化ギャラリー — 設計 (初稿・すり合わせ用)
+# 仮想化ギャラリー — 設計
 
-> Status: Draft。全体像とデータモデルの骨子。未決事項は「## 未決事項」に集約。
-> 確定したら該当箇所を更新し、設計判断は ADR (007 予定) に切り出す。
+> Status: データモデルと所有方針は確定 ([ADR 007](../adr/007-virtualized-gallery.md))。
+> 実装は段階化 (「## 進め方」)。細部の残論点は「## 残る検討」。
 
 全ソース (SMB ディレクトリ・Pixiv 検索/ユーザー/ブックマーク・お気に入り・DL 済み) を
 **同一の仮想アイテム列**として扱い、複数タブに並べて行き来でき、サムネイル取得を
@@ -93,6 +93,27 @@ class GalleryTab {
 - 非表示タブは `ThumbnailLoader.cancel()` + デコード済み画像解放 (R7)。復帰時に
   キャッシュから再表示 (既存 activate/deactivate パターンの一般化)。
 
+#### データ所有の整理 (現状 → 目標)
+
+閲覧セッションの状態が今はソース/画面/タブに不揃いに散らばっている。これを
+`GalleryTab` に集約し、ソースを無状態化する。★ = 不揃いの元凶。
+
+| データ | 現在 Pixiv | 現在 SMB | 目標オーナー |
+|---|---|---|---|
+| アイテム列 (取得済み) | `_TabState.images` | `_items` / `_imageFiles` | `GalleryTab.loaded` |
+| ページカーソル (次ページ) | ★`PixivSource._nextOffset` (ソース内) | なし (有限) | `GalleryTab.nextCursor` |
+| サムネイル状態 | `_TabState.thumbnails` (`Uint8List`) | `_thumbnailData` (`ThumbnailResult`) | `GalleryTab` (`ThumbnailResult` 統一) |
+| サムネ取得進捗 | 画面に散在 (`loadGeneration` 等) | ★`ThumbnailLoader` 内部 | `GalleryTab.thumbLoader` (タブごと) |
+| スクロール位置 | `_TabState.scrollOffset` | 保存なし | `GalleryTab.scrollOffset` |
+| ソース識別子/検索条件 | `initialUserPath` + `_searchMode`/`_searchOrder` | `initialPath` | `GalleryTab.sourceUri` (条件も内包) |
+| タブ集合 | `_tabStates` (固定3タブ、画面内) | なし (別画面) | `GalleryTabController` (ソース横断) |
+| ソース本体 (接続/認証/取得) | `PixivSource` + app 共有 `PixivApiClient` | `SmbSource` (サーバ単位、registry) | プロバイダのまま。**カーソルを外出しし無状態化**。接続/ZIP/PDF/動画キャッシュは resource として保持 |
+| L1/L2/L3 キャッシュ | app `CacheManager` | 同左 | 変えず (キーをアイテム URI に統一) |
+
+動かすのは「その閲覧セッション固有の状態」だけ。要は ①ページカーソルをソースから
+タブへ外出し ②サムネ取得をタブごとの `ThumbnailLoader` に統一 ③残りを `GalleryTab` に
+同じ形で集約、の 3 つ。
+
 ### 4. スクロール単一トリガ (R3, R4) — SMB/Pixiv の差を吸収する要
 
 可視窓が動いたとき、1 経路で 2 つを駆動する:
@@ -123,23 +144,35 @@ class GalleryTab {
 | `CacheManager` | L1/L2/L3。キーを URI 化 | キー命名の見直しのみ |
 | `SourceRegistry` | URI → プロバイダ解決 | URI 体系に合わせて拡張 |
 
-## 未決事項 (すり合わせたい点)
+## 決定事項 ([ADR 007](../adr/007-virtualized-gallery.md))
 
-1. **責務分界**: paging を「タブ (GalleryTabController)」に置くか、`PagedItems` に持たせて
-   `ThumbnailLoader` と協調させるか。案では paging=タブ、thumbs=ThumbnailLoader で分離。
-2. **`ImageSourceProvider.listImages(path)` の扱い**: cursor ベース `loadPage` へ移行するか、
-   薄いアダプタで両立させるか (既存呼び出し側の影響範囲)。
-3. **タブの上限とメモリ方針** (R7): 何タブまで保持、非表示タブの解放粒度 (loaded 配列も捨てるか、
-   デコード画像だけか)。
-4. **URI 体系の確定**: 上記スキームで過不足ないか (ZIP 内・PDF ページ・複数ページ Pixiv の
-   `_p{i}` をどう URI 化するか)。
-5. **非画像アイテム**: SMB のディレクトリ/動画をどう仮想列に混ぜるか (現行はメタデータ分岐)。
-6. **移行の段階**: 一気に全ソースを載せ替えず、まず 1 ソース (SMB or Pixiv) で仮想リストを
-   実証 → タブ統合 → 残りを移行、の順を想定。挙動変化が大きいので各段で characterization +
-   実機 verify。
+1. **責務分界**: paging=タブ (`GalleryTab` が `loaded`/`nextCursor`/`scrollOffset`/`thumbLoader`
+   を所有)、ソースは無状態の `loadPage(cursor)`。上記「データ所有の整理」の通り。
+2. **`listImages` 移行**: `ImageSourceProvider` に `loadPage(cursor)` を追加。有限ソースは
+   既定実装が `listImages` を 1 ページとして包む → 段階移行 (既存呼び出しを一斉に壊さない)。
+3. **タブのメモリ**: 開いているタブの `loaded` は保持、非表示タブのデコード済みサムネ (L1) は
+   解放し復帰時に L2 から再表示。タブ数のハード上限は当面なし + デコード画像を LRU 排出。
+4. **URI 体系**: `smb://<serverId>/<path>` / `pixiv://search?...` / `pixiv://user/123` /
+   `pixiv://bookmarks` / `pixiv://top` / `fav://` / `dl://`。コンテナ内は fragment
+   (`…#entry`, `…#page=3`, Pixiv 複数ページ `…#p2`)。キャッシュキー `thumb:<uri>` / `full:<uri>`。
 
-## 進め方 (案)
+## 残る検討 (実装時に確定)
 
-spec-dev 軽量。要件が新規なので本 design.md で要件・データモデルを固め、確定分を
-ADR 007 に切り出す。実装は段階 (未決 6) に分け、各段で回帰テスト + 実機確認。
-既存の gallery_unification の成果 (2a-2c) はこのアーキの土台として活きる。
+- **非画像アイテム**: SMB のディレクトリ/動画は `loaded` に混在する `ImageSource` (メタデータ
+  フラグ) のまま。tileBuilder が描画を、タップ時にディレクトリなら「その dir URI の新タブ」を
+  開く。現行のメタデータ分岐を踏襲する方向。
+- `GalleryTabController` の UI (タブバー・並び・閉じる操作) の具体。
+- `loadPage` の cursor 型 (不透明 Object) を各ソースがどう解釈するか (SMB=null 一発、
+  Pixiv=offset/page)。
+
+## 進め方 (段階)
+
+挙動変化が大きいので段階化し、各段で characterization + 実機 verify。既存の
+gallery_unification 成果 (`ThumbnailLoader` 汎用化・`GalleryGrid`・`GalleryKeyboardScrollable`)
+が土台。
+
+1. **フェーズ 1**: `PagedItems` / `loadPage` 抽象と `GalleryTab` を導入し、**まず 1 ソース**
+   (SMB か Pixiv) で「仮想列 + スクロール単一トリガ + タブごと ThumbnailLoader」を実証。
+   `ThumbnailLoader.addItems` 追加もここ。
+2. **フェーズ 2**: `GalleryTabController` でソース横断のタブ並列保持・行き来を実現。
+3. **フェーズ 3**: 残りソース (お気に入り・DL 済み等) を仮想列に移行。URI/キャッシュキー統一。
