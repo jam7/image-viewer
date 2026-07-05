@@ -62,6 +62,14 @@ class ThumbnailLoader {
     _resultIds.clear();
   }
 
+  /// Append more items (e.g. a newly fetched page) without resetting load
+  /// progress: already-loaded results and the dispatch position are kept, so
+  /// only the new items get loaded on the next batch. Used by paginated
+  /// sources (ADR 007).
+  void addItems(List<ImageSource> items) {
+    _items = [..._items, ...items];
+  }
+
   /// Whether [itemIndex] is beyond the current batch (used by build trigger).
   bool needsBatch(int itemIndex) {
     return itemIndex >= _loadedCount && !_isLoading;

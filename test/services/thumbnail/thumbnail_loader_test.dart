@@ -125,6 +125,25 @@ void main() {
     expect(results.values.every((r) => r is ThumbnailData), isTrue);
   });
 
+  test('addItems appends without reloading already-loaded items', () async {
+    final source =
+        _FakeSource(onFetch: (s) async => Uint8List.fromList([s.id.length]));
+    final results = <String, ThumbnailResult>{};
+    final l = loader(source, (id, r) => results[id] = r)
+      ..setItems([img('a'), img('b')]);
+
+    await l.loadNextBatch();
+    expect(source.fetchCount, 2);
+
+    l.addItems([img('c'), img('d')]);
+    expect(l.itemCount, 4);
+
+    await l.loadNextBatch();
+    // Only c and d fetched; a and b kept their results.
+    expect(source.fetchCount, 4);
+    expect(results.keys.toSet(), {'a', 'b', 'c', 'd'});
+  });
+
   test('cancel delegates to source.cancelThumbnailWork', () async {
     final source =
         _FakeSource(onFetch: (_) async => Uint8List.fromList([1]));
