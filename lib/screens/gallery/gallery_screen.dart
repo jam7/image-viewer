@@ -23,7 +23,6 @@ class GalleryScreen extends StatefulWidget {
   final SourceRegistry registry;
   final String? initialUserPath;
   final String? initialUserName;
-  final PixivTab initialTab;
   final String? initialSearchWord;
   final String? initialFilterText;
 
@@ -35,7 +34,6 @@ class GalleryScreen extends StatefulWidget {
     required this.registry,
     this.initialUserPath,
     this.initialUserName,
-    this.initialTab = PixivTab.top,
     this.initialSearchWord,
     this.initialFilterText,
   });
@@ -44,28 +42,9 @@ class GalleryScreen extends StatefulWidget {
   State<GalleryScreen> createState() => _GalleryScreenState();
 }
 
-enum PixivTab { top, bookmarks, favorites }
-
-/// Per-tab state: independent source, images, thumbnails, and scroll position.
-class _TabState {
-  final PixivSource source;
-  final List<ImageSource> images = [];
-  final Map<String, Uint8List> thumbnails = {};
-  double scrollOffset = 0;
-  int loadGeneration = 0;
-  bool hasLoaded = false; // true after first load
-
-  _TabState({required this.source});
-
-  void clearThumbnails() {
-    thumbnails.clear();
-  }
-}
-
 class _GalleryScreenState extends State<GalleryScreen> {
   bool _isLoading = false;
   String? _error;
-  late PixivTab _currentTab;
   final _searchController = TextEditingController();
   final _filterController = TextEditingController();
   final _scrollController = ScrollController();
@@ -77,18 +56,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String _searchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分一致
   String _searchOrder = 'date_d'; // date_d=新着 / date=古い順
 
-  bool get _isSearchPage => widget.initialUserPath?.startsWith('/search') ?? false;
+  // Single-page state (one Pixiv page per screen; sections/search/author are
+  // reached by pushing a new screen and navigating back — ADR 007).
+  final List<ImageSource> _images = [];
+  final Map<String, Uint8List> _thumbnailData = {};
+  int _loadGeneration = 0;
 
-  /// Per-tab state. Created lazily on first switch.
-  late final Map<PixivTab, _TabState> _tabStates;
-
-  /// Current tab state shortcut.
-  _TabState get _tab => _tabStates[_currentTab]!;
-
-  // Convenience accessors that delegate to current _TabState
-  List<ImageSource> get _images => _tab.images;
-  Map<String, Uint8List> get _thumbnailData => _tab.thumbnails;
-  int get _loadGeneration => _tab.loadGeneration;
+  bool get _isSearchPage => _path.startsWith('/search');
+  bool get _isFavoritesPage => _path == '/favorites';
 
   void _applyFilter() {
     final text = _filterController.text.trim();
@@ -105,13 +80,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }).toList();
   }
 
-  bool get _isUserWorksPage => widget.initialUserPath != null;
+  /// The Pixiv path this screen shows. Defaults to the top page. Search paths
+  /// are rebuilt with the current tag-match / order toggles.
+  String get _path {
+    final p = widget.initialUserPath ?? '/top';
+    if (p.startsWith('/search')) {
+      final word = Uri.parse('https://dummy$p').queryParameters['word'] ?? '';
+      return '/search?word=${Uri.encodeComponent(word)}'
+          '&s_mode=$_searchMode&order=$_searchOrder';
+    }
+    return p;
+  }
 
   @override
   void initState() {
     super.initState();
-    _currentTab = widget.initialTab;
-    _log.info('initState: initialTab=${widget.initialTab}, isUserWorks=$_isUserWorksPage, initialUserPath=${widget.initialUserPath}');
+    _log.info('initState: path=$_path, initialUserPath=${widget.initialUserPath}');
     if (widget.initialSearchWord != null) {
       _searchController.text = widget.initialSearchWord!;
     }
@@ -128,48 +112,19 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _applyFilter();
     }
     _scrollController.addListener(_onScroll);
-
-    if (_isUserWorksPage) {
-      // User works page: all tabs share the same _TabState instance
-      // since tab switching only shows/hides the search field.
-      final shared = _TabState(source: widget.source);
-      _tabStates = {
-        for (final tab in PixivTab.values) tab: shared,
-      };
-    } else {
-      // Each tab gets its own PixivSource for independent pagination
-      _tabStates = {
-        for (final tab in PixivTab.values)
-          tab: _TabState(
-            source: PixivSource(client: widget.source.client),
-          ),
-      };
-    }
-
     _loadImages();
   }
 
   @override
   void deactivate() {
-    // Save scroll position before deactivation
-    if (_scrollController.hasClients) {
-      _tab.scrollOffset = _scrollController.offset;
-    }
-    // Clear ALL tabs' thumbnails to release memory
-    var totalCleared = 0;
-    for (final state in _tabStates.values) {
-      totalCleared += state.thumbnails.length;
-      state.clearThumbnails();
-    }
-    _log.info('deactivate: cleared $totalCleared thumbnails across ${_tabStates.length} tabs');
+    // Release decoded thumbnails to save memory; reloaded from cache on return.
+    _thumbnailData.clear();
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    _log.info('activate: ${_images.length} images, ${_thumbnailData.length} thumbnails cached');
-    // Reload current tab's thumbnails from cache
     if (_images.isNotEmpty && _thumbnailData.isEmpty) {
       _reloadThumbnailsFromCache();
     }
@@ -204,29 +159,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
         !_isLoading &&
-        _tab.source.hasNextPage) {
+        widget.source.hasNextPage) {
       _loadMore();
-    }
-  }
-
-  String get _currentPath {
-    if (_isUserWorksPage) {
-      final p = widget.initialUserPath!;
-      // Rebuild search path with the current options so toggles take effect.
-      if (p.startsWith('/search')) {
-        final word = Uri.parse('https://dummy$p').queryParameters['word'] ?? '';
-        return '/search?word=${Uri.encodeComponent(word)}'
-            '&s_mode=$_searchMode&order=$_searchOrder';
-      }
-      return p;
-    }
-    switch (_currentTab) {
-      case PixivTab.top:
-        return '/top';
-      case PixivTab.bookmarks:
-        return '/bookmarks';
-      case PixivTab.favorites:
-        return '/favorites'; // Local only, no API call
     }
   }
 
@@ -277,18 +211,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<void> _loadImages() async {
     if (!mounted) return;
-    _tab.loadGeneration++;
+    _loadGeneration++;
     _applyFilter();
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
-    _tab.source.resetPagination();
+    widget.source.resetPagination();
     _images.clear();
     _thumbnailData.clear();
 
-    if (_currentTab == PixivTab.favorites && !_isUserWorksPage) {
+    if (_isFavoritesPage) {
       final entries = widget.favoritesStore.listAll();
       final images = _filterImages(entries.map((e) => ImageSource(
         id: e.imageId,
@@ -305,20 +239,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
         _images.addAll(images);
         _isLoading = false;
       });
-      _tab.hasLoaded = true;
       _loadThumbnails(images);
       return;
     }
 
     try {
       final images = _filterImages(
-        await _tab.source.listImages(path: _currentPath),
+        await widget.source.listImages(path: _path),
       );
       setState(() {
         _images.addAll(images);
         _isLoading = false;
       });
-      _tab.hasLoaded = true;
       _loadThumbnails(images);
       _loadMoreIfNeeded();
     } catch (e, st) {
@@ -337,7 +269,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     try {
       final images = _filterImages(
-        await _tab.source.listImages(path: _currentPath),
+        await widget.source.listImages(path: _path),
       );
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -358,7 +290,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   /// コンテンツが画面に収まってスクロールできない場合、追加読み込みする
   void _loadMoreIfNeeded() {
-    if (!_tab.source.hasNextPage) return;
+    if (!widget.source.hasNextPage) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent <= 0) {
@@ -373,7 +305,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   /// virtualized loader — see docs/virtualized_gallery/design.md.)
   Future<void> _loadThumbnails(List<ImageSource> images) async {
     final generation = _loadGeneration;
-    final source = _tab.source;
+    final source = widget.source;
     final pending =
         images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
     for (var i = 0; i < pending.length; i += galleryCrossAxisCount) {
@@ -405,51 +337,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  void _pushGalleryTab(PixivTab tab, {String? searchWord}) {
+  /// Push a new gallery screen for a Pixiv section (top / bookmarks / favorites),
+  /// reached from the AppBar menu. Each screen is one navigable page (ADR 007).
+  void _pushPage(String path) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => GalleryScreen(
         source: PixivSource(client: widget.source.client),
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
         registry: widget.registry,
-        initialTab: tab,
-        initialSearchWord: searchWord,
-        initialFilterText: _filterController.text.trim().isNotEmpty ? _filterController.text.trim() : null,
+        initialUserPath: path,
+        initialFilterText: _filterController.text.trim().isNotEmpty
+            ? _filterController.text.trim()
+            : null,
       ),
     ));
-  }
-
-  void _onTabChanged(PixivTab tab) {
-    if (_currentTab == tab && !_isUserWorksPage) return;
-    if (_isUserWorksPage) {
-      _pushGalleryTab(tab);
-      return;
-    }
-
-    // Save current tab's scroll position
-    if (_scrollController.hasClients) {
-      _tab.scrollOffset = _scrollController.offset;
-    }
-
-    setState(() {
-      _currentTab = tab;
-      _error = null;
-    });
-
-    if (_tab.hasLoaded) {
-      // Tab already loaded: restore thumbnails from cache if needed
-      if (_images.isNotEmpty && _thumbnailData.isEmpty) {
-        _reloadThumbnailsFromCache();
-      }
-      // Restore scroll position after build
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.jumpTo(_tab.scrollOffset);
-        }
-      });
-    } else {
-      _loadImages();
-    }
   }
 
   void _onSearch() {
@@ -514,7 +416,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _pushUserWorks(result['userId'] as int, result['userName'] as String);
       });
-    } else if (_currentTab == PixivTab.favorites) {
+    } else if (_isFavoritesPage) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み
       _loadImages();
     }
@@ -531,8 +433,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   String _appBarTitle() {
     if (_isSearchPage) return '検索結果一覧';
-    if (_isUserWorksPage) return '${widget.initialUserName ?? ""} の作品';
-    if (_currentTab == PixivTab.bookmarks) return 'ブックマーク一覧';
+    if (_path.startsWith('/user/')) return '${widget.initialUserName ?? ""} の作品';
+    if (_path == '/bookmarks') return 'ブックマーク一覧';
+    if (_path == '/favorites') return 'お気に入り';
     return 'Pixiv';
   }
 
@@ -543,16 +446,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
       ),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(48),
-        child: Row(
-          children: [
-            _tabButton('トップ', PixivTab.top),
-            _tabButton('ブックマーク', PixivTab.bookmarks),
-            _tabButton('お気に入り', PixivTab.favorites),
+      actions: [
+        PopupMenuButton<String>(
+          onSelected: _pushPage,
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: '/top', child: Text('トップ')),
+            PopupMenuItem(value: '/bookmarks', child: Text('ブックマーク')),
+            PopupMenuItem(value: '/favorites', child: Text('お気に入り')),
           ],
         ),
-      ),
+      ],
     );
   }
 
@@ -645,38 +548,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
             Expanded(child: _buildGrid()),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _tabButton(String label, PixivTab tab) {
-    final isSelected = !_isUserWorksPage && _currentTab == tab;
-    return Expanded(
-      child: InkWell(
-        onTap: () => _onTabChanged(tab),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.transparent,
-                width: 2,
-              ),
-            ),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected
-                  ? Theme.of(context).colorScheme.primary
-                  : null,
-            ),
-          ),
         ),
       ),
     );
