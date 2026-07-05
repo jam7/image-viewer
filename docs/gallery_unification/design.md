@@ -74,6 +74,12 @@ Pixiv ギャラリー (`gallery_screen.dart`) と SMB ギャラリー (`smb_gall
 - 統合後は `GalleryKeyboardScrollable` に真偽フラグが不要になり、`onPop` (各画面が
   `_popOnce` を渡す)・`focusNode`・`scrollController`・`child` だけで済む。
 
+> **更新 (2026-07-05)**: 2a-2c (ThumbnailLoader の `ImageSourceProvider` 汎用化 +
+> SMB 動画生成の移設) は完了。Pixiv への**全面採用 (旧 Step 2d) は取り下げ**、
+> [仮想化ギャラリー設計](../virtualized_gallery/design.md) の中で実現する
+> (Pixiv の per-tab・追記ページネーションが固定リスト前提の loader と食い違うため)。
+> P1 (Pixiv サムネイル直列) は暫定の行単位並列化で解消済み。
+
 ### サムネイルエンジンの一般化 (Step 2 = P1)
 
 `ThumbnailLoader` を SMB 依存から `ImageSourceProvider` 一般へ広げる。詳細な判断は

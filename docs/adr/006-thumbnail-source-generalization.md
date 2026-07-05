@@ -69,3 +69,7 @@ Pixiv にも `ThumbnailLoader` の並列バッチ/キャッシュ/cancel/retry �
   独立コミット + 実機 verify (生成・再生前 cancel・トークン無効化) で守る。
 - **Note**: `isVideo` メタデータへの依存が `ThumbnailLoader` に残るが、これは SMB API では
   なくモデル層のヒントなので許容する。
+- **Note (2026-07-05)**: 汎用化 (2a-2c) は実施済み。Pixiv による採用は bolt-on ではなく
+  [仮想化ギャラリー設計](../virtualized_gallery/design.md) の中で行う (Pixiv の追記
+  ページネーションが固定リスト前提の loader と食い違うため。`addItems` 追加で吸収予定)。
+  当座の P1 は Pixiv 側ループの行単位並列化で解消済み。
