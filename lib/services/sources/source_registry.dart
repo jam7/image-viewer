@@ -5,6 +5,7 @@ import '../../models/server_config.dart';
 import '../cache/cache_manager.dart';
 import '../pixiv/pixiv_api_client.dart';
 import '../smb/smb_config_store.dart';
+import '../video/smb_proxy_server.dart';
 import 'image_source_provider.dart';
 import 'pixiv_source.dart';
 import 'smb_source.dart';
@@ -25,6 +26,9 @@ class SourceRegistry {
   final Map<String, ImageSourceProvider> _smbSources = {};
   final SmbConfigStore _smbConfigStore;
   CacheManager? cacheManager;
+  /// Local HTTP proxy for SMB video (playback + thumbnail capture). Injected by
+  /// _AppRoot; passed to each SmbSource so it can capture video thumbnails.
+  SmbProxyServer? proxyServer;
 
   PixivApiClient? _pixivApiClient;
   bool _pixivLoginVerified = false;
@@ -119,7 +123,12 @@ class SourceRegistry {
     final password = await _smbConfigStore.getPassword(configId);
     if (password == null) return null;
 
-    final source = SmbSource(config: config, password: password, cacheManager: cacheManager);
+    final source = SmbSource(
+      config: config,
+      password: password,
+      cacheManager: cacheManager,
+      proxyServer: proxyServer,
+    );
     _smbSources[key] = source;
     return source;
   }

@@ -64,6 +64,7 @@ class _AppRootState extends State<_AppRoot> {
     await l3.init();
     _cacheManager = CacheManager(l1: l1, l2: l2, l3: l3);
     _registry.cacheManager = _cacheManager;
+    _registry.proxyServer = _proxyServer;
 
     final favStore = FavoritesStore();
     await favStore.init();

@@ -7,8 +7,6 @@ import '../../widgets/thumbnail_result.dart';
 import '../cache/cache_manager.dart';
 import '../sources/image_source_provider.dart';
 import '../sources/smb_source.dart';
-import '../video/smb_proxy_server.dart';
-import '../video/video_thumbnail_service.dart';
 
 final _log = Logger('ThumbnailLoader');
 
@@ -17,16 +15,20 @@ typedef ThumbnailResultCallback = void Function(String id, ThumbnailResult resul
 
 /// Manages batch loading of thumbnails with cancellation and retry.
 ///
-/// Images are loaded in parallel rows for bandwidth efficiency.
-/// Videos are loaded sequentially at the end of each batch to avoid
-/// SMB connection contention.
+/// Source-agnostic: it only calls [ImageSourceProvider.fetchThumbnail] and
+/// caches the result. How a thumbnail is produced (EXIF, PDF render, video
+/// frame capture, remote download) is the source's concern.
 ///
-/// Call [cancel] before video playback to free SMB connections,
-/// then [retryInterrupted] on return.
+/// Images are loaded in parallel rows for bandwidth efficiency. Items flagged
+/// `metadata['isVideo']` are loaded sequentially at the end of each batch,
+/// since their generation is heavy and contends for connections.
+///
+/// Call [cancel] before video playback to free the source's per-thumbnail
+/// resources (via [ImageSourceProvider.cancelThumbnailWork]), then
+/// [retryInterrupted] on return.
 class ThumbnailLoader {
   final SmbSource source;
   final CacheManager cacheManager;
-  final SmbProxyServer proxyServer;
   final ThumbnailResultCallback onResult;
   final int batchSize;
   final int parallelCount;
@@ -40,12 +42,10 @@ class ThumbnailLoader {
   /// Incremented to cancel in-progress batch loops.
   int _generation = 0;
   bool _isLoading = false;
-  VideoThumbnailService? _videoThumbService;
 
   ThumbnailLoader({
     required this.source,
     required this.cacheManager,
-    required this.proxyServer,
     required this.onResult,
     required this.batchSize,
     required this.parallelCount,
@@ -85,8 +85,7 @@ class ThumbnailLoader {
   void cancel() {
     _generation++;
     _isLoading = false;
-    _videoThumbService?.dispose();
-    _videoThumbService = null;
+    source.cancelThumbnailWork();
   }
 
   /// Retry items in the already-dispatched range that lack results.
@@ -114,8 +113,7 @@ class ThumbnailLoader {
 
   Future<void> dispose() async {
     _generation++;
-    _videoThumbService?.dispose();
-    _videoThumbService = null;
+    source.cancelThumbnailWork();
   }
 
   // -- Private --
@@ -148,8 +146,6 @@ class ThumbnailLoader {
       final cached = await cacheManager.get(thumbKey);
       if (cached != null) {
         _emitResult(image.id, ThumbnailData(Uint8List.fromList(cached.data)));
-      } else if (image.metadata?['isVideo'] == true) {
-        await _loadVideoThumbnail(image, thumbKey);
       } else {
         final data = await source.fetchThumbnail(image);
         cacheManager.l1.put(thumbKey, data);
@@ -162,24 +158,6 @@ class ThumbnailLoader {
     } catch (e, st) {
       _log.warning('thumbnail error (${image.name})', e, st);
       _emitResult(image.id, ThumbnailFailed(ThumbnailFailReason.timeout));
-    }
-  }
-
-  Future<void> _loadVideoThumbnail(ImageSource image, String thumbKey) async {
-    final url = await proxyServer.registerSession(source, image.uri);
-    final token = url.split('/').last;
-    try {
-      _videoThumbService ??= VideoThumbnailService();
-      final bytes = await _videoThumbService!.capture(url);
-      if (bytes != null) {
-        final resized = await source.resizeToThumbnail(bytes);
-        cacheManager.l1.put(thumbKey, resized);
-        await cacheManager.l2.put(thumbKey, resized);
-        _emitResult(image.id, ThumbnailData(resized));
-        _log.info('Video thumbnail: ${image.name} (${(bytes.length / 1024).toStringAsFixed(0)} KB → ${(resized.length / 1024).toStringAsFixed(0)} KB)');
-      }
-    } finally {
-      proxyServer.invalidateToken(token);
     }
   }
 

@@ -13,6 +13,8 @@ import '../../models/image_source.dart';
 import '../../models/server_config.dart';
 import '../../utils/natural_sort.dart';
 import '../cache/cache_manager.dart';
+import '../video/smb_proxy_server.dart';
+import '../video/video_thumbnail_service.dart';
 import 'image_source_provider.dart';
 
 final _log = Logger('SMB');
@@ -25,8 +27,15 @@ class SmbSource extends ImageSourceProvider {
   final ServerConfig config;
   final String password;
   final CacheManager? cacheManager;
+  /// Local HTTP proxy used to feed SMB video bytes to media_kit for video
+  /// thumbnail capture. Null disables video thumbnails (fetchThumbnail throws
+  /// notSupported for videos).
+  final SmbProxyServer? proxyServer;
   Smb2Client? _client;
   Smb2Tree? _tree;
+  /// Reused media_kit player for video thumbnail capture. Released by
+  /// [cancelThumbnailWork] (e.g. before playing a video) and [dispose].
+  VideoThumbnailService? _videoThumbService;
 
   /// Cached ZipReader futures keyed by ZIP file path.
   /// Using Future cache prevents duplicate _parseDirectory on concurrent calls.
@@ -53,7 +62,12 @@ class SmbSource extends ImageSourceProvider {
 
   Future<Smb2Tree>? _connectFuture;
 
-  SmbSource({required this.config, required this.password, this.cacheManager});
+  SmbSource({
+    required this.config,
+    required this.password,
+    this.cacheManager,
+    this.proxyServer,
+  });
 
   Future<Smb2Tree> _connect() {
     // Detect dead connection and reset for reconnect
@@ -272,11 +286,37 @@ class SmbSource extends ImageSourceProvider {
     return _imageExtensions.any((ext) => lower.endsWith(ext));
   }
 
+  /// Capture a thumbnail frame for a video by streaming it through the local
+  /// HTTP proxy into media_kit, then resizing. The reused player is released by
+  /// [cancelThumbnailWork]. Throws if no proxy is configured or capture fails.
+  Future<Uint8List> _captureVideoThumbnail(ImageSource source) async {
+    final proxy = proxyServer;
+    if (proxy == null) {
+      throw ThumbnailNotSupportedException('Video (no proxy): ${source.name}');
+    }
+    final url = await proxy.registerSession(this, source.uri);
+    final token = url.split('/').last;
+    try {
+      _videoThumbService ??= VideoThumbnailService();
+      final bytes = await _videoThumbService!.capture(url);
+      if (bytes == null) {
+        throw Exception('Video capture returned null: ${source.name}');
+      }
+      final resized = await resizeToThumbnail(bytes);
+      _log.info('Video thumbnail: ${source.name} '
+          '(${(bytes.length / 1024).toStringAsFixed(0)} KB -> '
+          '${(resized.length / 1024).toStringAsFixed(0)} KB)');
+      return resized;
+    } finally {
+      proxy.invalidateToken(token);
+    }
+  }
+
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async {
-    // Video: no thumbnail support
+    // Video: capture a frame via the local HTTP proxy + media_kit, then resize.
     if (source.metadata?['isVideo'] == true) {
-      throw ThumbnailNotSupportedException('Video: ${source.name}');
+      return _captureVideoThumbnail(source);
     }
 
     // PDF: render page 0 if cached locally
@@ -671,12 +711,22 @@ class SmbSource extends ImageSourceProvider {
     return _renderPdfPageFrom(filePath, 0, scale: scale);
   }
 
+  /// Release the video thumbnail player (e.g. before playing a video, so the
+  /// player screen gets the SMB connection). Called by ThumbnailLoader.cancel().
+  @override
+  void cancelThumbnailWork() {
+    _videoThumbService?.dispose();
+    _videoThumbService = null;
+  }
+
   @override
   Future<void> dispose() async {
     _zipReaderFutures.clear();
     _pdfFilePathCache.clear();
     _pdfDownloadFutures.clear();
     await _closePdfCache();
+    _videoThumbService?.dispose();
+    _videoThumbService = null;
     _connectFuture = null;
     if (_client != null) {
       await _client!.disconnect();

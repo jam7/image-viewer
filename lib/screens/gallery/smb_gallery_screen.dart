@@ -60,7 +60,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     _thumbLoader = ThumbnailLoader(
       source: widget.source,
       cacheManager: widget.cacheManager,
-      proxyServer: widget.proxyServer,
       batchSize: galleryCrossAxisCount * 6,
       parallelCount: galleryCrossAxisCount,
       onResult: (id, result) {
