@@ -6,7 +6,6 @@ import '../../models/image_source.dart';
 import '../../widgets/thumbnail_result.dart';
 import '../cache/cache_manager.dart';
 import '../sources/image_source_provider.dart';
-import '../sources/smb_source.dart';
 
 final _log = Logger('ThumbnailLoader');
 
@@ -27,7 +26,7 @@ typedef ThumbnailResultCallback = void Function(String id, ThumbnailResult resul
 /// resources (via [ImageSourceProvider.cancelThumbnailWork]), then
 /// [retryInterrupted] on return.
 class ThumbnailLoader {
-  final SmbSource source;
+  final ImageSourceProvider source;
   final CacheManager cacheManager;
   final ThumbnailResultCallback onResult;
   final int batchSize;
