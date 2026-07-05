@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
+import 'gallery_constants.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
@@ -366,32 +367,41 @@ class _GalleryScreenState extends State<GalleryScreen> {
     });
   }
 
+  /// Load thumbnails for [images] a row at a time in parallel. Serial loading
+  /// made a full page (~48 items) take RTT x count; a row of parallel fetches
+  /// keeps the pipe busy. (Interim P1 fix; to be replaced by the shared
+  /// virtualized loader — see docs/virtualized_gallery/design.md.)
   Future<void> _loadThumbnails(List<ImageSource> images) async {
     final generation = _loadGeneration;
-    for (final image in images) {
+    final source = _tab.source;
+    final pending =
+        images.where((i) => !_thumbnailData.containsKey(i.id)).toList();
+    for (var i = 0; i < pending.length; i += galleryCrossAxisCount) {
       if (!mounted || generation != _loadGeneration) return;
-      if (_thumbnailData.containsKey(image.id)) continue;
-      final key = 'thumb:${image.id}';
-      try {
-        final cached = await widget.cacheManager.get(key);
-        if (cached != null) {
-          if (mounted) {
-            setState(
-                () => _thumbnailData[image.id] = Uint8List.fromList(cached.data));
-          }
-        } else {
-          final result = await widget.cacheManager.fetchAndCache(
-            key,
-            () => _tab.source.fetchThumbnail(image),
-          );
-          if (mounted) {
-            setState(() =>
-                _thumbnailData[image.id] = Uint8List.fromList(result.data));
-          }
-        }
-      } catch (e, st) {
-        _log.warning('thumbnail error (id=${image.id}, name=${image.name}, uri=${image.uri})', e, st);
+      final end = (i + galleryCrossAxisCount).clamp(0, pending.length);
+      await Future.wait(
+        pending
+            .sublist(i, end)
+            .map((img) => _loadThumbnail(img, source, generation)),
+      );
+    }
+  }
+
+  Future<void> _loadThumbnail(
+      ImageSource image, PixivSource source, int generation) async {
+    final key = 'thumb:${image.id}';
+    try {
+      final result = await widget.cacheManager.get(key) ??
+          await widget.cacheManager
+              .fetchAndCache(key, () => source.fetchThumbnail(image));
+      if (mounted && generation == _loadGeneration) {
+        setState(
+            () => _thumbnailData[image.id] = Uint8List.fromList(result.data));
       }
+    } catch (e, st) {
+      _log.warning(
+          'thumbnail error (id=${image.id}, name=${image.name}, uri=${image.uri})',
+          e, st);
     }
   }
 
