@@ -12,7 +12,6 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
 import '../../utils/natural_sort.dart';
-import '../../widgets/thumbnail_result.dart';
 import '../cache/cache_manager.dart';
 import 'image_source_provider.dart';
 

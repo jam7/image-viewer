@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import '../../models/image_source.dart';
 import '../../widgets/thumbnail_result.dart';
 import '../cache/cache_manager.dart';
+import '../sources/image_source_provider.dart';
 import '../sources/smb_source.dart';
 import '../video/smb_proxy_server.dart';
 import '../video/video_thumbnail_service.dart';

@@ -25,11 +25,3 @@ enum ThumbnailFailReason {
   /// Network error or timeout
   timeout,
 }
-
-/// Thrown by source providers when thumbnail is not available for this type.
-class ThumbnailNotSupportedException implements Exception {
-  final String message;
-  ThumbnailNotSupportedException(this.message);
-  @override
-  String toString() => 'ThumbnailNotSupportedException: $message';
-}
