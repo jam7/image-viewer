@@ -86,6 +86,30 @@ void main() {
     expect(t.hasMore, isFalse);
   });
 
+  test('seedItems: finite list served as one page, no provider call', () async {
+    final source = _FakePagedSource(const []); // provider.loadPage must not be called
+    final loader = ThumbnailLoader(
+      source: source,
+      cacheManager: cache,
+      batchSize: 30,
+      parallelCount: 5,
+      onResult: (_, _) {},
+    );
+    final t = GalleryTab(
+      sourceUri: Uri.parse('fav://'),
+      provider: source,
+      thumbnails: loader,
+      seedItems: [img('a'), img('b')],
+    );
+
+    final added = await t.loadNextPage();
+
+    expect(added.map((i) => i.id), ['a', 'b']);
+    expect(t.loaded.map((i) => i.id), ['a', 'b']);
+    expect(t.hasMore, isFalse);
+    expect(source.loadPageCalls, 0);
+  });
+
   test('thumbnailFilter excludes directories from the loader', () async {
     final source = _FakePagedSource([
       [img('dir', dir: true), img('a'), img('b')],
@@ -105,6 +129,7 @@ void main() {
 class _FakePagedSource extends SmbSource {
   final List<List<ImageSource>> pages;
   final List<String> thumbnailIds = [];
+  int loadPageCalls = 0;
 
   _FakePagedSource(this.pages)
       : super(
@@ -119,6 +144,7 @@ class _FakePagedSource extends SmbSource {
 
   @override
   Future<PageResult> loadPage({String? path, Object? cursor}) async {
+    loadPageCalls++;
     final index = (cursor as int?) ?? 0;
     return PageResult(
       items: pages[index],
