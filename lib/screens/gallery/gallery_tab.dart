@@ -25,6 +25,12 @@ class GalleryTab {
   final List<ImageSource> loaded = [];
   double scrollOffset = 0;
 
+  /// Items fed to [thumbnails] = [loaded] minus filtered-out items (e.g.
+  /// directories). Same order the loader batches over, so callers can map an
+  /// item to its loader index (for the batch trigger) or build a viewer list.
+  final List<ImageSource> _thumbnailItems = [];
+  List<ImageSource> get thumbnailItems => _thumbnailItems;
+
   final bool Function(ImageSource) _thumbnailFilter;
   Object? _cursor;
   bool _firstPageLoaded = false;
@@ -63,6 +69,7 @@ class GalleryTab {
       } else {
         thumbnails.addItems(eligible);
       }
+      _thumbnailItems.addAll(eligible);
       return page.items;
     } finally {
       _loadingPage = false;
