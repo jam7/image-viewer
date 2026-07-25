@@ -102,16 +102,13 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
         _tab.navigate(_sessionFor(path, authorName: authorName)));
   }
 
-  /// Go to [path], either here or alongside. A long-press in the viewer asks
-  /// for alongside, which leaves this tab where the reader left it.
-  void _goTo(String path, {String? authorName, bool newTab = false}) {
-    final session = _sessionFor(path, authorName: authorName);
-    if (newTab) {
-      widget.onOpenInNewTab(session);
-    } else {
-      setState(() => _tab.navigate(session));
-    }
-  }
+  /// Open a place in a second tab while the viewer stays up. The reader asked
+  /// for "alongside", so they keep the page they are on.
+  void _openAuthorAlongside(int userId, String userName) => widget
+      .onOpenInNewTab(_sessionFor('/user/$userId', authorName: userName));
+
+  void _openTagSearchAlongside(String tag) =>
+      widget.onOpenInNewTab(_sessionFor(_searchPathFor(tag)));
 
   /// Run [action] once the viewer's pop has settled; navigating mid-pop fights
   /// the route transition.
@@ -210,6 +207,8 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
           registry: widget.registry,
           cacheManager: widget.cacheManager,
           favoritesStore: widget.favoritesStore,
+          onOpenAuthorInNewTab: _openAuthorAlongside,
+          onOpenTagSearchInNewTab: _openTagSearchAlongside,
         ),
       ));
       return;
@@ -230,6 +229,8 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
           registry: widget.registry,
           cacheManager: widget.cacheManager,
           favoritesStore: widget.favoritesStore,
+          onOpenAuthorInNewTab: _openAuthorAlongside,
+          onOpenTagSearchInNewTab: _openTagSearchAlongside,
         ),
       ),
     );
@@ -238,17 +239,12 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     if (result != null && result['action'] == 'showUser') {
       final userId = result['userId'] as int;
       final userName = result['userName'] as String;
-      _afterViewer(() => _goTo(
-            '/user/$userId',
-            authorName: userName,
-            newTab: result['newTab'] == true,
-          ));
+      _afterViewer(() => _navigate('/user/$userId', authorName: userName));
     } else if (result != null && result['action'] == 'searchTag') {
       final tag = result['tag'] as String;
-      final newTab = result['newTab'] == true;
       _afterViewer(() {
-        if (!newTab) _searchController.text = tag;
-        _goTo(_searchPathFor(tag), newTab: newTab);
+        _searchController.text = tag;
+        _navigate(_searchPathFor(tag));
       });
     } else if (_isFavoritesPage) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み

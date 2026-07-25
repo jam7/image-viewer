@@ -26,6 +26,15 @@ class ViewerScreen extends StatefulWidget {
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
 
+  /// Open this work's author, or one of its tags, in a new tab — without
+  /// closing the viewer. Long-pressing a chip means "alongside", and leaving
+  /// the page the reader is on to honour that is the opposite of alongside.
+  ///
+  /// Null when whoever pushed the viewer has no tab set to add to; the request
+  /// then goes back through the pop result, as it did before tabs existed.
+  final void Function(int userId, String userName)? onOpenAuthorInNewTab;
+  final void Function(String tag)? onOpenTagSearchInNewTab;
+
   const ViewerScreen({
     super.key,
     required this.items,
@@ -33,6 +42,8 @@ class ViewerScreen extends StatefulWidget {
     required this.registry,
     required this.cacheManager,
     required this.favoritesStore,
+    this.onOpenAuthorInNewTab,
+    this.onOpenTagSearchInNewTab,
   });
 
   @override
@@ -631,23 +642,30 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// the same way "show this author" is, so the search lands in the tab's
   /// history instead of stacking another screen on top of the viewer.
   ///
-  /// [newTab] carries a long-press: open it alongside rather than going there.
+  /// [newTab] carries a long-press: open it alongside and stay here.
   void _searchTag(String tag, {bool newTab = false}) {
-    Navigator.of(context)
-        .pop({'action': 'searchTag', 'tag': tag, 'newTab': newTab});
+    final alongside = widget.onOpenTagSearchInNewTab;
+    if (newTab && alongside != null) {
+      alongside(tag);
+      return; // the reader keeps their page
+    }
+    Navigator.of(context).pop({'action': 'searchTag', 'tag': tag});
   }
 
   void _showAuthor(ImageSource image, {bool newTab = false}) {
-    final authorId = image.metadata?['authorId'];
+    final authorId = image.metadata?['authorId'] as int?;
     if (authorId == null) return;
     final authorName = image.metadata?['author'] as String? ?? '';
-    _log.info('pop with showUser: authorId=$authorId, name=$authorName, '
-        'newTab=$newTab');
+    final alongside = widget.onOpenAuthorInNewTab;
+    if (newTab && alongside != null) {
+      alongside(authorId, authorName);
+      return;
+    }
+    _log.info('pop with showUser: authorId=$authorId, name=$authorName');
     Navigator.of(context).pop({
       'action': 'showUser',
       'userId': authorId,
       'userName': authorName,
-      'newTab': newTab,
     });
   }
 
