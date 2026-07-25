@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import '../../../models/image_source.dart';
-import '../../../services/platform/host_activity.dart';
+import '../system_back.dart';
 import '../gallery_session.dart';
 import '../gallery_tab.dart';
 import 'gallery_grid.dart';
@@ -223,7 +223,12 @@ class GalleryViewState extends State<GalleryView> {
   /// stays, its history stays, and leaving is the system gesture's business
   /// (see the [PopScope] in [build]).
   void goBack() {
-    if (!widget.tab.back()) return;
+    if (widget.tab.back()) _afterStep();
+  }
+
+  /// Catch up with a move the tab made without us — the entry changed, so the
+  /// view rebinds and the caller re-derives its items and title.
+  void _afterStep() {
     setState(_onSessionChanged);
     widget.onItemsChanged?.call();
   }
@@ -237,13 +242,7 @@ class GalleryViewState extends State<GalleryView> {
       // coming back is instant and nothing is lost.
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        if (!widget.tab.back()) {
-          const HostActivity().moveToBackground();
-          return;
-        }
-        setState(_onSessionChanged);
-        widget.onItemsChanged?.call();
+        if (!didPop) handleSystemBack(widget.tab, _afterStep);
       },
       child: GalleryKeyboardScrollable(
         focusNode: _focusNode,
