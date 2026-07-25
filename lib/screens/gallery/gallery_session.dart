@@ -171,14 +171,20 @@ class GallerySession {
 
   bool get hasThumbnailResults => _thumbnailResults.isNotEmpty;
 
-  /// The view showing this session went away. Drops the decoded thumbnails to
-  /// free memory; [attach] brings them back (ADR 007 決定 5 / ADR 008 決定 5).
+  /// The view showing this session went away. Stops its thumbnail work and
+  /// drops the decoded results; [attach] resumes and restores both
+  /// (ADR 007 決定 5 / ADR 008 決定 5).
+  ///
+  /// Cancelling matters as much as freeing the memory: a session nobody is
+  /// looking at would otherwise keep pulling images, and the tab that *is* on
+  /// screen waits behind it for the network and the disk cache.
   ///
   /// Deliberately does not fire [onChanged]: this runs from `deactivate`, i.e.
   /// during a build, where asking for a repaint throws. The repaint comes from
   /// the results [attach] reports as they land.
   void detach() {
     _attachGeneration++;
+    thumbnails.cancel();
     _thumbnailResults.clear();
   }
 
@@ -188,8 +194,12 @@ class GallerySession {
   ///
   /// Only reads `thumb:` — never the full-size `full:` entry, which would put a
   /// full-resolution decode behind a grid tile.
+  ///
+  /// Then picks up whatever [detach] cut off. Those items are inside the
+  /// dispatched range, so nothing else would ever ask for them again and they
+  /// would sit as spinners for as long as the session lives.
   Future<void> attach() async {
-    if (_thumbnailItems.isEmpty || _thumbnailResults.isNotEmpty) return;
+    if (_thumbnailItems.isEmpty) return;
     final generation = ++_attachGeneration;
     for (final item in _thumbnailItems) {
       if (generation != _attachGeneration) return; // detached or disposed
@@ -203,6 +213,8 @@ class GallerySession {
         _log.warning('thumbnail cache reload failed: ${item.name}', e, st);
       }
     }
+    if (generation != _attachGeneration) return;
+    await thumbnails.retryInterrupted();
   }
 
   /// Retry items whose thumbnail failed as [ThumbnailFailReason.notSupported].
