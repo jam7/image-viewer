@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:logging/logging.dart';
@@ -6,6 +7,7 @@ import '../../models/image_source.dart';
 import '../cache/cache_metadata.dart';
 import '../favorites/favorites_store.dart';
 import 'image_source_provider.dart';
+import 'pixiv_source.dart';
 import 'source_registry.dart';
 
 final _log = Logger('FavoritesSource');
@@ -62,7 +64,20 @@ class FavoritesSource implements ImageSourceProvider {
       throw ThumbnailNotSupportedException(
           'no connected source for ${source.name} (${source.sourceKey})');
     }
+    // Pixiv re-issues thumbnail addresses, and this list holds the only stored
+    // copy of one, so it is the only place a stale URL can live. Ask to be told
+    // when the source has had to look a new one up. Installed per call because
+    // every peek hands back a fresh PixivSource.
+    if (owner is PixivSource) {
+      owner.onThumbnailUrlRefreshed = _rememberThumbnailUrl;
+    }
     return owner.fetchThumbnail(source);
+  }
+
+  /// Writing is fire-and-forget: the thumbnail the reader is waiting for must
+  /// not queue behind a file write, and [FavoritesStore] logs its own failures.
+  void _rememberThumbnailUrl(String imageId, String url) {
+    unawaited(store.updateThumbnailUrl(imageId, url));
   }
 
   @override

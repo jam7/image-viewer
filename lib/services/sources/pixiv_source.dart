@@ -16,6 +16,12 @@ class PixivSource extends ImageSourceProvider {
 
   int? _nextOffset;
 
+  /// Told the item id and the address that replaced a stored thumbnail URL,
+  /// for whoever is holding the stale one. Only the favorites list stores such
+  /// a URL, and this source has no view of it, so the write-back is the
+  /// listener's to do.
+  void Function(String imageId, String url)? onThumbnailUrlRefreshed;
+
   PixivSource({required PixivApiClient client}) : _client = client;
 
   PixivApiClient get client => _client;
@@ -140,9 +146,12 @@ class PixivSource extends ImageSourceProvider {
   ///
   /// Only a 404 gets here. Any other failure — offline, not signed in — must
   /// stay a plain failure, or a disconnected Pixiv would send every thumbnail
-  /// in the list through the API for nothing. The refreshed URL is not written
-  /// back to the favourite: the bytes land in the thumbnail cache under the
-  /// item's id, so the stale URL is not asked for again in practice.
+  /// in the list through the API for nothing.
+  ///
+  /// The new address is reported through [onThumbnailUrlRefreshed] so the
+  /// holder of the stale one can keep it. The thumbnail cache alone is not
+  /// enough: it is evicted by LRU, and the stale URL then costs a 404 plus an
+  /// API call every time it comes back.
   Future<Uint8List> _refetchThumbnail(
     ImageSource source,
     String staleUrl,
@@ -157,8 +166,10 @@ class PixivSource extends ImageSourceProvider {
       throw failure;
     }
 
+    final bytes = await _client.downloadImage(fresh);
     _log.info('thumbnail URL refreshed for $illustId');
-    return _client.downloadImage(fresh);
+    onThumbnailUrlRefreshed?.call(source.id, fresh);
+    return bytes;
   }
 
   @override

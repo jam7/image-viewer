@@ -43,6 +43,39 @@ void main() {
     expect(bytes, [1]);
   });
 
+  test('the new URL is reported for whoever stored the old one', () async {
+    final client = _FakeApiClient(
+      failing: {'https://i.pximg.net/stale.jpg': 404},
+      detailThumbnailUrl: 'https://i.pximg.net/fresh.jpg',
+    );
+    final refreshed = <String, String>{};
+    final source = PixivSource(client: client)
+      ..onThumbnailUrlRefreshed = (id, url) => refreshed[id] = url;
+
+    await source.fetchThumbnail(favourite());
+
+    expect(refreshed, {'42': 'https://i.pximg.net/fresh.jpg'});
+  });
+
+  test('nothing is reported when the new URL does not work either', () async {
+    // Replacing a stored URL with one that also fails would be worse than
+    // leaving it: the entry would still 404, having lost its history.
+    final client = _FakeApiClient(
+      failing: {
+        'https://i.pximg.net/stale.jpg': 404,
+        'https://i.pximg.net/fresh.jpg': 404,
+      },
+      detailThumbnailUrl: 'https://i.pximg.net/fresh.jpg',
+    );
+    final refreshed = <String, String>{};
+    final source = PixivSource(client: client)
+      ..onThumbnailUrlRefreshed = (id, url) => refreshed[id] = url;
+
+    await expectLater(
+        source.fetchThumbnail(favourite()), throwsA(isA<DioException>()));
+    expect(refreshed, isEmpty);
+  });
+
   test('any other failure is not sent through the API', () async {
     // Offline, or signed out: the URL is fine and re-asking would cost one API
     // call per thumbnail on screen.

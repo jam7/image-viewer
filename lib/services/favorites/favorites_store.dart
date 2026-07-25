@@ -15,8 +15,9 @@ class FavoritesStore {
   final Map<String, FavoriteEntry> _entries = {};
   bool _initialized = false;
 
-  Future<void> init() async {
-    final appDir = await getApplicationDocumentsDirectory();
+  /// [baseDir] overrides the app documents directory (tests only).
+  Future<void> init({Directory? baseDir}) async {
+    final appDir = baseDir ?? await getApplicationDocumentsDirectory();
     final cacheDir = Directory('${appDir.path}/cache');
     if (!cacheDir.existsSync()) {
       cacheDir.createSync(recursive: true);
@@ -51,6 +52,19 @@ class FavoritesStore {
       await _flush();
       return true;
     }
+  }
+
+  /// Record a thumbnail URL that has replaced the stored one.
+  ///
+  /// An entry keeps the thumbnail URL it was starred with and replays it
+  /// forever, unlike page URLs which are re-derived from the source on every
+  /// open. Pixiv does re-issue those addresses, so a source that has had to
+  /// look one up again reports it here and the entry stops being stale.
+  Future<void> updateThumbnailUrl(String imageId, String url) async {
+    final entry = _entries[imageId];
+    if (entry == null || entry.thumbnailUrl == url) return;
+    _entries[imageId] = entry.withThumbnailUrl(url);
+    await _flush();
   }
 
   List<FavoriteEntry> listAll() {

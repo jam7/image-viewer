@@ -43,24 +43,33 @@ void main() {
     await tester.pumpWidget(widget);
   }
 
-  Widget harness(double width, {ScrollAnchor? anchor}) => MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: width,
-              height: viewportHeight,
-              child: GalleryGrid(
-                scrollController: controller,
-                items: items,
-                emptyMessage: 'empty',
-                anchor: anchor,
-                onAnchorChanged: (a) => reported = a,
-                tileBuilder: (_, i) => Text(items[i].name),
-              ),
+  Widget harness(
+    double width, {
+    ScrollAnchor? anchor,
+    List<ImageSource>? shown,
+    Object? restoreKey,
+  }) {
+    final list = shown ?? items;
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: width,
+            height: viewportHeight,
+            child: GalleryGrid(
+              scrollController: controller,
+              items: list,
+              emptyMessage: 'empty',
+              anchor: anchor,
+              restoreKey: restoreKey,
+              onAnchorChanged: (a) => reported = a,
+              tileBuilder: (_, i) => Text(list[i].name),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
   /// Top edge of the grid's content area (viewport top + the grid's padding).
   double contentTop(WidgetTester tester) =>
@@ -120,6 +129,34 @@ void main() {
 
     expect(
       tester.getTopLeft(find.text('item40')).dy, // row 8
+      closeTo(contentTop(tester), 0.01),
+    );
+  });
+
+  testWidgets('a place being re-read is restored once its items arrive',
+      (tester) async {
+    // Re-reading a list (the favorites list does this on every return from the
+    // viewer) installs a fresh, empty session and loads its first page
+    // asynchronously. The restore is asked for while there is still nothing to
+    // aim at, so it has to wait for the items rather than give up.
+    await pumpAt(tester, harness(narrow, restoreKey: 'first'));
+    controller.jumpTo(galleryRowStride(narrow) * 3);
+    await tester.pump();
+    expect(reported?.itemId, 'item15');
+
+    await pumpAt(
+        tester,
+        harness(narrow,
+            anchor: reported, shown: const [], restoreKey: 'reread'));
+    await tester.pump();
+    await tester.pump();
+
+    await pumpAt(tester, harness(narrow, anchor: reported, restoreKey: 'reread'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('item15')).dy,
       closeTo(contentTop(tester), 0.01),
     );
   });

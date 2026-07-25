@@ -72,6 +72,13 @@ class _GalleryGridState extends State<GalleryGrid> {
   /// the resize, even if the parent has not rebuilt since the user scrolled.
   ScrollAnchor? _recorded;
 
+  /// A restore that has not found its item yet. A place being re-read installs
+  /// an empty list and fills it a page later, so the restore is asked for while
+  /// there is nothing to aim at. It waits here for the first page instead of
+  /// being dropped — that is what sent the favorites list back to the top on
+  /// every return from the viewer.
+  ScrollAnchor? _pendingRestore;
+
   @override
   void initState() {
     super.initState();
@@ -85,7 +92,12 @@ class _GalleryGridState extends State<GalleryGrid> {
       oldWidget.scrollController.removeListener(_recordAnchor);
       widget.scrollController.addListener(_recordAnchor);
     }
-    if (oldWidget.restoreKey != widget.restoreKey) _restoreForNewList();
+    if (oldWidget.restoreKey != widget.restoreKey) {
+      _restoreForNewList();
+    } else if (_pendingRestore != null &&
+        oldWidget.items.length != widget.items.length) {
+      _runPendingRestore();
+    }
   }
 
   /// Now showing a different place. The scroll controller is shared, so it
@@ -93,15 +105,33 @@ class _GalleryGridState extends State<GalleryGrid> {
   /// or at the top if it has never been scrolled.
   void _restoreForNewList() {
     _recorded = null;
+    _pendingRestore = null;
     final anchor = widget.anchor;
     final width = _laidOutWidth;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !widget.scrollController.hasClients) return;
-      if (anchor == null || width == null) {
+    if (anchor == null || width == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.scrollController.hasClients) return;
         widget.scrollController.jumpTo(0);
-      } else {
-        _applyAnchor(anchor, width);
-      }
+      });
+      return;
+    }
+    _pendingRestore = anchor;
+    _runPendingRestore();
+  }
+
+  /// Apply the waiting restore, if the list has anything in it yet.
+  ///
+  /// The first page to arrive is the only chance taken: the item may have been
+  /// un-starred, or sit on a page nobody has asked for, and retrying on every
+  /// later page would yank the view back under a reader who has since scrolled.
+  void _runPendingRestore() {
+    final anchor = _pendingRestore;
+    if (anchor == null || widget.items.isEmpty) return;
+    _pendingRestore = null;
+    final width = _laidOutWidth;
+    if (width == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _applyAnchor(anchor, width);
     });
   }
 

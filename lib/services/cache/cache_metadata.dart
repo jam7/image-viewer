@@ -58,6 +58,20 @@ class FavoriteEntry {
     required this.addedAt,
   });
 
+  /// The same entry with a thumbnail URL that has replaced the stored one.
+  /// [sourceInfo] carries its own copy (it is the metadata the item was starred
+  /// with), so both are moved together or the stale one resurfaces the next
+  /// time the entry is turned back into an ImageSource.
+  FavoriteEntry withThumbnailUrl(String url) => FavoriteEntry(
+        imageId: imageId,
+        name: name,
+        uri: uri,
+        sourceKey: sourceKey,
+        thumbnailUrl: url,
+        sourceInfo: {...sourceInfo, 'thumbnailUrl': url},
+        addedAt: addedAt,
+      );
+
   Map<String, dynamic> toJson() => {
         'name': name,
         'uri': uri,
