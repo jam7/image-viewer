@@ -97,10 +97,13 @@ class FavoritesSource implements ImageSourceProvider {
   Future<PageResult> loadPage({String? path, Object? cursor}) async =>
       PageResult(items: await listImages());
 
-  /// Cancelling reaches every source that might be mid-fetch for this list.
+  /// Cancelling reaches every source that might be mid-fetch for this list —
+  /// but not this one, which is registered among them and would otherwise call
+  /// itself forever.
   @override
   void cancelThumbnailWork() {
     for (final provider in registry.connectedSources) {
+      if (identical(provider, this)) continue;
       provider.cancelThumbnailWork();
     }
   }

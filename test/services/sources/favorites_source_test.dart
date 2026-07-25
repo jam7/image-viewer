@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/models/image_source.dart';
@@ -66,13 +67,31 @@ void main() {
     expect(pages.map((p) => p.id), ['smb:test:pic.jpg']);
   });
 
-  test('cancelling reaches the connected sources', () {
+  test('cancelling reaches the connected sources, not itself', () {
     registry.register('smb:test', smb);
+    // Registered alongside them, so cancelling must skip itself or recurse.
+    registry.register('fav:default', favorites);
 
     favorites.cancelThumbnailWork();
 
     expect(smb.cancelCount, 1);
   });
+
+  test('the registry hands back a registered source', () async {
+    registry.register('fav:default', favorites);
+
+    // resolve knows how to build Pixiv and SMB; everything else has to be
+    // registered, and was not being looked for.
+    expect(await registry.resolve('fav:default', _NoContext()), favorites);
+    expect(registry.peek('fav:default'), favorites);
+  });
+}
+
+/// resolve takes a BuildContext only to raise a login screen, which a
+/// registered source never needs.
+class _NoContext implements BuildContext {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _RecordingSource extends SmbSource {

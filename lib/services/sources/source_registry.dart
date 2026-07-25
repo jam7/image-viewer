@@ -23,7 +23,9 @@ final _log = Logger('SourceRegistry');
 /// each screen has its own pagination state (like a file descriptor).
 /// The underlying PixivApiClient (authentication/WebView) is shared.
 class SourceRegistry {
-  final Map<String, ImageSourceProvider> _smbSources = {};
+  /// Sources handed to us ready to use — the favorites list at startup, an SMB
+  /// server once connected. Not only SMB, despite where it began.
+  final Map<String, ImageSourceProvider> _registered = {};
   final SmbConfigStore _smbConfigStore;
   CacheManager? cacheManager;
   /// Local HTTP proxy for SMB video (playback + thumbnail capture). Injected by
@@ -42,9 +44,10 @@ class SourceRegistry {
   SourceRegistry({required SmbConfigStore smbConfigStore, this.cacheManager})
       : _smbConfigStore = smbConfigStore;
 
-  /// Register an SMB source for a given key.
+  /// Register a ready-made source under [key], so [resolve] can hand it back
+  /// without knowing how to build it.
   void register(String key, ImageSourceProvider provider) {
-    _smbSources[key] = provider;
+    _registered[key] = provider;
   }
 
   /// Set the Pixiv API client (shared across all PixivSource instances).
@@ -61,6 +64,12 @@ class SourceRegistry {
   /// gets independent pagination state.
   Future<ImageSourceProvider?> resolve(String sourceKey, BuildContext context) async {
     _log.info('resolve: $sourceKey');
+    // Already registered — the favorites list, or a server connected earlier.
+    // Checked before the scheme switch, which only knows how to build the two
+    // sources that need building.
+    final registered = _registered[sourceKey];
+    if (registered != null) return registered;
+
     // Parse key
     final parts = sourceKey.split(':');
     if (parts.length < 2) {
@@ -112,9 +121,6 @@ class SourceRegistry {
 
   Future<ImageSourceProvider?> _resolveSmb(String configId) async {
     final key = 'smb:$configId';
-    if (_smbSources.containsKey(key)) {
-      return _smbSources[key];
-    }
 
     final configs = _smbConfigStore.listAll();
     final config = configs.where((c) => c.id == configId).firstOrNull;
@@ -129,7 +135,7 @@ class SourceRegistry {
       cacheManager: cacheManager,
       proxyServer: proxyServer,
     );
-    _smbSources[key] = source;
+    _registered[key] = source;
     return source;
   }
 
@@ -137,13 +143,14 @@ class SourceRegistry {
   /// prompt, no connection to establish. Null when getting it would need a
   /// BuildContext, which a background fetch has no business demanding.
   ImageSourceProvider? peek(String sourceKey) {
-    if (_smbSources.containsKey(sourceKey)) return _smbSources[sourceKey];
+    final registered = _registered[sourceKey];
+    if (registered != null) return registered;
     if (sourceKey.startsWith('pixiv:')) return createPixivSource();
     return null;
   }
 
-  /// Every source currently connected, for operations that span all of them.
-  Iterable<ImageSourceProvider> get connectedSources => _smbSources.values;
+  /// Every source currently available, for operations that span all of them.
+  Iterable<ImageSourceProvider> get connectedSources => _registered.values;
 
   /// Get sourceKey for a server config.
   static String keyForSmb(ServerConfig config) => 'smb:${config.id}';
@@ -158,14 +165,14 @@ class SourceRegistry {
 
   /// Dispose all sources.
   Future<void> disposeAll() async {
-    for (final source in _smbSources.values) {
+    for (final source in _registered.values) {
       try {
         await source.dispose();
       } catch (e, st) {
         _log.warning('dispose error', e, st);
       }
     }
-    _smbSources.clear();
+    _registered.clear();
     _pixivApiClient?.dispose();
     _pixivApiClient = null;
     _pixivLoginVerified = false;
