@@ -14,10 +14,12 @@ final _log = Logger('GalleryView');
 /// view, hold the scroll and focus, release and restore thumbnails as the
 /// screen comes and goes, and render the scaffold around the grid.
 ///
-/// What differs per source is injected: the [appBar], the optional [header]
-/// row above the grid, and [tileBuilder] for the tiles themselves. Which items
-/// to show is the caller's too — the Pixiv screen filters by page count — so
-/// [items] is passed in rather than read off the session.
+/// This is the content of a tab, not the frame around it: the app bar belongs
+/// to the host, which keeps one across every tab. What differs per source is
+/// injected — the optional [header] row above the grid, and [tileBuilder] for
+/// the tiles. Which items to show is the caller's too — the Pixiv screen
+/// filters by page count — so [items] is passed in rather than read off the
+/// session.
 ///
 /// Scrolling drives one path (ADR 007 決定 3): approaching the end asks the
 /// session for another page, and painting a tile past the dispatched range asks
@@ -39,8 +41,6 @@ class GalleryView extends StatefulWidget {
   final Widget Function(BuildContext context, ImageSource item, int index)
       tileBuilder;
 
-  final PreferredSizeWidget appBar;
-
   /// Shown when the list is empty and nothing is loading.
   final String emptyMessage;
 
@@ -58,7 +58,6 @@ class GalleryView extends StatefulWidget {
     required this.tab,
     required this.items,
     required this.tileBuilder,
-    required this.appBar,
     required this.emptyMessage,
     this.header,
     this.onItemsChanged,
@@ -237,32 +236,28 @@ class GalleryViewState extends State<GalleryView> {
         focusNode: _focusNode,
         scrollController: _scrollController,
         onPop: goBack,
-        child: Scaffold(
-          appBar: widget.appBar,
-          body: Column(
-            children: [
-              if (widget.header != null) widget.header!,
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child:
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
-                ),
-              Expanded(
-                child: GalleryGrid(
-                  scrollController: _scrollController,
-                  items: widget.items,
-                  isLoading: _isLoading,
-                  showTrailingLoader: _isLoading,
-                  emptyMessage: widget.emptyMessage,
-                  tileBuilder: _buildTile,
-                  anchor: _shown.anchor,
-                  restoreKey: _shown,
-                  onAnchorChanged: (a) => _shown.anchor = a,
-                ),
+        child: Column(
+          children: [
+            if (widget.header != null) widget.header!,
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
-            ],
-          ),
+            Expanded(
+              child: GalleryGrid(
+                scrollController: _scrollController,
+                items: widget.items,
+                isLoading: _isLoading,
+                showTrailingLoader: _isLoading,
+                emptyMessage: widget.emptyMessage,
+                tileBuilder: _buildTile,
+                anchor: _shown.anchor,
+                restoreKey: _shown,
+                onAnchorChanged: (a) => _shown.anchor = a,
+              ),
+            ),
+          ],
         ),
       ),
     );

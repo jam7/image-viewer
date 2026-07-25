@@ -51,16 +51,23 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  /// Mirrors the host: the strip is the app bar of a body rebuilt per tab.
+  /// Mirrors the host: one Scaffold whose app bar is the strip, with a body
+  /// keyed per tab so switching rebuilds it.
   Future<void> pump(WidgetTester tester) => tester.pumpWidget(MaterialApp(
         home: AnimatedBuilder(
           animation: controller,
           builder: (context, _) => Scaffold(
-            key: ValueKey(controller.active!.id),
             appBar: GalleryTabStrip(controller: controller),
-            body: const SizedBox(),
+            body: SizedBox(key: ValueKey(controller.active!.id)),
           ),
         ),
+      ));
+
+  GalleryTab newTab(String path) => GalleryTab(GallerySession.fromUri(
+        smbGalleryUri('srv', path),
+        provider: source,
+        cacheManager: cache,
+        title: path,
       ));
 
   ScrollableState stripScroll(WidgetTester tester) => tester.state(
@@ -82,6 +89,24 @@ void main() {
     await tester.pump();
 
     expect(stripScroll(tester).position.pixels, 120);
+  });
+
+  testWidgets('opening a tab scrolls the strip to show it', (tester) async {
+    await pump(tester);
+    final scroll = stripScroll(tester);
+    scroll.position.jumpTo(0); // looking at the left end
+    await tester.pump();
+
+    // Opened in the background, as a long-press does: nothing else would tell
+    // the user it happened.
+    controller.open(newTab('brand-new'), activate: false);
+    await tester.pump(); // build, then the post-frame callback starts the scroll
+    await tester.pump(); // the animation's ticker takes its start time here
+    await tester.pumpAndSettle();
+
+    final after = stripScroll(tester);
+    expect(after.position.pixels, after.position.maxScrollExtent);
+    expect(after.position.pixels, greaterThan(0));
   });
 }
 

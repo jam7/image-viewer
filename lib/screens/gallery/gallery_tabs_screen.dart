@@ -67,35 +67,38 @@ class GalleryTabsScreen extends StatelessWidget {
     );
   }
 
+  /// The one app bar, shared by every tab. It sits here rather than inside the
+  /// body so it keeps its state — most visibly its own scroll position — while
+  /// the body underneath is rebuilt for each tab.
   Widget _buildActive(BuildContext context, GalleryTab tab) {
-    final strip = GalleryTabStrip(
-      controller: controller,
-      newTabOptions: _newTabOptions(context),
-    );
     // Keyed by tab so switching gives the new tab its own view state —
     // scroll position, loading flags — instead of inheriting the old one's.
     final key = ValueKey(tab.id);
-    return switch (tab.current.sourceUri.scheme) {
-      smbUriScheme => SmbGalleryBody(
-          key: key,
-          tab: tab,
-          appBar: strip,
-          onOpenInNewTab: _openInNewTab,
-          cacheManager: cacheManager,
-          favoritesStore: favoritesStore,
-          registry: registry,
-          proxyServer: proxyServer,
-        ),
-      _ => PixivGalleryBody(
-          key: key,
-          tab: tab,
-          appBar: strip,
-          onOpenInNewTab: _openInNewTab,
-          cacheManager: cacheManager,
-          favoritesStore: favoritesStore,
-          registry: registry,
-        ),
-    };
+    return Scaffold(
+      appBar: GalleryTabStrip(
+        controller: controller,
+        newTabOptions: _newTabOptions(context),
+      ),
+      body: switch (tab.current.sourceUri.scheme) {
+        smbUriScheme => SmbGalleryBody(
+            key: key,
+            tab: tab,
+            onOpenInNewTab: _openInNewTab,
+            cacheManager: cacheManager,
+            favoritesStore: favoritesStore,
+            registry: registry,
+            proxyServer: proxyServer,
+          ),
+        _ => PixivGalleryBody(
+            key: key,
+            tab: tab,
+            onOpenInNewTab: _openInNewTab,
+            cacheManager: cacheManager,
+            favoritesStore: favoritesStore,
+            registry: registry,
+          ),
+      },
+    );
   }
 
   /// What the `+` button offers: every configured source, plus settings.

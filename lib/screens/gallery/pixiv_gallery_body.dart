@@ -19,7 +19,6 @@ final _log = Logger('Gallery');
 /// screen, which owns them across every source.
 class PixivGalleryBody extends StatefulWidget {
   final GalleryTab tab;
-  final PreferredSizeWidget appBar;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
@@ -30,7 +29,6 @@ class PixivGalleryBody extends StatefulWidget {
   const PixivGalleryBody({
     super.key,
     required this.tab,
-    required this.appBar,
     required this.onOpenInNewTab,
     required this.cacheManager,
     required this.favoritesStore,
@@ -365,7 +363,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       items: _visibleItems,
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,
-      appBar: widget.appBar,
       header: _buildFilterBar(),
       onItemsChanged: () => setState(() {}),
     );

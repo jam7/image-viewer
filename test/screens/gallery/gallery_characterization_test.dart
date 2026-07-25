@@ -15,6 +15,7 @@ import 'package:image_viewer/screens/gallery/gallery_tab_controller.dart';
 import 'package:image_viewer/screens/gallery/gallery_uri.dart';
 import 'package:image_viewer/screens/gallery/pixiv_gallery_body.dart';
 import 'package:image_viewer/screens/gallery/smb_gallery_body.dart';
+import 'package:image_viewer/screens/gallery/widgets/gallery_view.dart';
 import 'package:image_viewer/services/cache/cache_manager.dart';
 import 'package:image_viewer/services/cache/disk_cache.dart';
 import 'package:image_viewer/services/cache/download_store.dart';
@@ -115,10 +116,11 @@ void main() {
           ),
       ];
 
-  /// Pump [screen] as the home route and flush the async initial load.
+  /// Pump [screen] as the home route and flush the async initial load. The
+  /// bodies are tab content, so they are wrapped the way the host wraps them.
   /// Avoids pumpAndSettle because the loading spinner never settles.
   Future<void> pumpHome(WidgetTester tester, Widget screen) async {
-    await tester.pumpWidget(MaterialApp(home: screen));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: screen)));
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
@@ -132,7 +134,8 @@ void main() {
       navigatorKey: navKey,
       home: const Scaffold(body: Center(child: Text('HOME_MARKER'))),
     ));
-    navKey.currentState!.push(MaterialPageRoute(builder: (_) => screen));
+    navKey.currentState!.push(
+        MaterialPageRoute(builder: (_) => Scaffold(body: screen)));
     // Complete the push transition, then flush the load.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -169,11 +172,11 @@ void main() {
           title: path,
         ));
 
+    /// The tab's content. The app bar belongs to the host, so it is not here.
     SmbGalleryBody build(SmbSource source,
             {String path = '/', GalleryTab? tab}) =>
         SmbGalleryBody(
           tab: tab ?? smbTab(source, path),
-          appBar: AppBar(title: Text(path)),
           onOpenInNewTab: (s) => openedInNewTab.add(s),
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,
@@ -251,8 +254,10 @@ void main() {
     testWidgets('back mouse button pops the screen', (tester) async {
       await pumpPushed(tester, build(_FakeSmbSource(const [])));
 
+      // Anywhere in the tab's content: the app bar is the host's, not the
+      // body's, so the mouse-back listener only covers this part.
       final gesture = await tester.startGesture(
-        tester.getCenter(find.byType(AppBar)),
+        tester.getCenter(find.byType(GalleryView)),
         buttons: kBackMouseButton,
         kind: PointerDeviceKind.mouse,
       );
@@ -336,8 +341,7 @@ void main() {
 
       // Back in the parent listing, still inside the gallery.
       expect(find.text('HOME_MARKER'), findsNothing);
-      expect(find.text('/'), findsOneWidget); // parent's title
-      expect(find.text('subdir'), findsOneWidget); // the tile again
+      expect(find.text('subdir'), findsOneWidget); // the parent's tile again
     });
 
     testWidgets('back at the first entry leaves the screen', (tester) async {
@@ -522,7 +526,6 @@ void main() {
             cacheManager: cacheManager,
             title: 'test-user の作品',
           )),
-          appBar: AppBar(title: const Text('test-user の作品')),
           onOpenInNewTab: (s) => openedInNewTab.add(s),
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,

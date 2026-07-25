@@ -18,7 +18,6 @@ import '../viewer/viewer_screen.dart';
 /// host screen, which owns them across every source.
 class SmbGalleryBody extends StatefulWidget {
   final GalleryTab tab;
-  final PreferredSizeWidget appBar;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
@@ -30,7 +29,6 @@ class SmbGalleryBody extends StatefulWidget {
   const SmbGalleryBody({
     super.key,
     required this.tab,
-    required this.appBar,
     required this.onOpenInNewTab,
     required this.cacheManager,
     required this.favoritesStore,
@@ -106,7 +104,6 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
       emptyMessage: 'ファイルが見つかりませんでした',
       tileBuilder: _buildTile,
       onItemsChanged: () => setState(() {}),
-      appBar: widget.appBar,
     );
   }
 

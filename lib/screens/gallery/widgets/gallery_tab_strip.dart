@@ -31,7 +31,7 @@ class NewTabOption {
 ///
 /// Paths are shown with `/` whatever the source separates them with, so that
 /// every source reads the same as more are added.
-class GalleryTabStrip extends StatelessWidget implements PreferredSizeWidget {
+class GalleryTabStrip extends StatefulWidget implements PreferredSizeWidget {
   final GalleryTabController controller;
 
   /// Places the `+` button offers.
@@ -51,7 +51,63 @@ class GalleryTabStrip extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
   @override
+  State<GalleryTabStrip> createState() => _GalleryTabStripState();
+}
+
+/// Widest a chip gets; also how far past the reported end a reveal aims.
+const _chipMaxWidth = 160.0;
+
+class _GalleryTabStripState extends State<GalleryTabStrip> {
+  final _scrollController = ScrollController();
+
+  /// Set eagerly in [initState]. A `late` initialiser would not run until the
+  /// first comparison, by which time it would already hold the grown count and
+  /// the growth would never be noticed.
+  int _tabCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabCount = widget.controller.tabs.length;
+  }
+
+  @override
+  void didUpdateWidget(GalleryTabStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final count = widget.controller.tabs.length;
+    // A tab was added. It goes on the end, which may be past the right edge —
+    // and a tab opened in the background is invisible if the strip does not
+    // move, so the one bit of feedback it has would be missed.
+    if (count > _tabCount) _revealEnd();
+    _tabCount = count;
+  }
+
+  void _revealEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      // Aim past the end rather than at it. The list only measures the chips it
+      // has built, so the reported end is short of the real one while the new
+      // chip is still off-screen; the physics clamp, so overshooting lands on
+      // the real end instead of past it. One chip's width plus slack is enough.
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent + _chipMaxWidth,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final newTabOptions = widget.newTabOptions;
+    final actions = widget.actions;
     final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.surfaceContainer,
@@ -63,9 +119,7 @@ class GalleryTabStrip extends StatelessWidget implements PreferredSizeWidget {
             children: [
               Expanded(
                 child: ListView.separated(
-                  // Switching tabs rebuilds the body this strip is the app bar
-                  // of, which would otherwise snap it back to the first chip.
-                  key: const PageStorageKey('gallery-tab-strip'),
+                  controller: _scrollController,
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   itemCount: controller.tabs.length,
@@ -132,7 +186,7 @@ class _TabChip extends StatelessWidget {
           onTap: onTap,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 160),
+            constraints: const BoxConstraints(maxWidth: _chipMaxWidth),
             padding: const EdgeInsets.only(left: 10, right: 4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
