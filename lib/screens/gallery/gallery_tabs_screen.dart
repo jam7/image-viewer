@@ -89,6 +89,7 @@ class GalleryTabsScreen extends StatelessWidget {
             onOpenPlace: (uri, title, {bool inNewTab = false}) => inNewTab
                 ? _open(context, uri, title, activate: false)
                 : _goTo(context, tab, uri, title),
+            onOpenSettings: () => _openSettings(context),
             // Home with nothing behind it is the floor: there is no tab to fall
             // back to and no route underneath, so back belongs to the system.
             onExitTab: _isLastHome(tab) ? null : () => _exitTab(context, tab),
@@ -158,15 +159,21 @@ class GalleryTabsScreen extends StatelessWidget {
         NewTabOption(
           label: '設定',
           icon: Icons.settings,
-          onSelected: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => SettingsScreen(
-              cacheManager: cacheManager,
-              favoritesStore: favoritesStore,
-              smbConfigStore: smbConfigStore,
-            ),
-          )),
+          onSelected: () => _openSettings(context),
         ),
       ];
+
+  /// Settings is not a place: it has no URI and no tab. It goes on top of the
+  /// whole set, and both ways in — the `+` menu and home's own row — land here.
+  void _openSettings(BuildContext context) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SettingsScreen(
+        cacheManager: cacheManager,
+        favoritesStore: favoritesStore,
+        smbConfigStore: smbConfigStore,
+      ),
+    ));
+  }
 
   /// A body asking for a second tab on a place it can already reach: the
   /// provider is resolved, so this skips the registry. Opened in the background

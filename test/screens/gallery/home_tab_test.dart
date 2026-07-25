@@ -83,8 +83,24 @@ void main() {
 
     expect(find.text('サービス'), findsOneWidget);
     expect(find.text('サーバー'), findsOneWidget);
+    // What is out there to reach, then what is already yours, then the one
+    // entry that is not a destination at all.
+    expect(find.text('ライブラリ'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, '設定'), findsOneWidget);
     expect(controller.tabs.length, 1);
     expect(controller.active!.current.sourceUri.scheme, homeUriScheme);
+  });
+
+  testWidgets('the favorites shortcut opens the list in this tab',
+      (tester) async {
+    registry.register('fav:default', _EmptySource());
+    await pumpHost(tester);
+
+    await tester.tap(find.widgetWithText(InkWell, 'お気に入り'));
+    await tester.pumpAndSettle();
+
+    expect(controller.tabs.length, 1);
+    expect(controller.active!.current.sourceUri.scheme, favUriScheme);
   });
 
   testWidgets('tapping a service follows it in this tab', (tester) async {

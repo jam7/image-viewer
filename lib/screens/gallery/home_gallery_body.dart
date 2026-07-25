@@ -35,6 +35,11 @@ class HomeGalleryBody extends StatefulWidget {
   /// means. Same shape the favorites list uses.
   final void Function(Uri uri, String title, {bool inNewTab}) onOpenPlace;
 
+  /// Open the settings screen. Not an [onOpenPlace] because settings is not a
+  /// place: it has no URI, nothing to go back to within it, and it lives on top
+  /// of the tabs rather than inside one.
+  final VoidCallback onOpenSettings;
+
   /// Back with nothing left in this tab's history. Null means home is the last
   /// thing standing and back belongs to the system.
   final VoidCallback? onExitTab;
@@ -44,6 +49,7 @@ class HomeGalleryBody extends StatefulWidget {
     required this.tab,
     required this.smbConfigStore,
     required this.onOpenPlace,
+    required this.onOpenSettings,
     this.onExitTab,
   });
 
@@ -63,10 +69,22 @@ class _HomeGalleryBodyState extends State<HomeGalleryBody> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) exit?.call();
       },
+      // Grouped by what the entries are, because that decides what tapping one
+      // does. Services and servers are out there and have to be reached;
+      // the library is already yours. Settings is none of the three — it is not
+      // a place at all — so it sits below them as a plain row rather than
+      // pretending to be another destination.
       child: ListView(
         children: [
           _section('サービス', _buildServices()),
           _section('サーバー', _buildServers(), action: _addSmbConfig),
+          _section('ライブラリ', _buildLibrary()),
+          const Divider(height: 32),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('設定'),
+            onTap: widget.onOpenSettings,
+          ),
         ],
       ),
     );
@@ -119,14 +137,6 @@ class _HomeGalleryBodyState extends State<HomeGalleryBody> {
               .onOpenPlace(pixivGalleryUri('/top'), 'Pixiv', inNewTab: true),
         ),
         _ServiceCard(
-          icon: Icons.favorite,
-          name: 'お気に入り',
-          color: Colors.pink,
-          onTap: () => widget.onOpenPlace(favGalleryUri(), 'お気に入り'),
-          onLongPress: () =>
-              widget.onOpenPlace(favGalleryUri(), 'お気に入り', inNewTab: true),
-        ),
-        _ServiceCard(
           icon: Icons.shopping_bag,
           name: 'DMM',
           color: Colors.red.shade700,
@@ -137,6 +147,25 @@ class _HomeGalleryBodyState extends State<HomeGalleryBody> {
           name: 'DLsite',
           color: Colors.green.shade700,
           enabled: false,
+        ),
+      ],
+    );
+  }
+
+  /// What is already yours, wherever it came from. Downloads (`dl://`) and a
+  /// history belong here too once they exist.
+  Widget _buildLibrary() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _ServiceCard(
+          icon: Icons.favorite,
+          name: 'お気に入り',
+          color: Colors.pink,
+          onTap: () => widget.onOpenPlace(favGalleryUri(), 'お気に入り'),
+          onLongPress: () =>
+              widget.onOpenPlace(favGalleryUri(), 'お気に入り', inNewTab: true),
         ),
       ],
     );
