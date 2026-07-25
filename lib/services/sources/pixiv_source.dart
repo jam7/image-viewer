@@ -1,9 +1,13 @@
 import 'dart:typed_data';
 
+import 'package:logging/logging.dart';
+
 import '../../models/image_source.dart';
 import '../../models/pixiv_artwork.dart';
 import '../pixiv/pixiv_api_client.dart';
 import 'image_source_provider.dart';
+
+final _log = Logger('PixivSource');
 
 /// Pixiv を ImageSourceProvider として実装。
 class PixivSource extends ImageSourceProvider {
@@ -114,8 +118,17 @@ class PixivSource extends ImageSourceProvider {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) {
-    return _client.downloadImage(source.metadata?['thumbnailUrl'] as String);
+  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+    final url = source.metadata?['thumbnailUrl'] as String;
+    // TEMPORARY: comparing the URL a listing gives now against the one stored
+    // in a favourite, which 404s for the same work.
+    _log.info('thumb url: ${source.id} $url');
+    try {
+      return await _client.downloadImage(url);
+    } catch (e) {
+      _log.warning('thumb failed: ${source.id} $url', e);
+      rethrow;
+    }
   }
 
   @override
