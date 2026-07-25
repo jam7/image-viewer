@@ -23,9 +23,11 @@ class NewTabOption {
 /// expensive here: at five columns the 8-inch tablet shows fewer than three
 /// rows of thumbnails in landscape. Merging them costs nothing.
 ///
-/// Labels are the last part of the place — `books\series\vol2\2` reads as `2`
-/// — because a full SMB path cannot fit in a chip. The icon says which source
-/// it came from, and the full title is on the active tab's tooltip.
+/// Labels are short because a full SMB path cannot fit in a chip: the active
+/// tab gets one level of parent for context (`vol2\2`) and the rest just the
+/// leaf (`2`). Pixiv chips show the current page's own title, which changes as
+/// the tab is navigated. The icon says which source it came from, and the full
+/// title is on the tooltip.
 class GalleryTabStrip extends StatelessWidget implements PreferredSizeWidget {
   final GalleryTabController controller;
 
@@ -133,7 +135,8 @@ class _TabChip extends StatelessWidget {
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    _labelFor(session.sourceUri, session.title),
+                    _labelFor(session.sourceUri, session.title,
+                        withParent: selected),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                     style: TextStyle(
@@ -163,15 +166,18 @@ class _TabChip extends StatelessWidget {
         _ => Icons.tab,
       };
 
-  /// The last part of the place: a directory's own name rather than its whole
-  /// path. Pixiv pages already have a short title, so those are used as-is.
-  static String _labelFor(Uri uri, String title) {
-    if (uri.scheme == smbUriScheme) {
-      final path = smbPathOf(uri);
-      if (path == '/') return uri.host;
-      final leaf = path.split(r'\').last;
-      return leaf.isEmpty ? path : leaf;
+  /// The tail of the place. A directory's own name is often not enough to tell
+  /// two tabs apart, so the one being shown gets its parent as well; the others
+  /// stay narrow. Pixiv pages already carry a short title of their own.
+  static String _labelFor(Uri uri, String title, {required bool withParent}) {
+    if (uri.scheme != smbUriScheme) {
+      return title.isEmpty ? uri.toString() : title;
     }
-    return title.isEmpty ? uri.toString() : title;
+    final path = smbPathOf(uri);
+    if (path == '/') return uri.host;
+    final segments = path.split(r'\').where((s) => s.isNotEmpty).toList();
+    if (segments.isEmpty) return path;
+    final keep = withParent && segments.length >= 2 ? 2 : 1;
+    return segments.skip(segments.length - keep).join(r'\');
   }
 }

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'gallery_session.dart';
 
 /// A browser-style tab (ADR 008): an identity plus a history of the places it
@@ -15,6 +17,11 @@ class GalleryTab {
   final String id;
   final List<GallerySession> _history;
   int _index = 0;
+
+  /// Bumped whenever the tab moves to a different entry. A tab bar showing this
+  /// tab's label has to follow along, and it is not the one doing the moving —
+  /// navigation happens inside the body.
+  final ValueNotifier<int> revision = ValueNotifier(0);
 
   GalleryTab(GallerySession initial, {String? id})
       : id = id ?? 'tab${_nextId++}',
@@ -41,6 +48,7 @@ class GalleryTab {
     _history.removeRange(_index + 1, _history.length);
     _history.add(session);
     _index = _history.length - 1;
+    _bump();
   }
 
   /// Swap the current entry for [session]. A reload of the same place — search
@@ -49,6 +57,7 @@ class GalleryTab {
   void replaceCurrent(GallerySession session) {
     _history[_index].dispose();
     _history[_index] = session;
+    _bump();
   }
 
   /// Step back one entry. False if this is already the first one, which is the
@@ -56,16 +65,21 @@ class GalleryTab {
   bool back() {
     if (!canGoBack) return false;
     _index--;
+    _bump();
     return true;
   }
 
   bool forward() {
     if (!canGoForward) return false;
     _index++;
+    _bump();
     return true;
   }
 
+  void _bump() => revision.value++;
+
   Future<void> dispose() async {
+    revision.dispose();
     for (final session in _history) {
       await session.dispose();
     }

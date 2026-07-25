@@ -6,6 +6,7 @@ import '../../services/smb/smb_config_store.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../settings/settings_screen.dart';
+import 'gallery_tab.dart';
 import 'gallery_tab_controller.dart';
 import 'gallery_tab_opener.dart';
 import 'gallery_uri.dart';
@@ -44,41 +45,54 @@ class GalleryTabsScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final strip = GalleryTabStrip(
-          controller: controller,
-          newTabOptions: _newTabOptions(context),
-        );
         final tab = controller.active;
         if (tab == null) {
           return Scaffold(
-            appBar: strip,
+            appBar: GalleryTabStrip(
+              controller: controller,
+              newTabOptions: _newTabOptions(context),
+            ),
             body: const Center(child: Text('タブがありません')),
           );
         }
-        // Keyed by tab so switching gives the new tab its own view state —
-        // scroll position, loading flags — instead of inheriting the old one's.
-        final key = ValueKey(tab.id);
-        return switch (tab.current.sourceUri.scheme) {
-          smbUriScheme => SmbGalleryBody(
-              key: key,
-              tab: tab,
-              appBar: strip,
-              cacheManager: cacheManager,
-              favoritesStore: favoritesStore,
-              registry: registry,
-              proxyServer: proxyServer,
-            ),
-          _ => PixivGalleryBody(
-              key: key,
-              tab: tab,
-              appBar: strip,
-              cacheManager: cacheManager,
-              favoritesStore: favoritesStore,
-              registry: registry,
-            ),
-        };
+        // Also follow the active tab's own moves: navigating happens inside the
+        // body, which the controller never hears about, and the strip's label
+        // has to keep up.
+        return AnimatedBuilder(
+          animation: tab.revision,
+          builder: (context, _) => _buildActive(context, tab),
+        );
       },
     );
+  }
+
+  Widget _buildActive(BuildContext context, GalleryTab tab) {
+    final strip = GalleryTabStrip(
+      controller: controller,
+      newTabOptions: _newTabOptions(context),
+    );
+    // Keyed by tab so switching gives the new tab its own view state —
+    // scroll position, loading flags — instead of inheriting the old one's.
+    final key = ValueKey(tab.id);
+    return switch (tab.current.sourceUri.scheme) {
+      smbUriScheme => SmbGalleryBody(
+          key: key,
+          tab: tab,
+          appBar: strip,
+          cacheManager: cacheManager,
+          favoritesStore: favoritesStore,
+          registry: registry,
+          proxyServer: proxyServer,
+        ),
+      _ => PixivGalleryBody(
+          key: key,
+          tab: tab,
+          appBar: strip,
+          cacheManager: cacheManager,
+          favoritesStore: favoritesStore,
+          registry: registry,
+        ),
+    };
   }
 
   /// What the `+` button offers: every configured source, plus settings.

@@ -84,8 +84,6 @@ class GalleryViewState extends State<GalleryView> {
   /// notice a navigation, which the tab performs without telling us.
   late GallerySession _shown;
 
-  GallerySession get _session => widget.tab.current;
-
   @override
   void initState() {
     super.initState();
@@ -123,6 +121,10 @@ class GalleryViewState extends State<GalleryView> {
     _shown = widget.tab.current;
     _shown.onChanged = _repaint;
     _error = null;
+    // A load still running for the place we just left no longer owns this flag;
+    // leaving it set would block the new entry from ever loading, and leave a
+    // spinner up over content that is already here.
+    _isLoading = false;
     _shown.attach();
     if (!_shown.hasLoaded) loadNextPage();
   }
@@ -155,20 +157,25 @@ class GalleryViewState extends State<GalleryView> {
   /// call from the scroll trigger.
   Future<void> loadNextPage() async {
     if (!mounted || _isLoading) return;
+    // Pinned for the whole call: the tab can move somewhere else mid-fetch, and
+    // a slow page (Pixiv goes through the WebView) must not then land its
+    // results, its spinner or its error on whatever is on screen by then.
+    final session = _shown;
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      await _session.loadNextPage();
-      if (!mounted) return;
+      await session.loadNextPage();
+      if (!mounted || session != _shown) return;
       setState(() => _isLoading = false);
       widget.onItemsChanged?.call();
-      await _session.thumbnails.loadNextBatch();
+      await session.thumbnails.loadNextBatch();
+      if (!mounted || session != _shown) return;
       fillViewport();
     } catch (e, st) {
-      _log.warning('page load failed: ${_session.sourceUri}', e, st);
-      if (!mounted) return;
+      _log.warning('page load failed: ${session.sourceUri}', e, st);
+      if (!mounted || session != _shown) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -177,7 +184,7 @@ class GalleryViewState extends State<GalleryView> {
   }
 
   void _onScroll() {
-    if (_isLoading || !_session.hasMore) return;
+    if (_isLoading || !_shown.hasMore) return;
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - _loadMoreMargin) {
       loadNextPage();
@@ -194,10 +201,10 @@ class GalleryViewState extends State<GalleryView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent > 0) return;
-      if (_session.hasMore) {
+      if (_shown.hasMore) {
         loadNextPage();
-      } else if (!_session.thumbnails.allDispatched) {
-        _session.thumbnails.loadNextBatch();
+      } else if (!_shown.thumbnails.allDispatched) {
+        _shown.thumbnails.loadNextBatch();
       }
     });
   }
@@ -249,9 +256,9 @@ class GalleryViewState extends State<GalleryView> {
                   showTrailingLoader: _isLoading,
                   emptyMessage: widget.emptyMessage,
                   tileBuilder: _buildTile,
-                  anchor: _session.anchor,
-                  restoreKey: _session,
-                  onAnchorChanged: (a) => _session.anchor = a,
+                  anchor: _shown.anchor,
+                  restoreKey: _shown,
+                  onAnchorChanged: (a) => _shown.anchor = a,
                 ),
               ),
             ],
@@ -265,9 +272,9 @@ class GalleryViewState extends State<GalleryView> {
     final item = widget.items[index];
     // Painting a tile past what the loader has dispatched means the view has
     // scrolled ahead of the thumbnails; ask for the next batch.
-    if (_session.needsBatchFor(item)) {
+    if (_shown.needsBatchFor(item)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _session.thumbnails.loadNextBatch();
+        if (mounted) _shown.thumbnails.loadNextBatch();
       });
     }
     return widget.tileBuilder(context, item, index);
