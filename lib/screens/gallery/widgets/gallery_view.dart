@@ -47,6 +47,17 @@ class GalleryView extends StatefulWidget {
   /// Optional row between the app bar and the grid (search / filter controls).
   final Widget? header;
 
+  /// The user asked to go back, by any of the affordances this view owns
+  /// (Escape, Backspace, the mouse back button, a rightward swipe, the system
+  /// gesture). Walking the tab's history belongs to whoever owns the tabs —
+  /// leaving one already does, see [onExitTab] — and there is now a toolbar
+  /// button asking for the same thing, so the decision lives in one place
+  /// rather than being made the same way twice.
+  ///
+  /// Null keeps this view's own walk-then-exit behaviour, for tests that stand
+  /// a body up without a host.
+  final VoidCallback? onBack;
+
   /// Back was pressed at the tab's first entry, so there is nowhere left to go
   /// inside this tab. What that means belongs to whoever owns the tabs: with
   /// others open, closing this one is the browser-like answer; with none left,
@@ -66,6 +77,7 @@ class GalleryView extends StatefulWidget {
     required this.tileBuilder,
     required this.emptyMessage,
     this.header,
+    this.onBack,
     this.onExitTab,
     this.onItemsChanged,
   });
@@ -226,6 +238,11 @@ class GalleryViewState extends State<GalleryView> {
   /// Step back one history entry, or leave the screen if this is the first one.
   /// Every back affordance routes here.
   void goBack() {
+    final up = widget.onBack;
+    if (up != null) {
+      up();
+      return;
+    }
     _log.info('goBack: tab=${widget.tab.id} '
         'index=${widget.tab.index}/${widget.tab.history.length} '
         'canGoBack=${widget.tab.canGoBack}');

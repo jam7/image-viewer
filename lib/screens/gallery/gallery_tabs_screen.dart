@@ -16,6 +16,7 @@ import 'home_gallery_body.dart';
 import 'pixiv_gallery_body.dart';
 import 'smb_gallery_body.dart';
 import 'widgets/gallery_tab_strip.dart';
+import 'widgets/gallery_toolbar.dart';
 
 /// Hosts the open tabs (ADR 008): one route, whose app bar is the tab strip and
 /// whose body is whatever the active tab points at.
@@ -77,9 +78,19 @@ class GalleryTabsScreen extends StatelessWidget {
     // scroll position, loading flags — instead of inheriting the old one's.
     final key = ValueKey(tab.id);
     return Scaffold(
-      appBar: GalleryTabStrip(
-        controller: controller,
-        newTabOptions: _newTabOptions(context),
+      appBar: GalleryHeader(
+        strip: GalleryTabStrip(
+          controller: controller,
+          newTabOptions: _newTabOptions(context),
+        ),
+        toolbar: GalleryToolbar(
+          title: _titleOf(tab),
+          canGoBack: tab.canGoBack,
+          canGoForward: tab.canGoForward,
+          onBack: () => _goBack(context, tab),
+          onForward: () => tab.forward(),
+          menuItems: _menuItems(context, tab),
+        ),
       ),
       body: switch (tab.current.sourceUri.scheme) {
         homeUriScheme => HomeGalleryBody(
@@ -92,11 +103,13 @@ class GalleryTabsScreen extends StatelessWidget {
             onOpenSettings: () => _openSettings(context),
             // Home with nothing behind it is the floor: there is no tab to fall
             // back to and no route underneath, so back belongs to the system.
+            onBack: () => _goBack(context, tab),
             onExitTab: _isLastHome(tab) ? null : () => _exitTab(context, tab),
           ),
         favUriScheme => FavoritesGalleryBody(
             key: key,
             tab: tab,
+            onBack: () => _goBack(context, tab),
             onExitTab: () => _exitTab(context, tab),
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
@@ -108,6 +121,7 @@ class GalleryTabsScreen extends StatelessWidget {
         smbUriScheme => SmbGalleryBody(
             key: key,
             tab: tab,
+            onBack: () => _goBack(context, tab),
             onExitTab: () => _exitTab(context, tab),
             onOpenInNewTab: _openInNewTab,
             cacheManager: cacheManager,
@@ -118,6 +132,7 @@ class GalleryTabsScreen extends StatelessWidget {
         _ => PixivGalleryBody(
             key: key,
             tab: tab,
+            onBack: () => _goBack(context, tab),
             onExitTab: () => _exitTab(context, tab),
             onOpenInNewTab: _openInNewTab,
             cacheManager: cacheManager,
@@ -180,6 +195,48 @@ class GalleryTabsScreen extends StatelessWidget {
   /// so long-pressing several folders in a row keeps you where you are.
   void _openInNewTab(GallerySession session) =>
       controller.open(GalleryTab(session), activate: false);
+
+  /// Where [tab] is now, for the toolbar. Falls back to the URI when a place
+  /// has no name of its own.
+  String _titleOf(GalleryTab tab) {
+    final session = tab.current;
+    return session.title.isEmpty ? '${session.sourceUri}' : session.title;
+  }
+
+  /// The one place that decides what "go back" means, so the toolbar button and
+  /// the gestures inside the body cannot answer it differently.
+  void _goBack(BuildContext context, GalleryTab tab) {
+    if (tab.back()) return; // the revision bump rebuilds the body
+    _exitTab(context, tab);
+  }
+
+  /// The hamburger: this tab's own places on top (2C-3 moves the Pixiv
+  /// sections here), operations on the whole app below.
+  List<ToolbarMenuItem> _menuItems(BuildContext context, GalleryTab tab) => [
+        ToolbarMenuItem(
+          label: '再読み込み',
+          icon: Icons.refresh,
+          onSelected: () => _reload(tab),
+        ),
+        ToolbarMenuItem(
+          label: '設定',
+          icon: Icons.settings,
+          onSelected: () => _openSettings(context),
+        ),
+      ];
+
+  /// Read this place again from its source. A fresh session on the same URI,
+  /// keeping the scroll anchor: the reader is looking at the same list, not
+  /// being sent somewhere new.
+  void _reload(GalleryTab tab) {
+    final current = tab.current;
+    tab.replaceCurrent(GallerySession.fromUri(
+      current.sourceUri,
+      provider: current.provider,
+      cacheManager: cacheManager,
+      title: current.title,
+    )..anchor = current.anchor);
+  }
 
   /// Whether [tab] is home, alone, and at its first entry — the state the app
   /// starts in and the one back cannot go anywhere from.

@@ -26,6 +26,10 @@ class PixivGalleryBody extends StatefulWidget {
   /// Open a place in a new tab. Tabs are owned above this widget, so it asks.
   final void Function(GallerySession session) onOpenInNewTab;
 
+  /// The user asked to go back. Passed straight to [GalleryView]; the host
+  /// walks the tab's history.
+  final VoidCallback? onBack;
+
   /// Back at this tab's first entry. Passed straight to [GalleryView]; the
   /// host decides whether that closes the tab or leaves the gallery.
   final VoidCallback? onExitTab;
@@ -33,6 +37,7 @@ class PixivGalleryBody extends StatefulWidget {
   const PixivGalleryBody({
     super.key,
     required this.tab,
+    this.onBack,
     this.onExitTab,
     required this.onOpenInNewTab,
     required this.cacheManager,
@@ -374,6 +379,7 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,
       header: _buildFilterBar(),
+      onBack: widget.onBack,
       onExitTab: widget.onExitTab,
       onItemsChanged: () => setState(() {}),
     );

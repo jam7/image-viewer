@@ -40,6 +40,10 @@ class HomeGalleryBody extends StatefulWidget {
   /// of the tabs rather than inside one.
   final VoidCallback onOpenSettings;
 
+  /// The user asked to go back. Passed straight to [GalleryView]; the host
+  /// walks the tab's history.
+  final VoidCallback? onBack;
+
   /// Back with nothing left in this tab's history. Null means home is the last
   /// thing standing and back belongs to the system.
   final VoidCallback? onExitTab;
@@ -50,6 +54,7 @@ class HomeGalleryBody extends StatefulWidget {
     required this.smbConfigStore,
     required this.onOpenPlace,
     required this.onOpenSettings,
+    this.onBack,
     this.onExitTab,
   });
 
