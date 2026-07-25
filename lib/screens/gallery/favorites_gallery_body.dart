@@ -41,13 +41,19 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
 
   /// Re-read the list. Starring happens in the viewer, so the list is stale the
   /// moment it returns; the source reads the store afresh on each page load.
+  ///
+  /// The replacement inherits the scroll anchor: this is the same place being
+  /// re-read, not a different one, so it should not throw the reader back to
+  /// the top. The anchor names an item, so it simply finds nothing to restore
+  /// if that item is the one that was just un-starred.
   void _reload() {
-    setState(() => _tab.replaceCurrent(GallerySession.fromUri(
-          _session.sourceUri,
-          provider: _session.provider,
-          cacheManager: widget.cacheManager,
-          title: _session.title,
-        )));
+    final fresh = GallerySession.fromUri(
+      _session.sourceUri,
+      provider: _session.provider,
+      cacheManager: widget.cacheManager,
+      title: _session.title,
+    )..anchor = _session.anchor;
+    setState(() => _tab.replaceCurrent(fresh));
   }
 
   Future<void> _openViewer(int index) async {

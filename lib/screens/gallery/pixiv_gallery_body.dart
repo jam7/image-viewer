@@ -61,7 +61,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   String get _path => pixivPathOf(_session.sourceUri);
 
   bool get _isSearchPage => _path.startsWith('/search');
-  bool get _isFavoritesPage => _path == '/favorites';
 
   /// Items shown in the grid: loaded items minus the page-count (`>N`) filter.
   List<ImageSource> get _visibleItems => _filterImages(_session.loaded);
@@ -243,9 +242,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
         _searchController.text = tag;
         _navigate(_searchPathFor(tag));
       });
-    } else if (_isFavoritesPage) {
-      // ビューアでお気に入りが変更された可能性があるので再読み込み
-      _reload();
     }
   }
 
