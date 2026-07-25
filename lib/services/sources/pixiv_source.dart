@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
@@ -120,15 +121,44 @@ class PixivSource extends ImageSourceProvider {
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async {
     final url = source.metadata?['thumbnailUrl'] as String;
-    // TEMPORARY: comparing the URL a listing gives now against the one stored
-    // in a favourite, which 404s for the same work.
-    _log.info('thumb url: ${source.id} $url');
     try {
       return await _client.downloadImage(url);
-    } catch (e) {
-      _log.warning('thumb failed: ${source.id} $url', e);
-      rethrow;
+    } on DioException catch (e) {
+      if (e.response?.statusCode != 404) rethrow;
+      return _refetchThumbnail(source, url, e);
     }
+  }
+
+  /// Second attempt at a thumbnail whose stored URL is gone.
+  ///
+  /// A listing's `thumbnailUrl` is the one value we store and later replay
+  /// verbatim — a favourite keeps the URL it was starred with. Page URLs never
+  /// go stale because [resolvePages] re-derives them from the API on every
+  /// open; this one has no such step, and Pixiv does re-issue the addresses
+  /// (`img-master/..._square1200` turning into `custom-thumb/..._custom1200`),
+  /// so an old favourite eventually 404s while the work itself still opens.
+  ///
+  /// Only a 404 gets here. Any other failure — offline, not signed in — must
+  /// stay a plain failure, or a disconnected Pixiv would send every thumbnail
+  /// in the list through the API for nothing. The refreshed URL is not written
+  /// back to the favourite: the bytes land in the thumbnail cache under the
+  /// item's id, so the stale URL is not asked for again in practice.
+  Future<Uint8List> _refetchThumbnail(
+    ImageSource source,
+    String staleUrl,
+    DioException failure,
+  ) async {
+    final illustId = source.metadata?['illustId'] as int?;
+    if (illustId == null) throw failure;
+
+    final fresh = (await _client.illustDetail(illustId)).thumbnailUrl;
+    if (fresh.isEmpty || fresh == staleUrl) {
+      _log.warning('thumbnail 404 and the API gives the same URL: $staleUrl');
+      throw failure;
+    }
+
+    _log.info('thumbnail URL refreshed for $illustId');
+    return _client.downloadImage(fresh);
   }
 
   @override
