@@ -252,6 +252,24 @@ void main() {
 
       expect(find.text('HOME_MARKER'), findsOneWidget);
     });
+
+    testWidgets('a mostly-vertical flick does not pop a short list',
+        (tester) async {
+      // Few enough items that the grid has nothing to scroll. Flutter's default
+      // physics then refuse the drag, which used to hand a slightly diagonal
+      // vertical flick to the swipe-back recognizer.
+      final items = smbImageItems(5);
+      seedThumbnails(items);
+      await pumpPushed(tester, build(_FakeSmbSource(items)));
+
+      // dx=100 against dy=300 is about 18 degrees off vertical, the shallowest
+      // deviation that reached the swipe-back recognizer before the fix.
+      await tester.fling(find.byType(GridView), const Offset(100, -300), 1000);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('HOME_MARKER'), findsNothing); // still in the directory
+    });
   });
 
   // ---------------------------------------------------------------------------

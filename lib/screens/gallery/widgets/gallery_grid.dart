@@ -157,6 +157,12 @@ class _GalleryGridState extends State<GalleryGrid> {
       thumbVisibility: true,
       child: GridView.builder(
         controller: widget.scrollController,
+        // Claim vertical drags even with nothing to scroll. The default physics
+        // refuse them once the content fits, which lets a slightly diagonal
+        // vertical flick reach the swipe-back gesture wrapped around the grid
+        // and pop the screen. Short lists also get the same overscroll feedback
+        // as long ones this way.
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(galleryPadding),
         gridDelegate: galleryGridDelegate,
         itemCount: count,
