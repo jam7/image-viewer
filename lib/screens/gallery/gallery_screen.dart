@@ -45,7 +45,8 @@ class GalleryScreen extends StatefulWidget {
 class _GalleryScreenState extends State<GalleryScreen> {
   final _searchController = TextEditingController();
   final _filterController = TextEditingController();
-  /// Lets the filter ask the view to top up when it narrows the list.
+  /// Lets the filter ask the view to top up when it narrows the list, and the
+  /// back affordances route through the view's history-aware handler.
   final _viewKey = GlobalKey<GalleryViewState>();
   int _minPageCount = 0;
 
@@ -53,11 +54,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String _searchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分一致
   String _searchOrder = 'date_d'; // date_d=新着 / date=古い順
 
-  // Single-page state (one Pixiv page per screen; sections/search/author are
-  // reached by pushing a new screen and navigating back — ADR 007). The page's
-  // items / cursor / thumbnail loader live in the GallerySession.
+  // The tab this screen shows. Sections, searches and author pages are entries
+  // in its history rather than separate screens (ADR 008).
   late final GalleryTab _tab;
   GallerySession get _session => _tab.current;
+
+  /// Where the tab currently is, which is what the URI of its entry says.
+  String get _path => pixivPathOf(_session.sourceUri);
 
   bool get _isSearchPage => _path.startsWith('/search');
   bool get _isFavoritesPage => _path == '/favorites';
@@ -80,13 +83,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }).toList();
   }
 
-  /// Build a fresh tab for the current [_path]. Favorites are a finite local
-  /// list (seedItems); other pages page through the shared source via loadPage.
-  GallerySession _createSession() {
+  /// Build the session for the Pixiv page at [path]. Favorites are a finite
+  /// local list (seedItems); other pages page through the source via loadPage.
+  /// [authorName] is the one label the URI cannot carry.
+  GallerySession _sessionFor(String path, {String? authorName}) {
     return GallerySession.fromUri(
-      pixivGalleryUri(_path),
+      pixivGalleryUri(path),
       provider: widget.source,
       cacheManager: widget.cacheManager,
+      title: _titleFor(path, authorName),
       favoritesStore: widget.favoritesStore,
       onChanged: () {
         if (mounted) setState(() {});
@@ -94,22 +99,20 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
-  /// The Pixiv path this screen shows. Defaults to the top page. Search paths
-  /// are rebuilt with the current tag-match / order toggles.
-  String get _path {
-    final p = widget.initialUserPath ?? '/top';
-    if (p.startsWith('/search')) {
-      final word = Uri.parse('https://dummy$p').queryParameters['word'] ?? '';
-      return '/search?word=${Uri.encodeComponent(word)}'
-          '&s_mode=$_searchMode&order=$_searchOrder';
-    }
-    return p;
+  /// Go to [path] within this tab. Back returns to where we were.
+  void _navigate(String path, {String? authorName}) {
+    setState(() =>
+        _tab.navigate(_sessionFor(path, authorName: authorName)));
   }
+
+  /// A search path carrying the current tag-match / order toggles.
+  String _searchPathFor(String word) =>
+      '/search?word=${Uri.encodeComponent(word)}'
+      '&s_mode=$_searchMode&order=$_searchOrder';
 
   @override
   void initState() {
     super.initState();
-    _log.info('initState: path=$_path, initialUserPath=${widget.initialUserPath}');
     if (widget.initialSearchWord != null) {
       _searchController.text = widget.initialSearchWord!;
     }
@@ -125,7 +128,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _filterController.text = widget.initialFilterText!;
       _applyFilter();
     }
-    _tab = GalleryTab(_createSession());
+    final initial = widget.initialUserPath ?? '/top';
+    _tab = GalleryTab(_sessionFor(
+      initial.startsWith('/search')
+          ? _searchPathFor(
+              Uri.parse('https://dummy$initial').queryParameters['word'] ?? '')
+          : initial,
+      authorName: widget.initialUserName,
+    ));
+    _log.info('initState: path=$_path, tab=${_tab.id}');
   }
 
   @override
@@ -165,45 +176,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
     return null;
   }
 
-  void _pushUserWorks(int userId, String userName) {
-    _log.info('pushUserWorks: userId=$userId, userName=$userName');
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GalleryScreen(
-        source: PixivSource(client: widget.source.client),
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        registry: widget.registry,
-        initialUserPath: '/user/$userId',
-        initialUserName: userName,
-        initialSearchWord: _searchController.text.trim().isNotEmpty ? _searchController.text.trim() : null,
-        initialFilterText: _filterController.text.trim().isNotEmpty ? _filterController.text.trim() : null,
-      ),
-    ));
+  void _showUserWorks(int userId, String userName) {
+    _log.info('showUserWorks: userId=$userId, userName=$userName');
+    _navigate('/user/$userId', authorName: userName);
   }
 
   /// Reload the same place (search options changed, favorites edited). Not a
   /// navigation, so it swaps the history entry rather than adding one. The view
   /// reloads when it sees the new session.
   void _reload() {
-    setState(() => _tab.replaceCurrent(_createSession()));
+    final path = _isSearchPage
+        ? _searchPathFor(
+            Uri.parse('https://dummy$_path').queryParameters['word'] ?? '')
+        : _path;
+    setState(() => _tab.replaceCurrent(
+        _sessionFor(path, authorName: widget.initialUserName)));
   }
 
-  /// Push a new gallery screen for a Pixiv section (top / bookmarks / favorites),
-  /// reached from the AppBar menu. Each screen is one navigable page (ADR 007).
-  void _pushPage(String path) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GalleryScreen(
-        source: PixivSource(client: widget.source.client),
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        registry: widget.registry,
-        initialUserPath: path,
-        initialFilterText: _filterController.text.trim().isNotEmpty
-            ? _filterController.text.trim()
-            : null,
-      ),
-    ));
-  }
+
 
   void _onSearch() {
     final input = _searchController.text.trim();
@@ -231,21 +221,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return;
     }
 
-    // Push a new gallery screen with search results, carrying the options.
-    final searchPath = parsed ??
-        '/search?word=${Uri.encodeComponent(input)}'
-            '&s_mode=$_searchMode&order=$_searchOrder';
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GalleryScreen(
-        source: PixivSource(client: widget.source.client),
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        registry: widget.registry,
-        initialSearchWord: input,
-        initialFilterText: _filterController.text.trim().isNotEmpty ? _filterController.text.trim() : null,
-        initialUserPath: searchPath,
-      ),
-    ));
+    // Otherwise go to the results within this tab, carrying the options.
+    _navigate(parsed ?? _searchPathFor(input));
   }
 
   void _openViewer(int index) async {
@@ -266,7 +243,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (!mounted) return;
     if (result != null && result['action'] == 'showUser') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _pushUserWorks(result['userId'] as int, result['userName'] as String);
+        if (mounted) {
+          _showUserWorks(
+              result['userId'] as int, result['userName'] as String);
+        }
       });
     } else if (_isFavoritesPage) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み
@@ -274,24 +254,26 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  String _appBarTitle() {
-    if (_isSearchPage) return '検索結果一覧';
-    if (_path.startsWith('/user/')) return '${widget.initialUserName ?? ""} の作品';
-    if (_path == '/bookmarks') return 'ブックマーク一覧';
-    if (_path == '/favorites') return 'お気に入り';
+  /// Label for the Pixiv page at [path], fixed at session creation because the
+  /// author name is known only at the moment we navigate there.
+  static String _titleFor(String path, String? authorName) {
+    if (path.startsWith('/search')) return '検索結果一覧';
+    if (path.startsWith('/user/')) return '${authorName ?? ""} の作品';
+    if (path == '/bookmarks') return 'ブックマーク一覧';
+    if (path == '/favorites') return 'お気に入り';
     return 'Pixiv';
   }
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       title: Text(
-        _appBarTitle(),
+        _session.title,
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
       ),
       actions: [
         PopupMenuButton<String>(
-          onSelected: _pushPage,
+          onSelected: _navigate,
           itemBuilder: (_) => const [
             PopupMenuItem(value: '/top', child: Text('トップ')),
             PopupMenuItem(value: '/bookmarks', child: Text('ブックマーク')),
@@ -384,7 +366,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Widget build(BuildContext context) {
     return GalleryView(
       key: _viewKey,
-      session: _session,
+      tab: _tab,
       items: _visibleItems,
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,

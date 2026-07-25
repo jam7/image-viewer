@@ -253,6 +253,92 @@ void main() {
       expect(find.text('HOME_MARKER'), findsOneWidget);
     });
 
+    // -- Tab history (ADR 008, phase 2B-9) --------------------------------
+
+    /// A directory holding one subdirectory, whose own listing has one file.
+    _FakeSmbSource nestedSource() {
+      final dir = ImageSource(
+        id: 'dir0',
+        name: 'subdir',
+        uri: 'smb://server/share/subdir',
+        type: ImageSourceType.smb,
+        sourceKey: 'smb:test',
+        metadata: const {'isDirectory': true, 'path': 'subdir'},
+      );
+      final inner = ImageSource(
+        id: 'inner0',
+        name: 'inner.jpg',
+        uri: 'smb://server/share/subdir/inner.jpg',
+        type: ImageSourceType.smb,
+        sourceKey: 'smb:test',
+        metadata: const {},
+      );
+      seedThumbnails([inner]);
+      return _FakeSmbSource([dir], byPath: {'subdir': [inner]});
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+    }
+
+    testWidgets('a directory opens in the same tab, not a new screen',
+        (tester) async {
+      await pumpPushed(tester, build(nestedSource()));
+      expect(find.text('subdir'), findsOneWidget);
+
+      await tester.tap(find.text('subdir'));
+      await settle(tester);
+
+      // The app bar follows the tab, and only one gallery screen ever existed.
+      expect(find.text('subdir'), findsOneWidget); // now the title
+      expect(find.byType(SmbGalleryScreen), findsOneWidget);
+    });
+
+    testWidgets('back from a subdirectory returns to its parent, not out',
+        (tester) async {
+      await pumpPushed(tester, build(nestedSource()));
+      await tester.tap(find.text('subdir'));
+      await settle(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await settle(tester);
+
+      // Back in the parent listing, still inside the gallery.
+      expect(find.text('HOME_MARKER'), findsNothing);
+      expect(find.text('/'), findsOneWidget); // parent's title
+      expect(find.text('subdir'), findsOneWidget); // the tile again
+    });
+
+    testWidgets('back at the first entry leaves the screen', (tester) async {
+      await pumpPushed(tester, build(nestedSource()));
+      await tester.tap(find.text('subdir'));
+      await settle(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape); // to parent
+      await settle(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape); // out
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('HOME_MARKER'), findsOneWidget);
+    });
+
+    testWidgets('returning to a visited directory does not refetch it',
+        (tester) async {
+      final source = nestedSource();
+      await pumpPushed(tester, build(source));
+      await tester.tap(find.text('subdir'));
+      await settle(tester);
+      final listingsAfterDescent = source.listCalls;
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await settle(tester);
+
+      // The parent's session was kept alive in the history.
+      expect(source.listCalls, listingsAfterDescent);
+    });
+
     testWidgets('a mostly-vertical flick does not pop a short list',
         (tester) async {
       // Few enough items that the grid has nothing to scroll. Flutter's default
@@ -345,7 +431,12 @@ void main() {
 /// Fake SMB source: returns canned items and never touches the network.
 class _FakeSmbSource extends SmbSource {
   final List<ImageSource> items;
-  _FakeSmbSource(this.items)
+
+  /// Listings for paths other than the initial one, so a directory tap has
+  /// somewhere to go.
+  final Map<String, List<ImageSource>> byPath;
+
+  _FakeSmbSource(this.items, {this.byPath = const {}})
       : super(
           config: const ServerConfig(
             id: 'test',
@@ -356,8 +447,13 @@ class _FakeSmbSource extends SmbSource {
           password: '',
         );
 
+  int listCalls = 0;
+
   @override
-  Future<List<ImageSource>> listImages({String? path}) async => items;
+  Future<List<ImageSource>> listImages({String? path}) async {
+    listCalls++;
+    return byPath[path] ?? items;
+  }
 
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async =>

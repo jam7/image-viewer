@@ -39,20 +39,24 @@ class SmbGalleryScreen extends StatefulWidget {
 
 class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   late final GalleryTab _tab;
+  final _viewKey = GlobalKey<GalleryViewState>();
   GallerySession get _session => _tab.current;
 
   @override
   void initState() {
     super.initState();
-    _tab = GalleryTab(GallerySession.fromUri(
-      smbGalleryUri(widget.source.config.id, widget.initialPath),
-      provider: widget.source,
-      cacheManager: widget.cacheManager,
-      onChanged: () {
-        if (mounted) setState(() {});
-      },
-    ));
+    _tab = GalleryTab(_sessionFor(widget.initialPath));
   }
+
+  GallerySession _sessionFor(String path) => GallerySession.fromUri(
+        smbGalleryUri(widget.source.config.id, path),
+        provider: widget.source,
+        cacheManager: widget.cacheManager,
+        title: path,
+        onChanged: () {
+          if (mounted) setState(() {});
+        },
+      );
 
   @override
   void dispose() {
@@ -62,17 +66,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   void _onItemTap(ImageSource item) {
     if (item.metadata?['isDirectory'] == true) {
+      // Descending is a navigation within this tab, not a new screen (ADR 008).
       final path = item.metadata?['path'] as String? ?? '/';
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => SmbGalleryScreen(
-          source: widget.source,
-          cacheManager: widget.cacheManager,
-          favoritesStore: widget.favoritesStore,
-          registry: widget.registry,
-          proxyServer: widget.proxyServer,
-          initialPath: path,
-        ),
-      ));
+      setState(() => _tab.navigate(_sessionFor(path)));
     } else if (item.metadata?['isVideo'] == true) {
       _session.thumbnails.cancel();
       Navigator.of(context).push(MaterialPageRoute(
@@ -106,7 +102,8 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   @override
   Widget build(BuildContext context) {
     return GalleryView(
-      session: _session,
+      key: _viewKey,
+      tab: _tab,
       items: _session.loaded,
       emptyMessage: 'ファイルが見つかりませんでした',
       tileBuilder: _buildTile,
@@ -114,10 +111,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => _viewKey.currentState?.goBack(),
         ),
         title: Text(
-          widget.initialPath,
+          _session.title,
           overflow: TextOverflow.ellipsis,
           maxLines: 1,
         ),

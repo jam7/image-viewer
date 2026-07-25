@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../../../models/image_source.dart';
 import '../gallery_session.dart';
+import '../gallery_tab.dart';
 import 'gallery_grid.dart';
 import 'gallery_keyboard_scrollable.dart';
 
@@ -22,8 +23,14 @@ final _log = Logger('GalleryView');
 /// session for another page, and painting a tile past the dispatched range asks
 /// the loader for another thumbnail batch. A finite source simply reports no
 /// more pages, so the first half stops firing after its one page.
+///
+/// Going back means going back in [tab]'s history; only at its first entry does
+/// it leave the screen. Every way of asking — Escape, Backspace, the mouse back
+/// button, a rightward swipe, and the system back gesture — goes through
+/// [goBack] so they cannot drift apart (ADR 008 決定 3).
 class GalleryView extends StatefulWidget {
-  final GallerySession session;
+  /// The tab being shown. Its current entry is the place on screen.
+  final GalleryTab tab;
 
   /// Items to show, in display order — the session's loaded list after any
   /// display-only filter the caller applies.
@@ -40,13 +47,15 @@ class GalleryView extends StatefulWidget {
   /// Optional row between the app bar and the grid (search / filter controls).
   final Widget? header;
 
-  /// Called after a page is appended, so a caller deriving [items] from the
-  /// session can rebuild.
+  /// Called when what should be on screen has changed under the caller's feet —
+  /// a page was appended, or a back step moved the tab to another entry. The
+  /// caller derives [items] and the [appBar] title from the tab, so it has to
+  /// rebuild too; this view's own setState does not reach them.
   final VoidCallback? onItemsChanged;
 
   const GalleryView({
     super.key,
-    required this.session,
+    required this.tab,
     required this.items,
     required this.tileBuilder,
     required this.appBar,
@@ -71,9 +80,16 @@ class GalleryViewState extends State<GalleryView> {
   String? _error;
   bool _isPopping = false;
 
+  /// The entry currently on screen. Compared against the tab's current entry to
+  /// notice a navigation, which the tab performs without telling us.
+  late GallerySession _shown;
+
+  GallerySession get _session => widget.tab.current;
+
   @override
   void initState() {
     super.initState();
+    _shown = widget.tab.current;
     _scrollController.addListener(_onScroll);
     loadNextPage();
   }
@@ -81,23 +97,30 @@ class GalleryViewState extends State<GalleryView> {
   @override
   void didUpdateWidget(GalleryView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // A replaced session means a different place (or the same one reloaded).
-    if (oldWidget.session != widget.session) {
-      _error = null;
-      loadNextPage();
-    }
+    if (_shown != widget.tab.current) _onSessionChanged();
+  }
+
+  /// The tab moved to a different entry: navigated, went back, or reloaded in
+  /// place. Hand the thumbnails over, and fetch only if the new entry has never
+  /// loaded — revisiting one from the history must not append another page.
+  void _onSessionChanged() {
+    _shown.detach();
+    _shown = widget.tab.current;
+    _error = null;
+    _shown.attach();
+    if (!_shown.hasLoaded) loadNextPage();
   }
 
   @override
   void deactivate() {
-    widget.session.detach();
+    _session.detach();
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    widget.session.attach();
+    _session.attach();
   }
 
   @override
@@ -117,14 +140,14 @@ class GalleryViewState extends State<GalleryView> {
       _error = null;
     });
     try {
-      await widget.session.loadNextPage();
+      await _session.loadNextPage();
       if (!mounted) return;
       setState(() => _isLoading = false);
       widget.onItemsChanged?.call();
-      await widget.session.thumbnails.loadNextBatch();
+      await _session.thumbnails.loadNextBatch();
       fillViewport();
     } catch (e, st) {
-      _log.warning('page load failed: ${widget.session.sourceUri}', e, st);
+      _log.warning('page load failed: ${_session.sourceUri}', e, st);
       if (!mounted) return;
       setState(() {
         _error = e.toString();
@@ -134,7 +157,7 @@ class GalleryViewState extends State<GalleryView> {
   }
 
   void _onScroll() {
-    if (_isLoading || !widget.session.hasMore) return;
+    if (_isLoading || !_session.hasMore) return;
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - _loadMoreMargin) {
       loadNextPage();
@@ -151,17 +174,24 @@ class GalleryViewState extends State<GalleryView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent > 0) return;
-      if (widget.session.hasMore) {
+      if (_session.hasMore) {
         loadNextPage();
-      } else if (!widget.session.thumbnails.allDispatched) {
-        widget.session.thumbnails.loadNextBatch();
+      } else if (!_session.thumbnails.allDispatched) {
+        _session.thumbnails.loadNextBatch();
       }
     });
   }
 
-  /// Guard against multiple pop calls in the same frame
-  /// (e.g. ESC key and mouse back button firing simultaneously).
-  void _popOnce() {
+  /// Step back one history entry, or leave the screen if this is the first one.
+  /// Every back affordance routes here.
+  void goBack() {
+    if (widget.tab.back()) {
+      setState(_onSessionChanged);
+      widget.onItemsChanged?.call();
+      return;
+    }
+    // Guard against multiple pop calls in the same frame (e.g. ESC key and
+    // mouse back button firing simultaneously).
     if (_isPopping) return;
     _isPopping = true;
     Navigator.of(context).pop();
@@ -169,33 +199,42 @@ class GalleryViewState extends State<GalleryView> {
 
   @override
   Widget build(BuildContext context) {
-    return GalleryKeyboardScrollable(
-      focusNode: _focusNode,
-      scrollController: _scrollController,
-      onPop: _popOnce,
-      child: Scaffold(
-        appBar: widget.appBar,
-        body: Column(
-          children: [
-            if (widget.header != null) widget.header!,
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+    return PopScope(
+      // Let the system back gesture through only when there is no history left
+      // to walk; otherwise handle it here like every other back affordance.
+      canPop: !widget.tab.canGoBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) goBack();
+      },
+      child: GalleryKeyboardScrollable(
+        focusNode: _focusNode,
+        scrollController: _scrollController,
+        onPop: goBack,
+        child: Scaffold(
+          appBar: widget.appBar,
+          body: Column(
+            children: [
+              if (widget.header != null) widget.header!,
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child:
+                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                ),
+              Expanded(
+                child: GalleryGrid(
+                  scrollController: _scrollController,
+                  items: widget.items,
+                  isLoading: _isLoading,
+                  showTrailingLoader: _isLoading,
+                  emptyMessage: widget.emptyMessage,
+                  tileBuilder: _buildTile,
+                  anchor: _session.anchor,
+                  onAnchorChanged: (a) => _session.anchor = a,
+                ),
               ),
-            Expanded(
-              child: GalleryGrid(
-                scrollController: _scrollController,
-                items: widget.items,
-                isLoading: _isLoading,
-                showTrailingLoader: _isLoading,
-                emptyMessage: widget.emptyMessage,
-                tileBuilder: _buildTile,
-                anchor: widget.session.anchor,
-                onAnchorChanged: (a) => widget.session.anchor = a,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -205,9 +244,9 @@ class GalleryViewState extends State<GalleryView> {
     final item = widget.items[index];
     // Painting a tile past what the loader has dispatched means the view has
     // scrolled ahead of the thumbnails; ask for the next batch.
-    if (widget.session.needsBatchFor(item)) {
+    if (_session.needsBatchFor(item)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.session.thumbnails.loadNextBatch();
+        if (mounted) _session.thumbnails.loadNextBatch();
       });
     }
     return widget.tileBuilder(context, item, index);

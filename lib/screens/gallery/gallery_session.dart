@@ -38,6 +38,11 @@ class GallerySession {
   /// list is fully described by [sourceUri].
   final String? path;
 
+  /// What to call this place in the app bar and, later, on a tab. Not derivable
+  /// from [sourceUri] in every case — an author page shows a name the URI does
+  /// not carry — so the caller supplies it.
+  final String title;
+
   /// Called when a thumbnail result arrives and the view should repaint. Page
   /// loads are awaited by the caller instead, so they do not go through here.
   final void Function()? onChanged;
@@ -83,6 +88,7 @@ class GallerySession {
     required this.sourceUri,
     required this.provider,
     required CacheManager cacheManager,
+    this.title = '',
     this.path,
     this.onChanged,
     bool Function(ImageSource)? thumbnailFilter,
@@ -110,6 +116,7 @@ class GallerySession {
     Uri uri, {
     required ImageSourceProvider provider,
     required CacheManager cacheManager,
+    String title = '',
     FavoritesStore? favoritesStore,
     void Function()? onChanged,
   }) {
@@ -120,6 +127,7 @@ class GallerySession {
       sourceUri: uri,
       provider: provider,
       cacheManager: cacheManager,
+      title: title,
       path: uri.scheme == smbUriScheme ? smbPathOf(uri) : pixivPathOf(uri),
       // SMB lists directories alongside files; they have no thumbnail.
       // The lambda needs its own parentheses or its body swallows the ternary.
@@ -143,6 +151,11 @@ class GallerySession {
 
   /// True until the first page is loaded, then true while more pages remain.
   bool get hasMore => !_firstPageLoaded || _cursor != null;
+
+  /// Whether this session has ever fetched. False means a view showing it must
+  /// kick off the first load; true means it is being revisited and already
+  /// holds its items (going back must not append another page).
+  bool get hasLoaded => _firstPageLoaded;
   bool get isLoadingPage => _loadingPage;
 
   /// The thumbnail for [id], or null if it has not been fetched yet.
