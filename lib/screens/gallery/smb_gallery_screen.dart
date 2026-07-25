@@ -45,9 +45,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   late final GallerySession _session;
-  /// id → index within [GallerySession.thumbnailItems] (the loader's list),
-  /// for the batch trigger. Rebuilt after each page load.
-  Map<String, int> _thumbIndex = {};
   bool _isLoading = false;
   String? _error;
   bool _isPopping = false;
@@ -116,10 +113,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     try {
       await _session.loadNextPage();
       if (!mounted) return;
-      _thumbIndex = {
-        for (var i = 0; i < _session.thumbnailItems.length; i++)
-          _session.thumbnailItems[i].id: i
-      };
       setState(() => _isLoading = false);
       await _session.thumbnails.loadNextBatch();
       _loadMoreIfNeeded();
@@ -247,8 +240,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     final thumb = _session.thumbnailFor(item.id);
 
     // Trigger next batch when an item beyond current batch becomes visible.
-    final itemIndex = _thumbIndex[item.id] ?? -1;
-    if (!isDir && _session.thumbnails.needsBatch(itemIndex)) {
+    if (_session.needsBatchFor(item)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _session.thumbnails.loadNextBatch();
       });

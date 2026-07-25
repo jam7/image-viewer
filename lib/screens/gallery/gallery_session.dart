@@ -45,6 +45,11 @@ class GallerySession {
   final List<ImageSource> _thumbnailItems = [];
   List<ImageSource> get thumbnailItems => _thumbnailItems;
 
+  /// item id → its position in [_thumbnailItems], kept in step as pages are
+  /// appended. Lets a view go from the item it is painting to the loader's
+  /// index without scanning the list on every tile.
+  final Map<String, int> _thumbnailIndex = {};
+
   /// Decoded thumbnails, by item id. Lives here rather than in the screen so a
   /// session keeps its thumbnails while another one is on screen (ADR 008).
   final Map<String, ThumbnailResult> _thumbnailResults = {};
@@ -83,6 +88,13 @@ class GallerySession {
 
   /// The thumbnail for [id], or null if it has not been fetched yet.
   ThumbnailResult? thumbnailFor(String id) => _thumbnailResults[id];
+
+  /// Whether painting [item] should kick off the next thumbnail batch — i.e.
+  /// the view has scrolled past what has been dispatched. Items with no
+  /// thumbnail of their own (directories) answer false, since they are absent
+  /// from the index and a missing index reads as "before the dispatched range".
+  bool needsBatchFor(ImageSource item) =>
+      thumbnails.needsBatch(_thumbnailIndex[item.id] ?? -1);
 
   bool get hasThumbnailResults => _thumbnailResults.isNotEmpty;
 
@@ -137,7 +149,10 @@ class GallerySession {
       } else {
         thumbnails.addItems(eligible);
       }
-      _thumbnailItems.addAll(eligible);
+      for (final item in eligible) {
+        _thumbnailIndex[item.id] = _thumbnailItems.length;
+        _thumbnailItems.add(item);
+      }
       return page.items;
     } finally {
       _loadingPage = false;

@@ -61,9 +61,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   // reached by pushing a new screen and navigating back — ADR 007). The page's
   // items / cursor / thumbnail loader live in the GallerySession.
   late GallerySession _session;
-  /// id → index within _session.thumbnailItems (the loader's list), for the batch
-  /// trigger. Rebuilt after each page load.
-  Map<String, int> _thumbIndex = {};
 
   bool get _isSearchPage => _path.startsWith('/search');
   bool get _isFavoritesPage => _path == '/favorites';
@@ -110,13 +107,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
             sourceKey: e.sourceKey,
             metadata: {...e.sourceInfo, 'thumbnailUrl': e.thumbnailUrl},
           )).toList();
-
-  void _rebuildThumbIndex() {
-    _thumbIndex = {
-      for (var i = 0; i < _session.thumbnailItems.length; i++)
-        _session.thumbnailItems[i].id: i
-    };
-  }
 
   /// The Pixiv path this screen shows. Defaults to the top page. Search paths
   /// are rebuilt with the current tag-match / order toggles.
@@ -259,7 +249,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
     try {
       await _session.loadNextPage();
       if (!mounted) return;
-      _rebuildThumbIndex();
       setState(() {
         _isLoading = false;
         _error = null;
@@ -281,7 +270,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   void _reload() {
     _session.dispose();
     _session = _createSession();
-    _thumbIndex = {};
     _loadPage();
   }
 
@@ -537,9 +525,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final pageCount = image.metadata?['pageCount'] as int? ?? 1;
 
     // Trigger the next thumbnail batch when an item beyond the dispatched
-    // range becomes visible (index into the loader's item list).
-    final loaderIndex = _thumbIndex[image.id] ?? -1;
-    if (_session.thumbnails.needsBatch(loaderIndex)) {
+    // range becomes visible.
+    if (_session.needsBatchFor(image)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _session.thumbnails.loadNextBatch();
       });

@@ -111,6 +111,28 @@ void main() {
     expect(source.thumbnailIds, ['a', 'b']);
   });
 
+  test('needsBatchFor: true past the dispatched range, false for directories',
+      () async {
+    // batchSize is galleryCrossAxisCount * 6 = 30, so page 1 fills one batch
+    // exactly and page 2 lands beyond it.
+    final page1 = [
+      img('dir', dir: true),
+      for (var i = 0; i < 30; i++) img('p1-$i'),
+    ];
+    final t = session(
+      _FakePagedSource([page1, [img('p2-0')]]),
+      filter: (i) => i.metadata?['isDirectory'] != true,
+    );
+
+    await t.loadNextPage();
+    await t.loadNextPage();
+    await t.thumbnails.loadNextBatch(); // dispatches the first 30
+
+    expect(t.needsBatchFor(page1[1]), isFalse); // inside the dispatched range
+    expect(t.needsBatchFor(img('p2-0')), isTrue); // beyond it
+    expect(t.needsBatchFor(page1[0]), isFalse); // directory: never batched
+  });
+
   test('loader results are stored on the session and reported once each',
       () async {
     var changes = 0;
