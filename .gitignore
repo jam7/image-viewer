@@ -60,3 +60,9 @@ docs/dmm_auth.md
 # Development records (investigation notes, fix-loop ledgers, TODO list).
 # Kept in a separate private repository nested at notes/ -- see CLAUDE.md.
 notes/
+
+# Claude Code: share the project permission list, keep everything else local
+# (settings.local.json accumulates per-machine command approvals, plus editor
+# swap files and other session state).
+.claude/*
+!.claude/settings.json
