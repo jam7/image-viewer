@@ -88,6 +88,9 @@ class GalleryViewState extends State<GalleryView> {
     super.initState();
     _shown = widget.tab.current;
     _shown.onChanged = _repaint;
+    _log.info('view for tab=${widget.tab.id} '
+        'index=${widget.tab.index}/${widget.tab.history.length} '
+        'at=${_shown.sourceUri}');
     _scrollController.addListener(_onScroll);
     // Switching tabs builds a fresh view over a session that may already hold
     // its items; fetching again would append a duplicate page. Same rule as
@@ -211,11 +214,16 @@ class GalleryViewState extends State<GalleryView> {
   /// Step back one history entry, or leave the screen if this is the first one.
   /// Every back affordance routes here.
   void goBack() {
+    _log.info('goBack: tab=${widget.tab.id} '
+        'index=${widget.tab.index}/${widget.tab.history.length} '
+        'canGoBack=${widget.tab.canGoBack}');
     if (widget.tab.back()) {
       setState(_onSessionChanged);
       widget.onItemsChanged?.call();
+      _log.info('goBack: stepped to ${_shown.sourceUri}');
       return;
     }
+    _log.info('goBack: first entry, leaving the gallery');
     // Guard against multiple pop calls in the same frame (e.g. ESC key and
     // mouse back button firing simultaneously).
     if (_isPopping) return;
@@ -230,6 +238,8 @@ class GalleryViewState extends State<GalleryView> {
       // to walk; otherwise handle it here like every other back affordance.
       canPop: !widget.tab.canGoBack,
       onPopInvokedWithResult: (didPop, _) {
+        _log.info('onPopInvoked: didPop=$didPop tab=${widget.tab.id} '
+            'canGoBack=${widget.tab.canGoBack}');
         if (!didPop) goBack();
       },
       child: GalleryKeyboardScrollable(

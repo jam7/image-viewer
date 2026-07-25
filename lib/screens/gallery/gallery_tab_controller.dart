@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 
 import 'gallery_tab.dart';
+
+final _log = Logger('GalleryTabs');
 
 /// The set of open tabs and which one is showing (ADR 008).
 ///
@@ -33,6 +36,9 @@ class GalleryTabController extends ChangeNotifier {
   void select(int index) {
     if (index < 0 || index >= _tabs.length || index == _activeIndex) return;
     _activeIndex = index;
+    final tab = _tabs[index];
+    _log.info('select: tab=${tab.id} '
+        'index=${tab.index}/${tab.history.length}');
     notifyListeners();
   }
 
