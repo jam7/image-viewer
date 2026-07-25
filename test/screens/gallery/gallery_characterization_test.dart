@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/models/image_source.dart';
 import 'package:image_viewer/models/server_config.dart';
+import 'package:image_viewer/screens/gallery/gallery_constants.dart';
 import 'package:image_viewer/screens/gallery/gallery_screen.dart';
 import 'package:image_viewer/screens/gallery/smb_gallery_screen.dart';
 import 'package:image_viewer/services/cache/cache_manager.dart';
@@ -337,6 +338,75 @@ void main() {
 
       // The parent's session was kept alive in the history.
       expect(source.listCalls, listingsAfterDescent);
+    });
+
+    testWidgets('coming back restores where the parent was scrolled to',
+        (tester) async {
+      // A parent long enough to scroll, with the subdirectory partway down so
+      // it is still on screen once we have scrolled.
+      final dir = ImageSource(
+        id: 'dir0',
+        name: 'subdir',
+        uri: 'smb://server/share/subdir',
+        type: ImageSourceType.smb,
+        sourceKey: 'smb:test',
+        metadata: const {'isDirectory': true, 'path': 'subdir'},
+      );
+      final files = smbImageItems(60);
+      final inner = smbImageItems(3);
+      seedThumbnails([...files, ...inner]);
+      final parent = [...files.take(20), dir, ...files.skip(20)];
+      final source = _FakeSmbSource(parent, byPath: {'subdir': inner});
+
+      await pumpPushed(tester, build(source));
+      final scroll = gridScrollState(tester);
+      scroll.position.jumpTo(galleryRowStride(800) * 3);
+      await tester.pump();
+      final before = scroll.position.pixels;
+      expect(before, greaterThan(0));
+      expect(find.text('subdir'), findsOneWidget); // still on screen
+
+      // Down into the subdirectory...
+      await tester.tap(find.text('subdir'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      // ...and back out.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      expect(gridScrollState(tester).position.pixels, closeTo(before, 1.0));
+    });
+
+    testWidgets('a newly opened directory starts at the top', (tester) async {
+      final dir = ImageSource(
+        id: 'dir0',
+        name: 'subdir',
+        uri: 'smb://server/share/subdir',
+        type: ImageSourceType.smb,
+        sourceKey: 'smb:test',
+        metadata: const {'isDirectory': true, 'path': 'subdir'},
+      );
+      final files = smbImageItems(60);
+      final inner = smbImageItems(60);
+      seedThumbnails([...files, ...inner]);
+      final source = _FakeSmbSource([...files.take(20), dir, ...files.skip(20)],
+          byPath: {'subdir': inner});
+
+      await pumpPushed(tester, build(source));
+      gridScrollState(tester).position.jumpTo(galleryRowStride(800) * 3);
+      await tester.pump();
+
+      await tester.tap(find.text('subdir'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      // The subdirectory is long enough to hold the parent's offset, so this
+      // fails if the shared controller simply keeps its position.
+      expect(gridScrollState(tester).position.pixels, 0);
     });
 
     testWidgets('a mostly-vertical flick does not pop a short list',

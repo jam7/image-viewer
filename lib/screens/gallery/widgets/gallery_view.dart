@@ -230,6 +230,7 @@ class GalleryViewState extends State<GalleryView> {
                   emptyMessage: widget.emptyMessage,
                   tileBuilder: _buildTile,
                   anchor: _session.anchor,
+                  restoreKey: _session,
                   onAnchorChanged: (a) => _session.anchor = a,
                 ),
               ),

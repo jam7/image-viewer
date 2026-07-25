@@ -10,9 +10,11 @@ import '../scroll_anchor.dart';
 /// to [tileBuilder]; load-more scheduling also stays with each screen.
 ///
 /// Also keeps the view's place by item rather than by pixel offset (see
-/// [ScrollAnchor]): it reports the top-left item as the user scrolls, restores
-/// [anchor] on first layout, and re-applies the current one when the viewport
-/// width changes so a rotation does not jump the view by tens of items.
+/// [ScrollAnchor]): it reports the top-left item as the user scrolls, and puts
+/// the view back where it belongs whenever the position would otherwise be
+/// wrong — on first layout, when the viewport width changes (so a rotation does
+/// not jump the view by tens of items), and when [restoreKey] says the grid has
+/// switched to a different place behind the same scroll controller.
 class GalleryGrid extends StatefulWidget {
   final ScrollController scrollController;
 
@@ -31,8 +33,14 @@ class GalleryGrid extends StatefulWidget {
   /// Append a trailing spinner cell for infinite-scroll "loading more".
   final bool showTrailingLoader;
 
-  /// Where to scroll to on first layout. Null starts at the top.
+  /// Where to scroll to when [restoreKey] changes (and on first layout). Null
+  /// means start at the top.
   final ScrollAnchor? anchor;
+
+  /// Identifies whose list this is. When it changes the grid is showing a
+  /// different place through the same scroll controller, so the position has to
+  /// be taken from [anchor] rather than left where the previous place put it.
+  final Object? restoreKey;
 
   /// Reports the top-left item as the user scrolls, for the caller to store.
   /// Called on scroll frames, so it must not trigger a rebuild.
@@ -47,6 +55,7 @@ class GalleryGrid extends StatefulWidget {
     this.isLoading = false,
     this.showTrailingLoader = false,
     this.anchor,
+    this.restoreKey,
     this.onAnchorChanged,
   });
 
@@ -76,6 +85,24 @@ class _GalleryGridState extends State<GalleryGrid> {
       oldWidget.scrollController.removeListener(_recordAnchor);
       widget.scrollController.addListener(_recordAnchor);
     }
+    if (oldWidget.restoreKey != widget.restoreKey) _restoreForNewList();
+  }
+
+  /// Now showing a different place. The scroll controller is shared, so it
+  /// still holds the previous place's offset; put it where this one left off,
+  /// or at the top if it has never been scrolled.
+  void _restoreForNewList() {
+    _recorded = null;
+    final anchor = widget.anchor;
+    final width = _laidOutWidth;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.scrollController.hasClients) return;
+      if (anchor == null || width == null) {
+        widget.scrollController.jumpTo(0);
+      } else {
+        _applyAnchor(anchor, width);
+      }
+    });
   }
 
   @override
