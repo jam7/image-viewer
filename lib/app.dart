@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
+import 'screens/gallery/gallery_tab.dart';
 import 'screens/gallery/gallery_tab_controller.dart';
-import 'screens/home/home_screen.dart';
+import 'screens/gallery/gallery_tab_opener.dart';
+import 'screens/gallery/gallery_tabs_screen.dart';
+import 'screens/gallery/home_gallery_body.dart';
 import 'screens/pixiv/pixiv_login_screen.dart';
 import 'services/cache/cache_manager.dart';
 import 'services/cache/disk_cache.dart';
@@ -82,6 +85,13 @@ class _AppRootState extends State<_AppRoot> {
 
     await _smbConfigStore.init();
 
+    // The app always has somewhere to be, and that somewhere is a tab like any
+    // other (ADR 008). Home used to be the route underneath the tabs; now it is
+    // the first tab, so there is one way to be anywhere.
+    if (_tabs.isEmpty) {
+      _tabs.open(GalleryTab(homeSession(_cacheManager!)));
+    }
+
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -142,13 +152,18 @@ class _AppRootState extends State<_AppRoot> {
       );
     }
 
-    return HomeScreen(
+    return GalleryTabsScreen(
+      controller: _tabs,
+      opener: GalleryTabOpener(
+        registry: _registry,
+        cacheManager: _cacheManager!,
+        favoritesStore: _favoritesStore!,
+      ),
+      smbConfigStore: _smbConfigStore,
+      proxyServer: _proxyServer,
       cacheManager: _cacheManager!,
       favoritesStore: _favoritesStore!,
-      smbConfigStore: _smbConfigStore,
       registry: _registry,
-      proxyServer: _proxyServer,
-      tabs: _tabs,
     );
   }
 }

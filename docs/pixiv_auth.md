@@ -139,7 +139,7 @@ _onUrlChanged で URL を監視:
 - `www.pixiv.net` に URL が到達した時点で完了
 - ユーザーID は `PixivLoginScreen._extractUserIdAsync()` でログインページの HTML から取得
 - pop はログイン画面自身の context で行う (`_AppRoot` の context で pop すると
-  HomeScreen が unmount される問題があった)
+  アプリのルート画面が unmount される問題があった)
 
 ## API WebView の並行アクセス禁止
 
@@ -160,8 +160,8 @@ _onUrlChanged で URL を監視:
 直接 `PixivSource()` を new しない。registry がログイン確認のゲートキーパー。
 
 ```
-HomeScreen._openPixiv()       → registry.resolve("pixiv:default")
-FavoritesTab._onItemTap()     → registry.resolve(entry.sourceKey)
+GalleryTabOpener.session()    → registry.resolve(sourceKeyOf(uri))
+FavoritesSource._ownerOf()    → registry.peek(item.sourceKey)
 ViewerScreen._loadFullImage() → registry.resolve(image.sourceKey)
 ```
 

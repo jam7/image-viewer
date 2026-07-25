@@ -12,6 +12,7 @@ import 'gallery_tab.dart';
 import 'gallery_tab_controller.dart';
 import 'gallery_tab_opener.dart';
 import 'gallery_uri.dart';
+import 'home_gallery_body.dart';
 import 'pixiv_gallery_body.dart';
 import 'smb_gallery_body.dart';
 import 'widgets/gallery_tab_strip.dart';
@@ -81,6 +82,17 @@ class GalleryTabsScreen extends StatelessWidget {
         newTabOptions: _newTabOptions(context),
       ),
       body: switch (tab.current.sourceUri.scheme) {
+        homeUriScheme => HomeGalleryBody(
+            key: key,
+            tab: tab,
+            smbConfigStore: smbConfigStore,
+            onOpenPlace: (uri, title, {bool inNewTab = false}) => inNewTab
+                ? _open(context, uri, title, activate: false)
+                : _goTo(context, tab, uri, title),
+            // Home with nothing behind it is the floor: there is no tab to fall
+            // back to and no route underneath, so back belongs to the system.
+            onExitTab: _isLastHome(tab) ? null : () => _exitTab(context, tab),
+          ),
         favUriScheme => FavoritesGalleryBody(
             key: key,
             tab: tab,
@@ -117,6 +129,12 @@ class GalleryTabsScreen extends StatelessWidget {
 
   /// What the `+` button offers: every configured source, plus settings.
   List<NewTabOption> _newTabOptions(BuildContext context) => [
+        NewTabOption(
+          label: 'ホーム',
+          icon: Icons.home,
+          onSelected: () =>
+              controller.open(GalleryTab(homeSession(cacheManager))),
+        ),
         NewTabOption(
           label: 'Pixiv',
           icon: Icons.palette,
@@ -156,18 +174,28 @@ class GalleryTabsScreen extends StatelessWidget {
   void _openInNewTab(GallerySession session) =>
       controller.open(GalleryTab(session), activate: false);
 
+  /// Whether [tab] is home, alone, and at its first entry — the state the app
+  /// starts in and the one back cannot go anywhere from.
+  bool _isLastHome(GalleryTab tab) =>
+      controller.tabs.length == 1 &&
+      !tab.canGoBack &&
+      tab.current.sourceUri.scheme == homeUriScheme;
+
   /// Back at [tab]'s first entry: there is nowhere left to go inside it.
   ///
-  /// Browser-like — a tab opened from a long press is a place you came to, so
-  /// backing out of it closes it and hands you to the neighbour rather than
-  /// dropping the whole set. Only the last tab standing leaves the gallery.
+  /// Browser-like — a tab you were taken to is a place you came to, so backing
+  /// out of it closes it and hands you to the neighbour. The last tab has no
+  /// neighbour and nothing underneath (this screen is the app's root), so it
+  /// becomes home instead: there is always somewhere to be.
   void _exitTab(BuildContext context, GalleryTab tab) {
     final index = controller.tabs.indexOf(tab);
-    if (controller.tabs.length > 1 && index >= 0) {
+    if (index < 0) return;
+    if (controller.tabs.length > 1) {
       controller.close(index);
       return;
     }
-    Navigator.of(context).pop();
+    controller.open(GalleryTab(homeSession(cacheManager)));
+    controller.close(index);
   }
 
   /// Follow a link from inside [tab]: go there in this tab, pushing onto its

@@ -15,6 +15,7 @@
 /// pixiv://default/user/<id>           one author's works
 /// pixiv://default/search?word=..&s_mode=..&order=..
 /// fav://default/                      everything starred, across sources
+/// home://default/                     the landing page: services and servers
 /// ```
 ///
 /// SMB has many servers, so its instance id varies; Pixiv has one, so its
@@ -35,6 +36,7 @@ library;
 const smbUriScheme = 'smb';
 const pixivUriScheme = 'pixiv';
 const favUriScheme = 'fav';
+const homeUriScheme = 'home';
 
 /// The instance id for sources that only ever have one — Pixiv's account,
 /// the local favorites. They need no per-server id the way SMB does, but the
@@ -50,6 +52,9 @@ Uri smbGalleryUri(String configId, String path) => Uri(
 
 /// Address of the starred works from every source.
 Uri favGalleryUri() => Uri(scheme: favUriScheme, host: pixivInstance);
+
+/// Address of the landing page — the services and servers to go to from here.
+Uri homeGalleryUri() => Uri(scheme: homeUriScheme, host: pixivInstance);
 
 /// Address of the Pixiv page at the internal [path] (`/top`, `/user/123`,
 /// `/search?word=...`).

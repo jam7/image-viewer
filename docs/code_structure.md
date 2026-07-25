@@ -13,6 +13,8 @@ lib/
 │   │   ├── source_registry.dart       # sourceKey → Provider 解決、ログイン管理
 │   │   ├── pixiv_source.dart          # Pixiv API経由の画像取得
 │   │   ├── smb_source.dart            # SMB経由の画像取得 (ZIP対応)
+│   │   ├── favorites_source.dart      # ソース横断お気に入り (各アイテムの元ソースに委譲)
+│   │   ├── home_source.dart           # ホーム (項目を持たない。タブにするための器)
 │   │   ├── http_source.dart
 │   │   ├── google_drive_source.dart
 │   │   └── onedrive_source.dart
@@ -35,8 +37,18 @@ lib/
 │       ├── smb_proxy_server.dart      # SMB→HTTP プロキシ (media_kit 用、localhost:ランダムポート、トークン認証)
 │       └── video_thumbnail_service.dart # 動画サムネイルキャプチャ (media_kit Player 再利用)
 ├── screens/                           # 画面 (画面固有のウィジェットも同フォルダに置く)
-│   ├── gallery/gallery_screen.dart    # Pixiv サムネイル一覧 (タブ独立、per-tab state)
-│   ├── gallery/smb_gallery_screen.dart # SMB ディレクトリブラウズ (ZIP/PDF/画像/動画/フォルダ)
+│   ├── gallery/                       # タブ方式のギャラリー (ADR 007 / ADR 008)
+│   │   ├── gallery_tabs_screen.dart   # アプリのルート。開いているタブのホスト
+│   │   ├── gallery_tab_controller.dart # タブ集合とアクティブタブ
+│   │   ├── gallery_tab.dart           # 1 タブ = id + 履歴スタック
+│   │   ├── gallery_session.dart       # 1 セッション = 1 つの「場所」の閲覧状態
+│   │   ├── gallery_uri.dart           # 場所のアドレス (smb:// pixiv:// fav:// home://)
+│   │   ├── gallery_tab_opener.dart    # URI → セッション / タブ (registry 解決)
+│   │   ├── home_gallery_body.dart     # ホーム: サービスとサーバーの一覧
+│   │   ├── smb_gallery_body.dart      # SMB ディレクトリブラウズ
+│   │   ├── pixiv_gallery_body.dart    # Pixiv 一覧 (トップ/検索/作者/ブックマーク)
+│   │   ├── favorites_gallery_body.dart # ソース横断お気に入り
+│   │   └── widgets/                   # 全ボディ共通 (GalleryView / GalleryGrid / タブストリップ)
 │   ├── viewer/viewer_screen.dart      # フルスクリーン画像ビューア (スワイプ/キーボード操作)
 │   ├── video/video_player_screen.dart # 動画プレーヤー (media_kit、ESC/Space/矢印キー操作)
 │   ├── pixiv/pixiv_login_screen.dart  # Pixivログイン (プラットフォーム別WebView)

@@ -7,7 +7,7 @@ Pixiv との通信全体 (API 呼び出し・画像ダウンロード・デー�
 
 ```mermaid
 graph TB
-    Screens["画面層<br/>(HomeScreen / GalleryScreen / ViewerScreen / FavoritesTab)"]
+    Screens["画面層<br/>(GalleryTabsScreen / 各ボディ / ViewerScreen)"]
     Registry["SourceRegistry<br/>sourceKey → Provider 解決"]
     Source["PixivSource<br/>(ImageSourceProvider 実装、画面ごとに生成)"]
     API["PixivApiClient<br/>(アプリに1つ、全画面で共有)"]
@@ -187,7 +187,7 @@ Android では GET を `DioJsonTransport` が直接 HTTP で取得する。WebVi
 | `/search?word={word}` | タグ検索 (`searchIllust`)。word が空なら例外 |
 
 画面側では Pixiv の URL (例: `https://www.pixiv.net/users/12345`) をパスに変換して
-渡す (`gallery_screen.dart` の変換処理を参照)。
+渡す (`pixiv_gallery_body.dart` の変換処理を参照)。
 
 ### ImageSource への変換
 
