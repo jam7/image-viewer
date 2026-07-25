@@ -206,10 +206,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   Widget _buildGrid() {
     return GalleryGrid(
       scrollController: _scrollController,
-      itemCount: _session.loaded.length,
+      items: _session.loaded,
       isLoading: _isLoading,
       emptyMessage: 'ファイルが見つかりませんでした',
       tileBuilder: _buildTile,
+      anchor: _session.anchor,
+      onAnchorChanged: (a) => _session.anchor = a,
     );
   }
 

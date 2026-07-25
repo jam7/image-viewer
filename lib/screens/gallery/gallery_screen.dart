@@ -490,11 +490,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Widget _buildGrid() {
     return GalleryGrid(
       scrollController: _scrollController,
-      itemCount: _visibleItems.length,
+      items: _visibleItems,
       isLoading: _isLoading,
       showTrailingLoader: _isLoading,
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,
+      anchor: _session.anchor,
+      onAnchorChanged: (a) => _session.anchor = a,
     );
   }
 

@@ -8,6 +8,7 @@ import '../../services/sources/image_source_provider.dart';
 import '../../services/thumbnail/thumbnail_loader.dart';
 import '../../widgets/thumbnail_result.dart';
 import 'gallery_constants.dart';
+import 'scroll_anchor.dart';
 
 final _log = Logger('GallerySession');
 
@@ -44,7 +45,11 @@ class GallerySession {
   late final ThumbnailLoader thumbnails;
 
   final List<ImageSource> loaded = [];
-  double scrollOffset = 0;
+
+  /// Where the view was scrolled to, by item rather than by pixel offset so it
+  /// survives a rotation. Written by the grid as the user scrolls; read back
+  /// when a view starts showing this session again.
+  ScrollAnchor? anchor;
 
   /// Items fed to [thumbnails] = [loaded] minus filtered-out items (e.g.
   /// directories). Same order the loader batches over, so callers can map an

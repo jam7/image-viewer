@@ -1,14 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/image_source.dart';
 import '../gallery_constants.dart';
+import '../scroll_anchor.dart';
 
 /// Shared grid scaffold for the gallery screens: the empty / initial-loading
 /// states plus the `Scrollbar` + `GridView` layout. Tile content differs per
 /// screen (Pixiv badge vs SMB folder/video/archive icons), so it is delegated
 /// to [tileBuilder]; load-more scheduling also stays with each screen.
-class GalleryGrid extends StatelessWidget {
+///
+/// Also keeps the view's place by item rather than by pixel offset (see
+/// [ScrollAnchor]): it reports the top-left item as the user scrolls, restores
+/// [anchor] on first layout, and re-applies the current one when the viewport
+/// width changes so a rotation does not jump the view by tens of items.
+class GalleryGrid extends StatefulWidget {
   final ScrollController scrollController;
-  final int itemCount;
+
+  /// Items in display order. Their ids anchor the scroll position, so this is
+  /// the list the screen actually shows (after any display-only filter).
+  final List<ImageSource> items;
   final Widget Function(BuildContext context, int index) tileBuilder;
 
   /// Shown centered when there are no items and nothing is loading.
@@ -21,39 +31,140 @@ class GalleryGrid extends StatelessWidget {
   /// Append a trailing spinner cell for infinite-scroll "loading more".
   final bool showTrailingLoader;
 
+  /// Where to scroll to on first layout. Null starts at the top.
+  final ScrollAnchor? anchor;
+
+  /// Reports the top-left item as the user scrolls, for the caller to store.
+  /// Called on scroll frames, so it must not trigger a rebuild.
+  final void Function(ScrollAnchor anchor)? onAnchorChanged;
+
   const GalleryGrid({
     super.key,
     required this.scrollController,
-    required this.itemCount,
+    required this.items,
     required this.tileBuilder,
     required this.emptyMessage,
     this.isLoading = false,
     this.showTrailingLoader = false,
+    this.anchor,
+    this.onAnchorChanged,
   });
 
   @override
+  State<GalleryGrid> createState() => _GalleryGridState();
+}
+
+class _GalleryGridState extends State<GalleryGrid> {
+  /// Width the grid was last laid out at. A change means a resize/rotation.
+  double? _laidOutWidth;
+
+  /// Last anchor computed from a real scroll position. Held here rather than
+  /// read back from [GalleryGrid.anchor] so a resize uses the position as of
+  /// the resize, even if the parent has not rebuilt since the user scrolled.
+  ScrollAnchor? _recorded;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.scrollController.addListener(_recordAnchor);
+  }
+
+  @override
+  void didUpdateWidget(GalleryGrid old) {
+    super.didUpdateWidget(old);
+    if (old.scrollController != widget.scrollController) {
+      old.scrollController.removeListener(_recordAnchor);
+      widget.scrollController.addListener(_recordAnchor);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController.removeListener(_recordAnchor);
+    super.dispose();
+  }
+
+  /// Translate the current pixel offset into "which item is at the top-left,
+  /// and how far past its row are we".
+  void _recordAnchor() {
+    final width = _laidOutWidth;
+    if (width == null || widget.items.isEmpty) return;
+    if (!widget.scrollController.hasClients) return;
+
+    final stride = galleryRowStride(width);
+    if (stride <= 0) return;
+    // Overscroll goes negative; treat it as the top.
+    final pixels = widget.scrollController.position.pixels.clamp(
+        0.0, double.maxFinite);
+    final row = (pixels / stride).floor();
+    final index = row * galleryCrossAxisCount;
+    if (index >= widget.items.length) return;
+
+    final anchor =
+        ScrollAnchor(widget.items[index].id, (pixels - row * stride) / stride);
+    if (anchor == _recorded) return;
+    _recorded = anchor;
+    widget.onAnchorChanged?.call(anchor);
+  }
+
+  /// Put [anchor]'s item back at the top-left under the current layout.
+  void _applyAnchor(ScrollAnchor anchor, double width) {
+    if (!widget.scrollController.hasClients) return;
+    final index = widget.items.indexWhere((i) => i.id == anchor.itemId);
+    if (index < 0) return; // filtered out or not loaded yet: leave the view be
+
+    final stride = galleryRowStride(width);
+    final row = index ~/ galleryCrossAxisCount;
+    final target = (row + anchor.rowFraction) * stride;
+    final position = widget.scrollController.position;
+    widget.scrollController
+        .jumpTo(target.clamp(0.0, position.maxScrollExtent));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (itemCount == 0 && isLoading) {
+    if (widget.items.isEmpty && widget.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (itemCount == 0) {
-      return Center(child: Text(emptyMessage));
+    if (widget.items.isEmpty) {
+      return Center(child: Text(widget.emptyMessage));
     }
 
-    final count = itemCount + (showTrailingLoader ? 1 : 0);
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.maxWidth;
+      if (_laidOutWidth != width) {
+        final firstLayout = _laidOutWidth == null;
+        _laidOutWidth = width;
+        // On first layout restore what the caller handed us; on a resize keep
+        // the item the user was looking at. Deferred because the scroll
+        // position's extents are only known once this frame has laid out.
+        final anchor = firstLayout ? widget.anchor : _recorded;
+        if (anchor != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _applyAnchor(anchor, width);
+          });
+        }
+      }
+      return _buildGrid();
+    });
+  }
+
+  Widget _buildGrid() {
+    final itemCount = widget.items.length;
+    final count = itemCount + (widget.showTrailingLoader ? 1 : 0);
     return Scrollbar(
-      controller: scrollController,
+      controller: widget.scrollController,
       thumbVisibility: true,
       child: GridView.builder(
-        controller: scrollController,
-        padding: const EdgeInsets.all(4),
+        controller: widget.scrollController,
+        padding: const EdgeInsets.all(galleryPadding),
         gridDelegate: galleryGridDelegate,
         itemCount: count,
         itemBuilder: (context, index) {
           if (index >= itemCount) {
             return const Center(child: CircularProgressIndicator());
           }
-          return tileBuilder(context, index);
+          return widget.tileBuilder(context, index);
         },
       ),
     );
