@@ -58,7 +58,11 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ (iOS/i
 - `notes/` の内訳: やることリストは `notes/TODO.md`、fix-loop 台帳は
   `notes/fix-sessions/YYYYMMDD-<topic>.md`、調査・レビューの全文記録は
   `notes/reviews/YYYYMMDD-<topic>.md`、繰り返し出る指摘の台帳は `notes/review-log.md`
-- dart_smb2 の設計記録はサブモジュール内 `dart_smb2/docs/reviews/` に置く (別リポジトリ)
+- dart_smb2 も public なので同じ分け方をする。**review (生の記録) は
+  `notes/dart_smb2/reviews/` に置く**。`dart_smb2/docs/` に置くのは結論のみで、
+  レビュー全文の転記ではなく単独の設計文書として書く
+  (2026-07-25 に変更。それまでは `dart_smb2/docs/reviews/` に置いていたが、
+  公開リポジトリに時系列記録を置く運用そのものが穴だった)
 
 ### notes/ は非公開の別リポジトリ (必須)
 
