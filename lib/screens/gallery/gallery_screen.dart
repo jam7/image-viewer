@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'gallery_uri.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
@@ -84,27 +85,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
   /// Build a fresh tab for the current [_path]. Favorites are a finite local
   /// list (seedItems); other pages page through the shared source via loadPage.
   GallerySession _createSession() {
-    return GallerySession(
-      sourceUri: Uri.parse('pixiv:$_path'),
+    return GallerySession.fromUri(
+      pixivGalleryUri(_path),
       provider: widget.source,
       cacheManager: widget.cacheManager,
-      path: _path,
-      seedItems: _isFavoritesPage ? _favoriteItems() : null,
+      favoritesStore: widget.favoritesStore,
       onChanged: () {
         if (mounted) setState(() {});
       },
     );
   }
-
-  List<ImageSource> _favoriteItems() =>
-      widget.favoritesStore.listAll().map((e) => ImageSource(
-            id: e.imageId,
-            name: e.name,
-            uri: e.uri,
-            type: ImageSourceType.pixiv,
-            sourceKey: e.sourceKey,
-            metadata: {...e.sourceInfo, 'thumbnailUrl': e.thumbnailUrl},
-          )).toList();
 
   /// The Pixiv path this screen shows. Defaults to the top page. Search paths
   /// are rebuilt with the current tag-match / order toggles.

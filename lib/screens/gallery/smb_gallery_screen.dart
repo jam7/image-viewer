@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'gallery_uri.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
@@ -50,12 +51,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   @override
   void initState() {
     super.initState();
-    _session = GallerySession(
-      sourceUri: Uri.parse('smb://${widget.source.config.id}${widget.initialPath}'),
+    _session = GallerySession.fromUri(
+      smbGalleryUri(widget.source.config.id, widget.initialPath),
       provider: widget.source,
       cacheManager: widget.cacheManager,
-      path: widget.initialPath,
-      thumbnailFilter: (i) => i.metadata?['isDirectory'] != true,
       onChanged: () {
         if (mounted) setState(() {});
       },

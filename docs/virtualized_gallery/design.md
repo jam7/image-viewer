@@ -64,19 +64,36 @@ class PageResult { List<ImageSource> items; Object? nextCursor; int? total; }
 `smb:<id>`) と Pixiv パス (`/search?word=`, `/user/123`, `/bookmarks`, `/top`) を統合:
 
 ```
-smb://<serverId>/<path>                      (ディレクトリ or ファイル)
-pixiv://search?word=...&order=date_d
-pixiv://user/123
-pixiv://bookmarks
-pixiv://top
-fav://                                        (お気に入り一覧)
-dl://                                         (DL 済み一覧)
+smb://<serverId>/<dir>/<subdir>               (ディレクトリ)
+pixiv:/top
+pixiv:/bookmarks
+pixiv:/favorites
+pixiv:/user/123
+pixiv:/search?word=...&s_mode=...&order=date_d
+fav://                                        (お気に入り一覧、フェーズ 3)
+dl://                                         (DL 済み一覧、フェーズ 3)
 ```
 
 - **URI は「場所」の表現**。タブの識別子ではない ([ADR 008](../adr/008-tab-identity-and-history.md))。
   タブ identity はタブ固有 ID で、同じ URI のタブを複数開いてよい。
 - **アイテムの identity / キャッシュキー** = アイテム URI (`thumb:<uri>` / `full:<uri>`)。
   現行の `thumb:<id>` 命名をこれに寄せる (id は既に URI 化しやすい)。
+
+#### 構文の詳細 (2B-6 で実測して確定、ADR 007 の記載から 2 点変更)
+
+実装は `lib/screens/gallery/gallery_uri.dart`。往復テストは
+`test/screens/gallery/gallery_uri_test.dart`。
+
+- **SMB パスは区切りを `\` ↔ `/` に対応付けて URI の path *segments* に載せる**。
+  実際の SMB パスは `books\作品集第2巻.pdf` のようにバックスラッシュ区切りで、
+  空白・`#`・`%`・非 ASCII を含む。`Uri` の path 成分にそのまま入れるとバックスラッシュが
+  黙ってスラッシュに変換されて区別が付かなくなるが、SMB は Windows と同じくファイル名に
+  `/` を使えないので、区切りとして対応付ければ可逆になる。**デコードは
+  `Uri.pathSegments` を使うこと** (`Uri.path` はパーセントエンコードされたまま返す)。
+  先頭の区切りは落ちるが、dart_smb2 の `_normalizePath` が同じことをするので影響なし
+- **Pixiv は authority を使わず `pixiv:/top`** (ADR 007 の `pixiv://top` から変更)。
+  内部パス (`/user/123`, `/search?...`) をそのまま URI の path + query に載せられ、
+  取り出すときに host と path を組み直さずに済む
 
 ### 3. タブモデル (R2, R7) — ブラウザのタブ ([ADR 008](../adr/008-tab-identity-and-history.md))
 

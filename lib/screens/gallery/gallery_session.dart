@@ -4,6 +4,8 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
+import '../../services/favorites/favorites_store.dart';
+import 'gallery_uri.dart';
 import '../../services/sources/image_source_provider.dart';
 import '../../services/thumbnail/thumbnail_loader.dart';
 import '../../widgets/thumbnail_result.dart';
@@ -96,6 +98,48 @@ class GallerySession {
       onResult: _recordThumbnail,
     );
   }
+
+  /// Build the session for the place [uri] names, deriving from it what the
+  /// caller used to spell out: which path to page through, which items get
+  /// thumbnails, and whether the list is a finite local one.
+  ///
+  /// [provider] is the already-resolved source for [uri]'s scheme. Resolving it
+  /// through the registry is the tab controller's job (2B-10) — that needs a
+  /// BuildContext for the Pixiv login prompt, which does not belong here.
+  factory GallerySession.fromUri(
+    Uri uri, {
+    required ImageSourceProvider provider,
+    required CacheManager cacheManager,
+    FavoritesStore? favoritesStore,
+    void Function()? onChanged,
+  }) {
+    final seed = isPixivFavoritesUri(uri) && favoritesStore != null
+        ? _favoriteItems(favoritesStore)
+        : null;
+    return GallerySession(
+      sourceUri: uri,
+      provider: provider,
+      cacheManager: cacheManager,
+      path: uri.scheme == smbUriScheme ? smbPathOf(uri) : pixivPathOf(uri),
+      // SMB lists directories alongside files; they have no thumbnail.
+      // The lambda needs its own parentheses or its body swallows the ternary.
+      thumbnailFilter: uri.scheme == smbUriScheme
+          ? ((i) => i.metadata?['isDirectory'] != true)
+          : null,
+      seedItems: seed,
+      onChanged: onChanged,
+    );
+  }
+
+  static List<ImageSource> _favoriteItems(FavoritesStore store) =>
+      store.listAll().map((e) => ImageSource(
+            id: e.imageId,
+            name: e.name,
+            uri: e.uri,
+            type: ImageSourceType.pixiv,
+            sourceKey: e.sourceKey,
+            metadata: {...e.sourceInfo, 'thumbnailUrl': e.thumbnailUrl},
+          )).toList();
 
   /// True until the first page is loaded, then true while more pages remain.
   bool get hasMore => !_firstPageLoaded || _cursor != null;
