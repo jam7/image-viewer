@@ -1,9 +1,15 @@
+import 'dart:typed_data';
+
+import 'package:logging/logging.dart';
+
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/sources/image_source_provider.dart';
 import '../../services/thumbnail/thumbnail_loader.dart';
 import '../../widgets/thumbnail_result.dart';
 import 'gallery_constants.dart';
+
+final _log = Logger('GallerySession');
 
 /// One browsing session (ADR 007): a lazy-paged item list plus its thumbnail
 /// loader, thumbnail results and scroll position. Owns the session state that
@@ -23,6 +29,7 @@ class GallerySession {
   /// identity — the same URI may be open in several tabs (ADR 008).
   final Uri sourceUri;
   final ImageSourceProvider provider;
+  final CacheManager _cacheManager;
 
   /// Path passed to `loadPage` (e.g. an SMB directory). Null for sources whose
   /// list is fully described by [sourceUri].
@@ -62,6 +69,8 @@ class GallerySession {
   Object? _cursor;
   bool _firstPageLoaded = false;
   bool _loadingPage = false;
+  /// Bumped by [detach] and [dispose] so an in-flight [attach] stops.
+  int _attachGeneration = 0;
 
   GallerySession({
     required this.sourceUri,
@@ -71,7 +80,8 @@ class GallerySession {
     this.onChanged,
     bool Function(ImageSource)? thumbnailFilter,
     List<ImageSource>? seedItems,
-  })  : _thumbnailFilter = thumbnailFilter ?? ((_) => true),
+  })  : _cacheManager = cacheManager,
+        _thumbnailFilter = thumbnailFilter ?? ((_) => true),
         _seedItems = seedItems {
     thumbnails = ThumbnailLoader(
       source: provider,
@@ -98,18 +108,39 @@ class GallerySession {
 
   bool get hasThumbnailResults => _thumbnailResults.isNotEmpty;
 
-  /// Record a thumbnail obtained outside the loader (e.g. read back from the
-  /// cache when returning to this session).
-  void recordThumbnail(String id, ThumbnailResult result) =>
-      _recordThumbnail(id, result);
-
-  /// Drop the decoded thumbnails to free memory. They are re-read from the L2
-  /// cache when this session is shown again (ADR 007 決定 5 / ADR 008 決定 5).
+  /// The view showing this session went away. Drops the decoded thumbnails to
+  /// free memory; [attach] brings them back (ADR 007 決定 5 / ADR 008 決定 5).
   ///
   /// Deliberately does not fire [onChanged]: this runs from `deactivate`, i.e.
-  /// during a build, where asking for a repaint throws. The view repaints when
-  /// the session is shown again and the reloaded thumbnails report in.
-  void releaseThumbnailResults() => _thumbnailResults.clear();
+  /// during a build, where asking for a repaint throws. The repaint comes from
+  /// the results [attach] reports as they land.
+  void detach() {
+    _attachGeneration++;
+    _thumbnailResults.clear();
+  }
+
+  /// A view started showing this session again. Re-reads the thumbnails that
+  /// [detach] dropped from the L2 cache, reporting each one as it lands so the
+  /// grid fills in progressively.
+  ///
+  /// Only reads `thumb:` — never the full-size `full:` entry, which would put a
+  /// full-resolution decode behind a grid tile.
+  Future<void> attach() async {
+    if (_thumbnailItems.isEmpty || _thumbnailResults.isNotEmpty) return;
+    final generation = ++_attachGeneration;
+    for (final item in _thumbnailItems) {
+      if (generation != _attachGeneration) return; // detached or disposed
+      if (_thumbnailResults.containsKey(item.id)) continue;
+      try {
+        final cached = await _cacheManager.get('thumb:${item.id}');
+        if (cached == null) continue;
+        if (generation != _attachGeneration) return;
+        _recordThumbnail(item.id, ThumbnailData(Uint8List.fromList(cached.data)));
+      } catch (e, st) {
+        _log.warning('thumbnail cache reload failed: ${item.name}', e, st);
+      }
+    }
+  }
 
   /// Retry items whose thumbnail failed as [ThumbnailFailReason.notSupported].
   /// Called after returning from the viewer/player, when the backing data may
@@ -159,7 +190,10 @@ class GallerySession {
     }
   }
 
-  Future<void> dispose() => thumbnails.dispose();
+  Future<void> dispose() {
+    _attachGeneration++;
+    return thumbnails.dispose();
+  }
 
   void _recordThumbnail(String id, ThumbnailResult result) {
     _thumbnailResults[id] = result;

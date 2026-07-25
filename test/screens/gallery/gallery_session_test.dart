@@ -153,8 +153,7 @@ void main() {
     expect(changes, 2);
   });
 
-  test('releasing thumbnails clears the results but keeps the item list',
-      () async {
+  test('detach clears the results but keeps the item list', () async {
     var changes = 0;
     final t = session(
       _FakePagedSource([
@@ -166,13 +165,63 @@ void main() {
     await t.thumbnails.loadNextBatch();
     changes = 0;
 
-    t.releaseThumbnailResults();
+    t.detach();
 
     expect(t.hasThumbnailResults, isFalse);
     expect(t.thumbnailFor('a'), isNull);
-    expect(t.loaded.map((i) => i.id), ['a']); // items survive the release
+    expect(t.loaded.map((i) => i.id), ['a']); // items survive the detach
     // No repaint request: this runs from deactivate, i.e. during a build.
     expect(changes, 0);
+  });
+
+  test('attach restores thumbnails from the cache without refetching',
+      () async {
+    final source = _FakePagedSource([
+      [img('a'), img('b')],
+    ]);
+    final t = session(source);
+    await t.loadNextPage();
+    await t.thumbnails.loadNextBatch(); // populates thumb: in the cache
+    expect(source.thumbnailIds, ['a', 'b']);
+
+    t.detach();
+    await t.attach();
+
+    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
+    expect(t.thumbnailFor('b'), isA<ThumbnailData>());
+    expect(source.thumbnailIds, ['a', 'b']); // came from the cache, not the source
+  });
+
+  test('attach ignores the full: entry, only thumb:', () async {
+    final source = _FakePagedSource([
+      [img('a')],
+    ]);
+    final t = session(source);
+    await t.loadNextPage();
+    // Only a full-size entry exists — the thumbnail fetch never succeeded.
+    await cache.l2.put('full:a', Uint8List.fromList(const [1, 2, 3]));
+
+    await t.attach();
+
+    // Showing the full-size decode behind a grid tile is what the thumb:-only
+    // rule exists to prevent.
+    expect(t.thumbnailFor('a'), isNull);
+  });
+
+  test('detaching again mid-attach stops the reload', () async {
+    final source = _FakePagedSource([
+      [img('a'), img('b')],
+    ]);
+    final t = session(source);
+    await t.loadNextPage();
+    await t.thumbnails.loadNextBatch();
+
+    t.detach();
+    final reload = t.attach();
+    t.detach(); // e.g. the view went away again straight after coming back
+    await reload;
+
+    expect(t.hasThumbnailResults, isFalse);
   });
 }
 

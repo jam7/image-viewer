@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
@@ -67,33 +65,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   @override
   void deactivate() {
-    _session.releaseThumbnailResults();
+    _session.detach();
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    if (_session.thumbnailItems.isNotEmpty && !_session.hasThumbnailResults) {
-      _reloadThumbnailsFromCache();
-    }
-  }
-
-  Future<void> _reloadThumbnailsFromCache() async {
-    for (final image in _session.thumbnailItems) {
-      if (!mounted) return;
-      if (_session.thumbnailFor(image.id) != null) continue;
-      try {
-        final cached = await widget.cacheManager.get('thumb:${image.id}')
-            ?? await widget.cacheManager.get('full:${image.id}');
-        if (cached != null && mounted) {
-          _session.recordThumbnail(
-              image.id, ThumbnailData(Uint8List.fromList(cached.data)));
-        }
-      } catch (e, st) {
-        _log.warning('reloadThumbnail error', e, st);
-      }
-    }
+    _session.attach();
   }
 
   @override

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
@@ -147,33 +145,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void deactivate() {
     // Release decoded thumbnails to save memory; reloaded from cache on return.
-    _session.releaseThumbnailResults();
+    _session.detach();
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    if (_session.loaded.isNotEmpty && !_session.hasThumbnailResults) {
-      _reloadThumbnailsFromCache();
-    }
-  }
-
-  Future<void> _reloadThumbnailsFromCache() async {
-    final session = _session;
-    for (final image in session.thumbnailItems) {
-      if (!mounted || _session != session) return;
-      if (session.thumbnailFor(image.id) != null) continue;
-      try {
-        final cached = await widget.cacheManager.get('thumb:${image.id}');
-        if (cached != null && mounted && _session == session) {
-          session.recordThumbnail(
-              image.id, ThumbnailData(Uint8List.fromList(cached.data)));
-        }
-      } catch (e, st) {
-        _log.warning('reloadThumbnail error', e, st);
-      }
-    }
+    _session.attach();
   }
 
   @override
