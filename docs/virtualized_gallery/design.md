@@ -95,7 +95,7 @@ class GallerySession {                  // 履歴の 1 要素 = 1 閲覧場所
   final Uri sourceUri;                  // どこを見ているか (R5)
   final List<ImageSource> loaded;       // 取得済みアイテム (窓の裏の配列)
   Object? nextCursor;                   // 次ページ (R3)
-  double scrollOffset;                  // 復元 (R2)
+  ScrollAnchor? anchor;                 // 表示位置 (R2、下記)
   final ThumbnailLoader thumbs;         // 共通エンジン (R4)
 }
 ```
@@ -123,7 +123,7 @@ class GallerySession {                  // 履歴の 1 要素 = 1 閲覧場所
 | ページカーソル (次ページ) | ★`PixivSource._nextOffset` (ソース内) | なし (有限) | `GallerySession.nextCursor` |
 | サムネイル状態 | `_TabState.thumbnails` (`Uint8List`) | `_thumbnailData` (`ThumbnailResult`) | `GallerySession` (`ThumbnailResult` 統一) |
 | サムネ取得進捗 | 画面に散在 (`loadGeneration` 等) | ★`ThumbnailLoader` 内部 | `GallerySession.thumbLoader` (セッションごと) |
-| スクロール位置 | `_TabState.scrollOffset` | 保存なし | `GallerySession.scrollOffset` |
+| スクロール位置 | `_TabState.scrollOffset` (px) | 保存なし | `GallerySession.anchor` (アイテム基準、下記 4) |
 | ソース識別子/検索条件 | `initialUserPath` + `_searchMode`/`_searchOrder` | `initialPath` | `GallerySession.sourceUri` (条件も内包) |
 | ナビ履歴 | ★Navigator スタック (画面 push) | ★Navigator スタック (画面 push) | `GalleryTab.history` (タブ内) |
 | タブ集合 | `_tabStates` (固定3タブ、画面内) | なし (別画面) | `GalleryTabController` (ソース横断) |
@@ -134,7 +134,44 @@ class GallerySession {                  // 履歴の 1 要素 = 1 閲覧場所
 セッションへ外出し ②サムネ取得をセッションごとの `ThumbnailLoader` に統一 ③残りを
 `GallerySession` に同じ形で集約 ④ナビ履歴を Navigator からタブへ移す、の 4 つ。
 
-### 4. スクロール単一トリガ (R3, R4) — SMB/Pixiv の差を吸収する要
+### 4. 表示位置はピクセルでなくアイテムのアンカーで持つ (R2)
+
+表示位置をスクロールのピクセル値で持つと、画面の縦横が変わったときに表示中の項目が
+大きくズレる。`galleryCrossAxisCount = 5` 固定・`childAspectRatio` 既定 (正方形タイル)
+なので、**行の高さが画面幅に比例する**ため:
+
+| | 画面幅 | 行の高さ | offset 5000px の位置 |
+|---|---|---|---|
+| 縦 | 820 | 163.2 | 30.6 行目 ≒ 153 番目 |
+| 横 | 1180 | 235.2 | 21.3 行目 ≒ 106 番目 |
+
+そこで位置は**左上に見えているアイテム**を基準に持つ。
+
+```
+class ScrollAnchor {
+  final String itemId;      // 左上に見えているアイテム (順番ではなく identity)
+  final double rowFraction; // その行の上端からのズレ / 行高
+}
+
+復元 = (indexOf(itemId) ~/ 現在の列数) * 現在の行高 + rowFraction * 現在の行高
+```
+
+- **順番 (index) ではなく id** を持つ。Pixiv 画面には表示専用の `>N` ページ数フィルタが
+  あり、表示列と `loaded` が一致しない。フィルタやソートを変えた状態で復元すると
+  「153 番目」は別アイテムを指す。id なら復元時に現在の列から引き直せ、見つからなければ
+  先頭にフォールバックできる。索引は `GallerySession` が持つ id→index マップを流用する。
+- **`rowFraction` も持つ**。行 index だけだと復元時に必ず行頭に吸着し、ビューアから
+  戻っただけのときに軽く飛ぶ。
+- 「現在の列数」で割る形にしておくと、列数を画面幅に応じて可変にしたときもそのまま効く。
+
+直すべきケースは 2 つあり、表現 (アンカー) は共通だが機構が違う:
+
+- **(a) 回転・リサイズ中の維持**: ウィジェットは同じまま viewport だけ変わる。metrics
+  変更の前後でアンカーを退避・再適用するフックが要る。**現に起きている不具合はこれ**。
+- **(b) タブ/履歴切り替えでの復元**: ウィジェットが作り直される。セッションのアンカーから
+  復元する。2B-8 以降で観測できるようになる。
+
+### 5. スクロール単一トリガ (R3, R4) — SMB/Pixiv の差を吸収する要
 
 可視窓が動いたとき、1 経路で 2 つを駆動する:
 
@@ -146,7 +183,7 @@ class GallerySession {                  // 履歴の 1 要素 = 1 閲覧場所
 **同じ 1 経路**になる。現在 `gallery_screen` の `_onScroll`/`_loadMore` と
 `smb_gallery_screen` の `needsBatch`/`loadNextBatch` に割れているものの統合。
 
-### 5. `ThumbnailLoader` の追記対応
+### 6. `ThumbnailLoader` の追記対応
 
 現 `setItems()` は全リセット前提 (固定リスト向け)。追記ページに対応するため
 `addItems(more)` 相当 (既存の `_resultIds`/`_loadedCount` を保ったまま列を伸ばす) を
@@ -167,7 +204,7 @@ class GallerySession {                  // 履歴の 1 要素 = 1 閲覧場所
 ## 決定事項 ([ADR 007](../adr/007-virtualized-gallery.md) / [ADR 008](../adr/008-tab-identity-and-history.md))
 
 1. **責務分界**: paging=閲覧セッション (`GallerySession` が `loaded`/`nextCursor`/
-   `scrollOffset`/`thumbLoader` を所有)、ソースは無状態の `loadPage(cursor)`。
+   `anchor`/`thumbLoader` を所有)、ソースは無状態の `loadPage(cursor)`。
    上記「データ所有の整理」の通り。
 2. **`listImages` 移行**: `ImageSourceProvider` に `loadPage(cursor)` を追加。有限ソースは
    既定実装が `listImages` を 1 ページとして包む → 段階移行 (既存呼び出しを一斉に壊さない)。
@@ -179,6 +216,9 @@ class GallerySession {                  // 履歴の 1 要素 = 1 閲覧場所
 5. **タブ identity と履歴** (ADR 008): identity はタブ固有 ID。URI は履歴の要素が持つ
    「今いる場所」。同じ URI のタブを複数開いてよい (重複開防止はしない)。ナビはタブ内で
    完結し、履歴の先頭で戻ると画面を pop。L1 保持はアクティブタブの現在セッションのみ。
+6. **表示位置はアイテムのアンカー** (`itemId` + `rowFraction`) で保持する。ピクセル値では
+   画面の縦横変更で表示項目がズレるため。順番でなく id を持つのは、表示専用フィルタで
+   表示列と `loaded` がズレるから。詳細は上記「4.」。
 
 ## 残る検討 (実装時に確定)
 
@@ -210,7 +250,7 @@ gallery_unification 成果 (`ThumbnailLoader` 汎用化・`GalleryGrid`・`Galle
    | 2B-2 | `_thumbnailData` を `GallerySession` へ | 不変 |
    | 2B-3 | `_thumbIndex` を `GallerySession` へ (`loadNextPage` 内で更新) | 不変 |
    | 2B-4 | activate/deactivate の L1 解放・再読込を `GallerySession.attach()/detach()` へ | 不変 |
-   | 2B-5 | `scrollOffset` を実際に保存・復元 (現状は未使用フィールド) | 不変 |
+   | 2B-5 | 表示位置をアイテムのアンカーで保存・復元 (上記 4)。(a) 回転時のズレを直し、(b) 履歴復元の配管を通す | **(a) を修正** |
    | 2B-6 | `GallerySession.fromUri(uri, registry)` ファクトリ (URI 駆動生成) | 不変 |
    | 2B-7 | 両画面の残り glue を共通 `GalleryView` ウィジェットへ (tileBuilder / AppBar は注入) | 不変 |
    | 2B-8 | `GalleryTab` (id + history + index) を導入、画面は `tab.current` を見る | 不変 (履歴長 1) |
