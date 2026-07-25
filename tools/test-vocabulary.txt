@@ -1,0 +1,114 @@
+# Vocabulary for test data and documentation examples.
+#
+# This repository is public; the developer's real library is not. Test data is
+# therefore *declared* rather than improvised: anything that looks like content
+# -- a path with separators, a media filename, any CJK text -- has to be built
+# from the names below, and tools/check-private.py enforces it.
+#
+# The point is the failure mode it catches. A denylist can only stop names
+# someone remembered to list; this stops the work title nobody knew about,
+# which is the case that kept slipping through.
+#
+# Adding to this file is expected and cheap. What is not allowed is quietly
+# pasting a name off a device log. If a new name is needed, invent one and put
+# it here -- the declaration is the review.
+#
+# Lines starting with ~ are regular expressions matched against a whole literal
+# or a single path segment. Everything else is an exact path segment or file
+# name. `#` starts a comment.
+
+# -- SMB-ish share layout ---------------------------------------------------
+books
+series
+vol2
+sub dir
+subdir
+inner
+deep
+other
+leading
+images
+path
+a
+b
+c
+2
+
+# Segments carrying a character that means something in a URI. These exist to
+# prove the encoding survives a round trip, so the odd shape is the test.
+b#c
+b?c
+b%c
+b&c=d
+b+c
+
+# -- file names -------------------------------------------------------------
+pic.jpg
+file.jpg
+file.png
+a.jpg
+inner.jpg
+作品集第2巻.pdf
+
+# Names whose shape is the subject of the test (natural sort, paging), where
+# the digits are the point and carry nothing else.
+~^\$?[a-z0-9_()$-]+\.(jpg|jpeg|png|pdf|zip|mp4)$
+~^[0-9]+([.-][0-9]+)*\.(jpg|png)$
+~^chapter[0-9]+_page[0-9]+\.jpg$
+
+# -- hosts and URLs ---------------------------------------------------------
+# Synthetic hosts only. i.pximg.net appears because the code under test builds
+# and retries those URLs; the paths after the host must still be invented.
+server
+share
+~^https://example\.invalid/.*$
+~^https://i\.pximg\.net/(stale|fresh)\.jpg$
+~^https://i\.pximg\.net/thumb/\$i\.jpg$
+~^smb://server/share/.*$
+~^smb:test:.*$
+~^smb://<[a-zA-Z]+>/.*$
+
+# -- ids --------------------------------------------------------------------
+# One invented SMB config id. Real ones are 13-digit creation timestamps, so
+# the shape has to stay while the value must not be a real one.
+1700000000000
+
+# -- invented people --------------------------------------------------------
+# Authors and users shown in the viewer. Deliberately not plausible as real
+# pixiv account names.
+test-user
+テスト作者
+
+# -- UI strings that tests match on -----------------------------------------
+# These are labels the app itself renders, asserted by widget tests. They are
+# the app's own words, not data about anything the developer owns.
+お気に入り
+サービス
+サーバー
+ライブラリ
+ブックマーク
+設定
+の作品
+新しいタブで開きました:
+ファイルが見つかりませんでした
+画像が見つかりませんでした
+~^[^\n]*(お気に入り|サービス|サーバー|ライブラリ|ブックマーク|設定|の作品|見つかりませんでした|新しいタブで開きました)[^\n]*$
+
+# -- documentation examples -------------------------------------------------
+# Paths in the developer commands in CLAUDE.md. Written as an environment
+# variable so no real user directory appears.
+$env:USERPROFILE
+flutter_log.txt
+~^smb:1700000000000:[A-Za-z0-9/._-]+$
+
+# -- platform and protocol constants ----------------------------------------
+# Not data about anything the developer owns.
+%LOCALAPPDATA%
+flutter_webview_windows
+image_viewer
+116444736000000000            # Windows FILETIME epoch offset, in 100ns ticks
+NTLMSSP\0                     # the NTLM signature, a fixed byte string
+
+# -- placeholders in prose and commit messages ------------------------------
+~^(full|thumb):smb:\.\.\.:.*$
+~^N(-N)*\.(jpg|png)$

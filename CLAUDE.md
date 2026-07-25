@@ -80,6 +80,21 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ (iOS/i
 - `notes/` から `docs/` や `lib/` を参照するときはリンクにせずパス文字列で書く
   (別 repo なので相対リンクが解決しない)
 
+### テストデータは語彙から作る (必須)
+
+上の「実データを書かない」は**何度も破られた**。原因は禁止事項だから — テストを
+書く瞬間に思い出す必要があり、直前まで実機ログで見ていた文字列を写すのが一番
+「それらしい」ので、無意識にそちらへ行く。そこで禁止ではなく**指定**にした:
+
+- **`test/` と `docs/` に置く内容らしきもの (パス・ファイル名・作品名・作者名) は
+  `tools/test-vocabulary.txt` に載っている語からのみ作る**
+- **実機ログやアプリ画面から文字列を写さない**。写したくなったら、それは語彙に
+  1 行足すべきというサイン。架空の名前を考えて語彙ファイルに追加する。
+  追加は想定された運用で、宣言する行為そのものがレビューになる
+- `git config core.hooksPath .githooks` を 1 回実行しておく。commit 時は差分を、
+  push 時は未 push の全リビジョンとメッセージを `tools/check-private.py` が検査する
+- 仕組みと、漏れを見つけたときの対処は [docs/private-data.md](docs/private-data.md)
+
 ### レビュー結果の行き先
 
 レビューで出た指摘は内容ごとに 4 つに振り分ける:
@@ -108,7 +123,7 @@ flutter analyze          # 静的解析
 flutter test             # 全テスト実行
 flutter test test/widget_test.dart  # 単一テスト実行
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 # flutterの出力のパースをutf8に
-flutter run -d windows 2>&1 | Tee-Object -FilePath "C:\Users\jam\flutter_log.txt"  # Windows向け (PowerShell、ログは C:\Users\jam\flutter_log.txt)
+flutter run -d windows 2>&1 | Tee-Object -FilePath "$env:USERPROFILE\flutter_log.txt"  # Windows向け (PowerShell、ログは $env:USERPROFILE\flutter_log.txt)
 flutter run -d <iPad ID> # iOS/iPad向け (flutter devices でID確認)
 flutter run -d chrome    # Web向け (デバッグ用)
 ```

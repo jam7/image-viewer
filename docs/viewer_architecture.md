@@ -184,7 +184,7 @@ abstract class ImageSourceProvider {
 
 ```dart
 class ImageSource {
-  String id;           // "smb:123:path/file.jpg"
+  String id;           // "smb:1700000000000:path/file.jpg"
   String name;         // "file.jpg"
   String uri;          // ファイルパス or URL
   ImageSourceType type; // smb, pixiv, http, ...
