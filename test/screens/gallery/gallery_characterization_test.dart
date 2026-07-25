@@ -532,10 +532,8 @@ void main() {
           registry: registry,
         );
 
-    testWidgets('the section menu says where the tab is and reaches bookmarks',
-        (tester) async {
-      // The app bar used to do both jobs — its title said the place, its menu
-      // moved between them — and it now belongs to the tab strip.
+    testWidgets('the section menu reaches bookmarks', (tester) async {
+      // Fixed label: the tab chip already says which page this is.
       final tab = GalleryTab(GallerySession.fromUri(
         pixivGalleryUri('/top'),
         provider: _FakePixivSource(const []),
@@ -553,12 +551,13 @@ void main() {
         ),
       );
 
-      expect(find.text('Pixiv'), findsOneWidget); // the place, on the button
+      expect(find.text('Pixiv'), findsOneWidget);
 
       await tester.tap(find.text('Pixiv'));
       await tester.pumpAndSettle();
       expect(find.text('ブックマーク'), findsOneWidget);
-      expect(find.text('お気に入り'), findsOneWidget);
+      // Cross-source favorites are not a Pixiv page; they belong to the + menu.
+      expect(find.text('お気に入り'), findsNothing);
 
       await tester.tap(find.text('ブックマーク'));
       await tester.pumpAndSettle();

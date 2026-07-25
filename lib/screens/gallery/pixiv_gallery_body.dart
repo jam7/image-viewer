@@ -260,12 +260,9 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     return 'Pixiv';
   }
 
-  /// Where this tab is, and a way to jump elsewhere in Pixiv.
-  ///
-  /// Both jobs used to belong to the app bar — its title said the place, its
-  /// menu moved between them — and the app bar now belongs to the tab strip.
-  /// Labelling the button with the current page keeps the place visible and
-  /// makes the menu findable; a bare icon here was neither.
+  /// A way to jump elsewhere in Pixiv. Labelled rather than a bare icon, which
+  /// nobody found — but with a fixed label, since the tab chip already says
+  /// which page this is and repeating it here only costs width.
   Widget _buildSectionMenu() {
     return PopupMenuButton<String>(
       tooltip: 'Pixiv のページ',
@@ -273,23 +270,15 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       itemBuilder: (_) => const [
         PopupMenuItem(value: '/top', child: Text('トップ')),
         PopupMenuItem(value: '/bookmarks', child: Text('ブックマーク')),
-        PopupMenuItem(value: '/favorites', child: Text('お気に入り')),
       ],
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 150, minHeight: 48),
+        constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.only(left: 10),
-        child: Row(
+        child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Flexible(
-              child: Text(
-                _session.title,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            const Icon(Icons.arrow_drop_down),
+            Text('Pixiv', style: TextStyle(fontWeight: FontWeight.w600)),
+            Icon(Icons.arrow_drop_down),
           ],
         ),
       ),
