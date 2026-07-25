@@ -95,13 +95,21 @@ class ThumbnailLoader {
     source.cancelThumbnailWork();
   }
 
-  /// Retry items in the already-dispatched range that lack results.
-  Future<void> retryInterrupted() async {
-    final retryItems = _items.sublist(0, _loadedCount).where((img) {
-      return !_resultIds.contains(img.id);
-    }).toList();
+  /// Fetch again every dispatched item [isMissing] says has nothing to show.
+  ///
+  /// The caller decides what missing means, because this loader's own record of
+  /// which ids it has answered does not settle it: whoever holds the results
+  /// may have let a decoded image go and been unable to get it back. Items past
+  /// the dispatched range are left alone — they were never asked for, and the
+  /// scroll trigger will ask in its own time.
+  Future<void> retryMissing(bool Function(String id) isMissing) async {
+    final retryItems =
+        _items.sublist(0, _loadedCount).where((i) => isMissing(i.id)).toList();
     if (retryItems.isEmpty) return;
-    _log.info('Retrying ${retryItems.length} interrupted thumbnails');
+    _log.info('Retrying ${retryItems.length} missing thumbnails');
+    // An answered id is skipped by _loadThumbnails, and one of these may have
+    // been answered before its result was lost. Forget the old outcome.
+    _resultIds.removeAll(retryItems.map((i) => i.id));
     _isLoading = true;
     await _loadThumbnails(retryItems);
     _isLoading = false;

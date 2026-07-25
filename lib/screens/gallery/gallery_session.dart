@@ -202,8 +202,23 @@ class GallerySession {
       }
     }
     if (generation != _attachGeneration) return;
-    await thumbnails.retryInterrupted();
+    await resumeMissingThumbnails();
   }
+
+  /// Fetch again every dispatched item this session has no result for.
+  ///
+  /// The loader remembers which items it has answered, but that is a different
+  /// question from what the grid can paint. [detach] drops the decoded images
+  /// and [attach] reads them back from the L2 cache — which may have been
+  /// emptied or evicted in between, leaving the item answered by the loader and
+  /// blank on screen. Going by the loader's record alone turned a whole tab
+  /// into spinners after a cache clear, with only a brand new tab showing
+  /// anything.
+  ///
+  /// A recorded [ThumbnailFailed] counts as a result, so it is not retried here
+  /// (that is [retryUnsupportedThumbnails]).
+  Future<void> resumeMissingThumbnails() =>
+      thumbnails.retryMissing((id) => !_thumbnailResults.containsKey(id));
 
   /// Retry items whose thumbnail failed as [ThumbnailFailReason.notSupported].
   /// Called after returning from the viewer/player, when the backing data may

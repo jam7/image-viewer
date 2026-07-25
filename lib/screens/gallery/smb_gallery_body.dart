@@ -67,7 +67,7 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
         ),
       )).then((_) {
         _session.retryUnsupportedThumbnails();
-        _session.thumbnails.retryInterrupted();
+        _session.resumeMissingThumbnails();
       });
     } else {
       final viewerItems =

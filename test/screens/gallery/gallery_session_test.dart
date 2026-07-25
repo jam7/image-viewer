@@ -196,6 +196,28 @@ void main() {
     expect(source.thumbnailIds.where((id) => id == 'nope').length, 1);
   });
 
+  test('attach refetches what the cache no longer has', () async {
+    // Clearing the cache while a tab is in the background: detach dropped the
+    // decoded images, and attach finds nothing to read back. The loader counts
+    // these as answered, so without a retry the whole tab stays spinners for as
+    // long as it lives -- only a newly opened tab shows anything.
+    final source = _FakePagedSource([
+      [img('a'), img('b')],
+    ]);
+    final t = session(source);
+    await t.loadNextPage();
+    await t.thumbnails.loadNextBatch();
+    expect(source.thumbnailIds, ['a', 'b']);
+
+    t.detach();
+    await cache.clearL2();
+    await t.attach();
+
+    expect(source.thumbnailIds, ['a', 'b', 'a', 'b']);
+    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
+    expect(t.thumbnailFor('b'), isA<ThumbnailData>());
+  });
+
   test('attach restores thumbnails from the cache without refetching',
       () async {
     final source = _FakePagedSource([
