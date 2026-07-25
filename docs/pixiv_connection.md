@@ -207,6 +207,32 @@ Android では GET を `DioJsonTransport` が直接 HTTP で取得する。WebVi
 - `fetchFullImage()`: `regularUrl` (中サイズ) を優先、なければ `originalUrl`、
   最後に `uri` へフォールバック
 
+### サムネイル URL の陳腐化と取り直し
+
+`i.pximg.net` のサムネイル URL はファイル名に 32 桁のトークンを含み
+(`<illustId>-<32hex>_p0_square1200.jpg`)、これが**時間とともに差し替わる**。
+差し替わると古い URL は 404 を返す。
+
+一覧 API から得た URL をその場で使う経路 (通常のギャラリー) では問題にならない。
+影響を受けるのは**保存して後から再生する唯一の値であるお気に入りの
+`thumbnailUrl`** だけ。ページ URL は開くたびに `resolvePages()` が取り直すので、
+陳腐化したお気に入りでも「ビューアでは開けるがタイルだけ壊れる」形になる。
+
+対処 (`PixivSource.fetchThumbnail`):
+
+1. ダウンロードが **404 のときだけ** `illustDetail()` を呼んで今の URL を取り直す。
+   404 に限定するのは、未接続やオフラインで画面中のサムネイルが一斉に API を
+   叩きに行くのを防ぐため
+2. 取り直した URL でのダウンロードが成功したときだけ、`onThumbnailUrlRefreshed`
+   コールバックで新しい URL を通知する。`FavoritesSource` がこれを受けて
+   `FavoritesStore.updateThumbnailUrl()` に書き戻す
+3. `illustId` が無い / 取り直した URL が同じ / 新 URL でも失敗、のいずれでも
+   元の 404 をそのまま投げる
+
+`PixivSource` はお気に入りの存在を知らないので、書き戻しは両方を持つ
+`FavoritesSource` の仕事にしている。トークンはまた回る可能性があるので、
+これは恒久修正ではなく自己修復の仕組みである。
+
 ## ライフサイクルと取得経路
 
 - すべての Pixiv アクセスは `SourceRegistry.resolve("pixiv:default", context)` を
@@ -226,4 +252,5 @@ Android では GET を `DioJsonTransport` が直接 HTTP で取得する。WebVi
 - **fetch の並行実行禁止**: 同一 WebView 上で複数の `fetchJson` を同時に走らせない
 - **レートリミット対策はなし**: アプリ側でのリクエスト間隔制御は未実装
 - **画像 URL の有効性**: `i.pximg.net` の URL は Referer さえあれば認証不要なので、
-  お気に入り (URL のみ保存) からの再取得が成立する
+  お気に入り (URL のみ保存) からの再取得が成立する。ただしサムネイル URL の
+  トークンは差し替わることがある (上記「サムネイル URL の陳腐化と取り直し」)
