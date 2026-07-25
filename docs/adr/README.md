@@ -10,4 +10,5 @@
 | [004](004-pixiv-auth.md) | Pixiv 認証に WebView 2台構成を採用 | Accepted |
 | [005](005-webview-platform.md) | WebView のプラットフォーム別実装 | Accepted |
 | [006](006-thumbnail-source-generalization.md) | ギャラリーのサムネイル取得を ImageSourceProvider に一般化 | Accepted |
-| [007](007-virtualized-gallery.md) | ギャラリーを仮想化ページリストモデルに統一 (閲覧状態はタブ所有) | Accepted |
+| [007](007-virtualized-gallery.md) | ギャラリーを仮想化ページリストモデルに統一 (閲覧状態はタブ所有) | Accepted (決定 4 は 008 で改訂) |
+| [008](008-tab-identity-and-history.md) | タブ identity をタブ ID とし、URI はタブ内ナビ履歴の要素とする | Accepted |

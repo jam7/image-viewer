@@ -5,7 +5,7 @@ class ImageSource {
   final String name;
   final String uri;
   final ImageSourceType type;
-  final String? sourceKey; // e.g. "pixiv:default", "smb:1773662275240"
+  final String? sourceKey; // e.g. "pixiv:default", "smb:1700000000000"
   final Map<String, dynamic>? metadata;
 
   const ImageSource({

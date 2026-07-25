@@ -43,7 +43,7 @@ class FavoriteEntry {
   final String imageId;
   final String name;
   final String uri;
-  final String sourceKey; // e.g. "pixiv:default", "smb:1773662275240"
+  final String sourceKey; // e.g. "pixiv:default", "smb:1700000000000"
   final String? thumbnailUrl;
   final Map<String, dynamic> sourceInfo;
   final DateTime addedAt;

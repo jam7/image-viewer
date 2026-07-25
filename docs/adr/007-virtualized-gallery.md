@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (決定 4 のタブ identity は [ADR 008](008-tab-identity-and-history.md) で改訂)
 
 ## Context
 
@@ -51,6 +51,8 @@ Accepted
    固定リストと Pixiv の追記ページネーションが同一経路になる。`ThumbnailLoader` に
    追記用 `addItems` を足す。
 4. **URI で identity 統一**: タブ識別子・アイテム identity・キャッシュキーを URI に
+   (→ タブ識別子の部分は [ADR 008](008-tab-identity-and-history.md) でタブ固有 ID に改訂。
+   アイテム identity とキャッシュキーは本決定のまま)
    (`smb://`, `pixiv://search?...`, `pixiv://user/123`, `fav://`, `dl://`)。コンテナ内アイテムは
    fragment で名前空間化 (ZIP `…#entry`、PDF `…#page=3`、Pixiv 複数ページ `…#p2`)。
    キャッシュキーは `thumb:<uri>` / `full:<uri>`。

@@ -14,7 +14,7 @@ final _log = Logger('SourceRegistry');
 
 /// Resolves sourceKey to ImageSourceProvider.
 ///
-/// sourceKey format: "type:id" (e.g. "pixiv:default", "smb:1773662275240")
+/// sourceKey format: "type:id" (e.g. "pixiv:default", "smb:1700000000000")
 ///
 /// Handles lazy initialization: Pixiv requires login, SMB requires
 /// password retrieval and connection establishment.
