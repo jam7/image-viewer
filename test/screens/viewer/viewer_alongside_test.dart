@@ -91,6 +91,8 @@ void main() {
     expect(gotId, 42);
     expect(gotName, 'kazuki');
     expect(find.text('GALLERY_MARKER'), findsNothing); // still in the viewer
+    // The strip is behind the viewer, so say it out loud.
+    expect(find.text('新しいタブで開きました: kazuki'), findsOneWidget);
   });
 
   testWidgets('tapping the author still goes there', (tester) async {

@@ -63,6 +63,9 @@ class GalleryTabStrip extends StatelessWidget implements PreferredSizeWidget {
             children: [
               Expanded(
                 child: ListView.separated(
+                  // Switching tabs rebuilds the body this strip is the app bar
+                  // of, which would otherwise snap it back to the first chip.
+                  key: const PageStorageKey('gallery-tab-strip'),
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   itemCount: controller.tabs.length,

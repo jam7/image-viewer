@@ -642,11 +642,22 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// the same way "show this author" is, so the search lands in the tab's
   /// history instead of stacking another screen on top of the viewer.
   ///
+  /// Say that a tab appeared. The strip is behind the viewer, so the chip
+  /// showing up — the feedback everywhere else — cannot be seen from here.
+  void _announceNewTab(String label) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('新しいタブで開きました: $label'),
+      duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
   /// [newTab] carries a long-press: open it alongside and stay here.
   void _searchTag(String tag, {bool newTab = false}) {
     final alongside = widget.onOpenTagSearchInNewTab;
     if (newTab && alongside != null) {
       alongside(tag);
+      _announceNewTab(tag);
       return; // the reader keeps their page
     }
     Navigator.of(context).pop({'action': 'searchTag', 'tag': tag});
@@ -659,6 +670,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final alongside = widget.onOpenAuthorInNewTab;
     if (newTab && alongside != null) {
       alongside(authorId, authorName);
+      _announceNewTab(authorName);
       return;
     }
     _log.info('pop with showUser: authorId=$authorId, name=$authorName');
