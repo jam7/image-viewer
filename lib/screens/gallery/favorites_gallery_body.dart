@@ -23,12 +23,19 @@ class FavoritesGalleryBody extends StatefulWidget {
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
 
+  /// Open a place this list cannot reach on its own — an author or a tag from
+  /// a work being viewed. Favorites hold items from every source, so it has no
+  /// provider of its own to build such a place from; resolving it, and owning
+  /// the tabs, both belong above this widget.
+  final void Function(Uri uri, String title, {bool activate}) onOpenPlace;
+
   const FavoritesGalleryBody({
     super.key,
     required this.tab,
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
+    required this.onOpenPlace,
   });
 
   @override
@@ -56,18 +63,44 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
     setState(() => _tab.replaceCurrent(fresh));
   }
 
+  /// Search options are the Pixiv screen's own state, which this list has no
+  /// view of, so a tag opened from here uses the defaults.
+  Uri _tagSearch(String tag) =>
+      pixivGalleryUri('/search?word=${Uri.encodeComponent(tag)}'
+          '&s_mode=s_tag_full&order=date_d');
+
   Future<void> _openViewer(int index) async {
     final items = _session.loaded;
-    await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(
+    final result =
+        await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(
       builder: (_) => ViewerScreen(
         items: items,
         initialIndex: index,
         registry: widget.registry,
         cacheManager: widget.cacheManager,
         favoritesStore: widget.favoritesStore,
+        // Long-press: open alongside and let the reader keep their page.
+        onOpenAuthorInNewTab: (id, name) => widget
+            .onOpenPlace(pixivGalleryUri('/user/$id'), '$name の作品',
+                activate: false),
+        onOpenTagSearchInNewTab: (tag) =>
+            widget.onOpenPlace(_tagSearch(tag), tag, activate: false),
       ),
     ));
-    if (mounted) _reload();
+    if (!mounted) return;
+
+    // A tap hands the request back by closing. Nothing was listening for it,
+    // so tapping an author chip from here used to do nothing at all.
+    if (result != null && result['action'] == 'showUser') {
+      widget.onOpenPlace(
+        pixivGalleryUri('/user/${result['userId']}'),
+        '${result['userName']} の作品',
+      );
+    } else if (result != null && result['action'] == 'searchTag') {
+      final tag = result['tag'] as String;
+      widget.onOpenPlace(_tagSearch(tag), tag);
+    }
+    _reload();
   }
 
   @override

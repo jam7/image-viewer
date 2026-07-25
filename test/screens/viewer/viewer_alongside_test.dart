@@ -106,6 +106,41 @@ void main() {
     expect(find.text('GALLERY_MARKER'), findsOneWidget); // left the viewer
   });
 
+  testWidgets('tapping the author reports it to whoever pushed the viewer',
+      (tester) async {
+    // The favorites list has to act on this: it pushes the viewer without the
+    // alongside callbacks, and used to drop the result on the floor, so an
+    // author chip did nothing at all.
+    final navKey = GlobalKey<NavigatorState>();
+    Map<String, dynamic>? handedBack;
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: navKey,
+      home: const Scaffold(body: Center(child: Text('GALLERY_MARKER'))),
+    ));
+    navKey.currentState!
+        .push<Map<String, dynamic>>(MaterialPageRoute(
+          builder: (_) => ViewerScreen(
+            items: [work],
+            registry: registry,
+            cacheManager: cacheManager,
+            favoritesStore: favoritesStore,
+          ),
+        ))
+        .then((r) => handedBack = r);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    await tester.tap(find.text('kazuki'));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(handedBack?['action'], 'showUser');
+    expect(handedBack?['userId'], 42);
+    expect(handedBack?['userName'], 'kazuki');
+  });
+
   testWidgets('with nowhere to put a tab, a long-press falls back to leaving',
       (tester) async {
     await pumpViewer(tester); // no callbacks, as the favorites list pushes it

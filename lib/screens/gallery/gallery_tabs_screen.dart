@@ -87,6 +87,8 @@ class GalleryTabsScreen extends StatelessWidget {
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
             registry: registry,
+            onOpenPlace: (uri, title, {bool activate = true}) =>
+                _open(context, uri, title, activate: activate),
           ),
         smbUriScheme => SmbGalleryBody(
             key: key,
@@ -150,8 +152,9 @@ class GalleryTabsScreen extends StatelessWidget {
   void _openInNewTab(GallerySession session) =>
       controller.open(GalleryTab(session), activate: false);
 
-  Future<void> _open(BuildContext context, Uri uri, String title) async {
+  Future<void> _open(BuildContext context, Uri uri, String title,
+      {bool activate = true}) async {
     final tab = await opener.open(uri, context, title: title);
-    if (tab != null) controller.open(tab);
+    if (tab != null) controller.open(tab, activate: activate);
   }
 }
