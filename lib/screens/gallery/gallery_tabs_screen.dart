@@ -87,8 +87,9 @@ class GalleryTabsScreen extends StatelessWidget {
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
             registry: registry,
-            onOpenPlace: (uri, title, {bool activate = true}) =>
-                _open(context, uri, title, activate: activate),
+            onOpenPlace: (uri, title, {bool inNewTab = false}) => inNewTab
+                ? _open(context, uri, title, activate: false)
+                : _goTo(context, tab, uri, title),
           ),
         smbUriScheme => SmbGalleryBody(
             key: key,
@@ -151,6 +152,19 @@ class GalleryTabsScreen extends StatelessWidget {
   /// so long-pressing several folders in a row keeps you where you are.
   void _openInNewTab(GallerySession session) =>
       controller.open(GalleryTab(session), activate: false);
+
+  /// Follow a link from inside [tab]: go there in this tab, pushing onto its
+  /// history so back comes home to where it was followed from.
+  ///
+  /// The destination may belong to a different source than the tab is showing —
+  /// the favorites list holds items from everywhere — so the session comes from
+  /// the registry rather than the current session's provider. The body is
+  /// picked per URI scheme, so the tab simply starts rendering the other source.
+  Future<void> _goTo(
+      BuildContext context, GalleryTab tab, Uri uri, String title) async {
+    final session = await opener.session(uri, context, title: title);
+    if (session != null) tab.navigate(session);
+  }
 
   Future<void> _open(BuildContext context, Uri uri, String title,
       {bool activate = true}) async {

@@ -25,10 +25,14 @@ class GalleryTabOpener {
     required this.favoritesStore,
   });
 
-  /// Open [uri] as a new tab, or null if the source could not be resolved
-  /// (login cancelled, server gone). [title] labels the tab where the URI
-  /// cannot say it — an author's name, a server's nickname.
-  Future<GalleryTab?> open(
+  /// The session for [uri], or null if the source could not be resolved (login
+  /// cancelled, server gone). [title] labels the place where the URI cannot say
+  /// it — an author's name, a server's nickname.
+  ///
+  /// Separate from [open] because a URI is not always a new tab: following a
+  /// link goes into the current tab's history, and that needs the session
+  /// alone.
+  Future<GallerySession?> session(
     Uri uri,
     BuildContext context, {
     String title = '',
@@ -39,11 +43,21 @@ class GalleryTabOpener {
       _log.info('could not resolve $key for $uri');
       return null;
     }
-    return GalleryTab(GallerySession.fromUri(
+    return GallerySession.fromUri(
       uri,
       provider: provider,
       cacheManager: cacheManager,
       title: title,
-    ));
+    );
+  }
+
+  /// Open [uri] as a new tab, or null if the source could not be resolved.
+  Future<GalleryTab?> open(
+    Uri uri,
+    BuildContext context, {
+    String title = '',
+  }) async {
+    final opened = await session(uri, context, title: title);
+    return opened == null ? null : GalleryTab(opened);
   }
 }

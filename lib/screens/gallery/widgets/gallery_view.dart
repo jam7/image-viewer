@@ -148,7 +148,12 @@ class GalleryViewState extends State<GalleryView> {
 
   @override
   void dispose() {
-    _shown.onChanged = null;
+    // Only if it is still ours. Navigating across sources within one tab swaps
+    // the whole body (fav:// to pixiv:// picks a different widget), and Flutter
+    // builds the replacement before unmounting this one — so the session may
+    // already be reporting to the new view, and clearing it here would leave
+    // that view without repaints as its thumbnails arrive.
+    if (_shown.onChanged == _repaint) _shown.onChanged = null;
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();

@@ -23,11 +23,15 @@ class FavoritesGalleryBody extends StatefulWidget {
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
 
-  /// Open a place this list cannot reach on its own — an author or a tag from
+  /// Go to a place this list cannot reach on its own — an author or a tag from
   /// a work being viewed. Favorites hold items from every source, so it has no
   /// provider of its own to build such a place from; resolving it, and owning
   /// the tabs, both belong above this widget.
-  final void Function(Uri uri, String title, {bool activate}) onOpenPlace;
+  ///
+  /// [inNewTab] false follows it like a link: this tab goes there, pushing onto
+  /// its history, and back returns to the list. True opens it alongside without
+  /// leaving, which is what a long press asks for.
+  final void Function(Uri uri, String title, {bool inNewTab}) onOpenPlace;
 
   const FavoritesGalleryBody({
     super.key,
@@ -82,25 +86,37 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
         // Long-press: open alongside and let the reader keep their page.
         onOpenAuthorInNewTab: (id, name) => widget
             .onOpenPlace(pixivGalleryUri('/user/$id'), '$name の作品',
-                activate: false),
+                inNewTab: true),
         onOpenTagSearchInNewTab: (tag) =>
-            widget.onOpenPlace(_tagSearch(tag), tag, activate: false),
+            widget.onOpenPlace(_tagSearch(tag), tag, inNewTab: true),
       ),
     ));
     if (!mounted) return;
 
-    // A tap hands the request back by closing. Nothing was listening for it,
-    // so tapping an author chip from here used to do nothing at all.
+    // Re-read before going anywhere: starring happens in the viewer, and this
+    // list is what a later back comes home to.
+    _reload();
+
+    // A tap hands the request back by closing. Following it is a navigation
+    // within this tab, the same as tapping a folder in the SMB list — which is
+    // the point of the list being a tab at all.
     if (result != null && result['action'] == 'showUser') {
-      widget.onOpenPlace(
-        pixivGalleryUri('/user/${result['userId']}'),
-        '${result['userName']} の作品',
-      );
+      _afterViewer(() => widget.onOpenPlace(
+            pixivGalleryUri('/user/${result['userId']}'),
+            '${result['userName']} の作品',
+          ));
     } else if (result != null && result['action'] == 'searchTag') {
       final tag = result['tag'] as String;
-      widget.onOpenPlace(_tagSearch(tag), tag);
+      _afterViewer(() => widget.onOpenPlace(_tagSearch(tag), tag));
     }
-    _reload();
+  }
+
+  /// Run [action] after the frame the viewer's pop is settling in, so the
+  /// navigation does not land in the middle of the route transition.
+  void _afterViewer(VoidCallback action) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) action();
+    });
   }
 
   @override
