@@ -23,11 +23,14 @@ class NewTabOption {
 /// expensive here: at five columns the 8-inch tablet shows fewer than three
 /// rows of thumbnails in landscape. Merging them costs nothing.
 ///
-/// Labels are short because a full SMB path cannot fit in a chip: the active
-/// tab gets one level of parent for context (`vol2\2`) and the rest just the
-/// leaf (`2`). Pixiv chips show the current page's own title, which changes as
-/// the tab is navigated. The icon says which source it came from, and the full
+/// Labels are short because a full path cannot fit in a chip: the active tab
+/// gets one level of parent for context (`vol2/2`) and the rest just the leaf
+/// (`2`). Pixiv chips show the current page's own title, which changes as the
+/// tab is navigated. The icon says which source it came from, and the full
 /// title is on the tooltip.
+///
+/// Paths are shown with `/` whatever the source separates them with, so that
+/// every source reads the same as more are added.
 class GalleryTabStrip extends StatelessWidget implements PreferredSizeWidget {
   final GalleryTabController controller;
 
@@ -169,15 +172,17 @@ class _TabChip extends StatelessWidget {
   /// The tail of the place. A directory's own name is often not enough to tell
   /// two tabs apart, so the one being shown gets its parent as well; the others
   /// stay narrow. Pixiv pages already carry a short title of their own.
+  ///
+  /// Read straight off the URI's segments, which are already `/`-separated
+  /// whatever the source uses natively — no need to put SMB's backslashes back
+  /// just to show them.
   static String _labelFor(Uri uri, String title, {required bool withParent}) {
     if (uri.scheme != smbUriScheme) {
       return title.isEmpty ? uri.toString() : title;
     }
-    final path = smbPathOf(uri);
-    if (path == '/') return uri.host;
-    final segments = path.split(r'\').where((s) => s.isNotEmpty).toList();
-    if (segments.isEmpty) return path;
+    final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segments.isEmpty) return uri.host; // the share root
     final keep = withParent && segments.length >= 2 ? 2 : 1;
-    return segments.skip(segments.length - keep).join(r'\');
+    return segments.skip(segments.length - keep).join('/');
   }
 }

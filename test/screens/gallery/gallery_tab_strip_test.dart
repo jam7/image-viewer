@@ -65,6 +65,15 @@ void main() {
         ),
       ));
 
+  testWidgets('paths are shown with slashes whatever the source uses',
+      (tester) async {
+    controller.open(GalleryTab(smbSession(r'books\series\vol2')));
+
+    await pump(tester);
+
+    expect(find.text('series/vol2'), findsOneWidget);
+  });
+
   testWidgets('the shown SMB tab carries its parent, the others do not',
       (tester) async {
     controller.open(GalleryTab(smbSession(r'books\series\vol2\2')));
@@ -72,7 +81,7 @@ void main() {
 
     await pump(tester);
 
-    expect(find.text(r'deep\inner'), findsOneWidget); // active
+    expect(find.text('deep/inner'), findsOneWidget); // active
     expect(find.text('2'), findsOneWidget); // background tab: leaf only
   });
 

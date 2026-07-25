@@ -47,7 +47,8 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
         smbGalleryUri(_source.config.id, path),
         provider: _source,
         cacheManager: widget.cacheManager,
-        title: path,
+        // Shown, not used for I/O: slashes read the same across sources.
+        title: path.replaceAll(r'\', '/'),
       );
 
   void _onItemTap(ImageSource item) {
