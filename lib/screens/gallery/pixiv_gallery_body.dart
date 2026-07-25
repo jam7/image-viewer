@@ -90,7 +90,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       provider: _source,
       cacheManager: widget.cacheManager,
       title: _titleFor(path, authorName),
-      favoritesStore: widget.favoritesStore,
     );
   }
 

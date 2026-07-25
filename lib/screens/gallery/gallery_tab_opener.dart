@@ -44,7 +44,6 @@ class GalleryTabOpener {
       provider: provider,
       cacheManager: cacheManager,
       title: title,
-      favoritesStore: favoritesStore,
     ));
   }
 }

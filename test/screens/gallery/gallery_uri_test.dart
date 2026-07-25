@@ -47,9 +47,6 @@ void main() {
       expect(smbPathOf(smbGalleryUri(configId, 'a/b')), r'a\b');
     });
 
-    test('is not mistaken for a Pixiv URI', () {
-      expect(isPixivFavoritesUri(smbGalleryUri(configId, 'x')), isFalse);
-    });
   });
 
   group('Pixiv', () {
@@ -68,17 +65,17 @@ void main() {
       roundTrips('/search?word=%E3%81%8B&s_mode=s_tag_full&order=date_d');
     });
 
-    test('favorites is recognised as the locally seeded page', () {
-      expect(isPixivFavoritesUri(pixivGalleryUri('/favorites')), isTrue);
-      expect(isPixivFavoritesUri(pixivGalleryUri('/top')), isFalse);
-      expect(isPixivFavoritesUri(pixivGalleryUri('/user/1')), isFalse);
-    });
   });
 
   test('every scheme yields its registry key the same way', () {
-    // The one rule the tab controller will use to resolve a provider (2B-10).
+    // The one rule the tab controller uses to resolve a provider.
     expect(sourceKeyOf(smbGalleryUri('1700000000000', 'books')),
         'smb:1700000000000');
     expect(sourceKeyOf(pixivGalleryUri('/user/1')), 'pixiv:default');
+    expect(sourceKeyOf(favGalleryUri()), 'fav:default');
+  });
+
+  test('the favorites list has one address', () {
+    expect(favGalleryUri().toString(), 'fav://default');
   });
 }

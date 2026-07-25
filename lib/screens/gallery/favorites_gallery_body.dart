@@ -1,0 +1,128 @@
+import 'package:flutter/material.dart';
+
+import '../../models/image_source.dart';
+import '../../services/cache/cache_manager.dart';
+import '../../services/favorites/favorites_store.dart';
+import '../../services/sources/source_registry.dart';
+import '../../widgets/thumbnail_result.dart';
+import '../viewer/viewer_screen.dart';
+import 'gallery_session.dart';
+import 'gallery_tab.dart';
+import 'gallery_uri.dart';
+import 'widgets/gallery_view.dart';
+
+/// 全ソース横断のお気に入りを見せるタブの中身。
+///
+/// Flat by nature: there is nowhere to navigate to within it, so unlike the SMB
+/// and Pixiv bodies it never adds to the tab's history. Items keep the source
+/// they came from, so opening one hands the viewer an item the registry can
+/// still resolve.
+class FavoritesGalleryBody extends StatefulWidget {
+  final GalleryTab tab;
+  final CacheManager cacheManager;
+  final FavoritesStore favoritesStore;
+  final SourceRegistry registry;
+
+  const FavoritesGalleryBody({
+    super.key,
+    required this.tab,
+    required this.cacheManager,
+    required this.favoritesStore,
+    required this.registry,
+  });
+
+  @override
+  State<FavoritesGalleryBody> createState() => _FavoritesGalleryBodyState();
+}
+
+class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
+  GalleryTab get _tab => widget.tab;
+  GallerySession get _session => _tab.current;
+
+  /// Re-read the list. Starring happens in the viewer, so the list is stale the
+  /// moment it returns; the source reads the store afresh on each page load.
+  void _reload() {
+    setState(() => _tab.replaceCurrent(GallerySession.fromUri(
+          _session.sourceUri,
+          provider: _session.provider,
+          cacheManager: widget.cacheManager,
+          title: _session.title,
+        )));
+  }
+
+  Future<void> _openViewer(int index) async {
+    final items = _session.loaded;
+    await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(
+      builder: (_) => ViewerScreen(
+        items: items,
+        initialIndex: index,
+        registry: widget.registry,
+        cacheManager: widget.cacheManager,
+        favoritesStore: widget.favoritesStore,
+      ),
+    ));
+    if (mounted) _reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GalleryView(
+      tab: _tab,
+      items: _session.loaded,
+      emptyMessage: 'お気に入りがありません',
+      tileBuilder: _buildTile,
+      onItemsChanged: () => setState(() {}),
+    );
+  }
+
+  Widget _buildTile(BuildContext context, ImageSource item, int index) {
+    final thumb = _session.thumbnailFor(item.id);
+    return GestureDetector(
+      onTap: () => _openViewer(index),
+      child: switch (thumb) {
+        ThumbnailData(data: final d) => Image.memory(d, fit: BoxFit.cover),
+        // A favourite whose source is not connected this run has no thumbnail
+        // to fetch, only whatever was cached; say which source it wants.
+        ThumbnailFailed() => _buildIconTile(item),
+        null => Container(
+            color: Colors.grey[300],
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+      },
+    );
+  }
+
+  Widget _buildIconTile(ImageSource item) {
+    final scheme = item.sourceKey?.split(':').first;
+    return Container(
+      color: Colors.grey[200],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            scheme == smbUriScheme ? Icons.folder_shared : Icons.palette,
+            size: 40,
+            color: Colors.blueGrey,
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              item.name,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

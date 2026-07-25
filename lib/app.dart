@@ -9,6 +9,7 @@ import 'services/cache/disk_cache.dart';
 import 'services/cache/download_store.dart';
 import 'services/cache/memory_cache.dart';
 import 'services/favorites/favorites_store.dart';
+import 'services/sources/favorites_source.dart';
 import 'services/pixiv/pixiv_api_client.dart';
 import 'services/pixiv/pixiv_web_client.dart';
 import 'services/smb/smb_config_store.dart';
@@ -72,6 +73,12 @@ class _AppRootState extends State<_AppRoot> {
     final favStore = FavoritesStore();
     await favStore.init();
     _favoritesStore = favStore;
+    // Starred works are a source like any other, so a tab can be opened on
+    // them; it borrows each item's real source for the bytes.
+    _registry.register(
+      'fav:default',
+      FavoritesSource(store: favStore, registry: _registry),
+    );
 
     await _smbConfigStore.init();
 

@@ -6,6 +6,7 @@ import '../../services/smb/smb_config_store.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../settings/settings_screen.dart';
+import 'favorites_gallery_body.dart';
 import 'gallery_session.dart';
 import 'gallery_tab.dart';
 import 'gallery_tab_controller.dart';
@@ -80,6 +81,13 @@ class GalleryTabsScreen extends StatelessWidget {
         newTabOptions: _newTabOptions(context),
       ),
       body: switch (tab.current.sourceUri.scheme) {
+        favUriScheme => FavoritesGalleryBody(
+            key: key,
+            tab: tab,
+            cacheManager: cacheManager,
+            favoritesStore: favoritesStore,
+            registry: registry,
+          ),
         smbUriScheme => SmbGalleryBody(
             key: key,
             tab: tab,
@@ -118,6 +126,11 @@ class GalleryTabsScreen extends StatelessWidget {
               config.name,
             ),
           ),
+        NewTabOption(
+          label: 'お気に入り',
+          icon: Icons.favorite,
+          onSelected: () => _open(context, favGalleryUri(), 'お気に入り'),
+        ),
         NewTabOption(
           label: '設定',
           icon: Icons.settings,

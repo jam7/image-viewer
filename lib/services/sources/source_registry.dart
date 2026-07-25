@@ -133,6 +133,18 @@ class SourceRegistry {
     return source;
   }
 
+  /// The provider for [sourceKey] if it is already available — no login
+  /// prompt, no connection to establish. Null when getting it would need a
+  /// BuildContext, which a background fetch has no business demanding.
+  ImageSourceProvider? peek(String sourceKey) {
+    if (_smbSources.containsKey(sourceKey)) return _smbSources[sourceKey];
+    if (sourceKey.startsWith('pixiv:')) return createPixivSource();
+    return null;
+  }
+
+  /// Every source currently connected, for operations that span all of them.
+  Iterable<ImageSourceProvider> get connectedSources => _smbSources.values;
+
   /// Get sourceKey for a server config.
   static String keyForSmb(ServerConfig config) => 'smb:${config.id}';
   static const String keyForPixiv = 'pixiv:default';

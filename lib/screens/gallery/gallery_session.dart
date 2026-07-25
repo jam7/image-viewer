@@ -4,7 +4,6 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
-import '../../services/favorites/favorites_store.dart';
 import 'gallery_uri.dart';
 import '../../services/sources/image_source_provider.dart';
 import '../../services/thumbnail/thumbnail_loader.dart';
@@ -120,11 +119,7 @@ class GallerySession {
     required ImageSourceProvider provider,
     required CacheManager cacheManager,
     String title = '',
-    FavoritesStore? favoritesStore,
   }) {
-    final seed = isPixivFavoritesUri(uri) && favoritesStore != null
-        ? _favoriteItems(favoritesStore)
-        : null;
     return GallerySession(
       sourceUri: uri,
       provider: provider,
@@ -136,19 +131,8 @@ class GallerySession {
       thumbnailFilter: uri.scheme == smbUriScheme
           ? ((i) => i.metadata?['isDirectory'] != true)
           : null,
-      seedItems: seed,
     );
   }
-
-  static List<ImageSource> _favoriteItems(FavoritesStore store) =>
-      store.listAll().map((e) => ImageSource(
-            id: e.imageId,
-            name: e.name,
-            uri: e.uri,
-            type: ImageSourceType.pixiv,
-            sourceKey: e.sourceKey,
-            metadata: {...e.sourceInfo, 'thumbnailUrl': e.thumbnailUrl},
-          )).toList();
 
   /// True until the first page is loaded, then true while more pages remain.
   bool get hasMore => !_firstPageLoaded || _cursor != null;

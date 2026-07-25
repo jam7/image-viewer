@@ -12,9 +12,9 @@
 /// smb://<configId>/<dir>/<subdir>     a directory on one registered server
 /// pixiv://default/top                 the Pixiv top page
 /// pixiv://default/bookmarks           bookmarks
-/// pixiv://default/favorites           locally starred works
 /// pixiv://default/user/<id>           one author's works
 /// pixiv://default/search?word=..&s_mode=..&order=..
+/// fav://default/                      everything starred, across sources
 /// ```
 ///
 /// SMB has many servers, so its instance id varies; Pixiv has one, so its
@@ -34,9 +34,11 @@ library;
 
 const smbUriScheme = 'smb';
 const pixivUriScheme = 'pixiv';
+const favUriScheme = 'fav';
 
-/// The one Pixiv instance. Pixiv needs no per-server id the way SMB does, but
-/// it still occupies the authority slot so every scheme reads the same.
+/// The instance id for sources that only ever have one — Pixiv's account,
+/// the local favorites. They need no per-server id the way SMB does, but the
+/// slot is still filled so every scheme reads the same.
 const pixivInstance = 'default';
 
 /// Address of the SMB directory [path] on the server registered as [configId].
@@ -45,6 +47,9 @@ Uri smbGalleryUri(String configId, String path) => Uri(
       host: configId,
       pathSegments: _smbSegments(path),
     );
+
+/// Address of the starred works from every source.
+Uri favGalleryUri() => Uri(scheme: favUriScheme, host: pixivInstance);
 
 /// Address of the Pixiv page at the internal [path] (`/top`, `/user/123`,
 /// `/search?word=...`).
@@ -65,11 +70,6 @@ String smbPathOf(Uri uri) {
 /// The Pixiv internal path [uri] points at, query included.
 String pixivPathOf(Uri uri) =>
     uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
-
-/// Whether [uri] is the locally starred works page, which is served from a
-/// finite local list rather than paged from the source.
-bool isPixivFavoritesUri(Uri uri) =>
-    uri.scheme == pixivUriScheme && uri.path == '/favorites';
 
 List<String> _smbSegments(String path) =>
     path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
