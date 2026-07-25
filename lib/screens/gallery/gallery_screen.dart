@@ -4,8 +4,7 @@ import 'package:logging/logging.dart';
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
 import 'gallery_uri.dart';
-import 'widgets/gallery_grid.dart';
-import 'widgets/gallery_keyboard_scrollable.dart';
+import 'widgets/gallery_view.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
@@ -43,14 +42,11 @@ class GalleryScreen extends StatefulWidget {
 }
 
 class _GalleryScreenState extends State<GalleryScreen> {
-  bool _isLoading = false;
-  String? _error;
   final _searchController = TextEditingController();
   final _filterController = TextEditingController();
-  final _scrollController = ScrollController();
-  final _focusNode = FocusNode();
+  /// Lets the filter ask the view to top up when it narrows the list.
+  final _viewKey = GlobalKey<GalleryViewState>();
   int _minPageCount = 0;
-  bool _isPopping = false;
 
   // Search options (session-only). Apply to tag searches.
   String _searchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分一致
@@ -128,21 +124,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _applyFilter();
     }
     _session = _createSession();
-    _scrollController.addListener(_onScroll);
-    _loadPage();
-  }
-
-  @override
-  void deactivate() {
-    // Release decoded thumbnails to save memory; reloaded from cache on return.
-    _session.detach();
-    super.deactivate();
-  }
-
-  @override
-  void activate() {
-    super.activate();
-    _session.attach();
   }
 
   @override
@@ -150,18 +131,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     _session.dispose();
     _searchController.dispose();
     _filterController.dispose();
-    _scrollController.dispose();
-    _focusNode.dispose();
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent - 200 &&
-        !_isLoading &&
-        _session.hasMore) {
-      _loadPage();
-    }
   }
 
   /// Pixiv URLを解析して内部パスに変換。
@@ -209,48 +179,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
     ));
   }
 
-  /// Load the next page (the first page initially) and dispatch its thumbnail
-  /// batch. loadNextPage is a no-op when the list is exhausted, so this is safe
-  /// to call from the scroll trigger.
-  Future<void> _loadPage() async {
-    if (!mounted || _isLoading) return;
-    setState(() => _isLoading = true);
-    try {
-      await _session.loadNextPage();
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _error = null;
-      });
-      await _session.thumbnails.loadNextBatch();
-      _loadMoreIfNeeded();
-    } catch (e, st) {
-      _log.warning('loadPage error', e, st);
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
-  }
-
-  /// Reset to a fresh page (search option / section change): drop the old tab
-  /// and reload from the start.
+  /// Reset to a fresh page (search option / section change): drop the old
+  /// session and start over. The view reloads when it sees the new session.
   void _reload() {
     _session.dispose();
-    _session = _createSession();
-    _loadPage();
-  }
-
-  /// コンテンツが画面に収まってスクロールできない場合、追加読み込みする
-  void _loadMoreIfNeeded() {
-    if (!_session.hasMore) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      if (_scrollController.position.maxScrollExtent <= 0) {
-        _loadPage();
-      }
-    });
+    setState(() => _session = _createSession());
   }
 
   /// Push a new gallery screen for a Pixiv section (top / bookmarks / favorites),
@@ -339,15 +272,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-
-  /// Guard against multiple pop calls in the same frame
-  /// (e.g. ESC key and mouse back button firing simultaneously).
-  void _popOnce() {
-    if (_isPopping) return;
-    _isPopping = true;
-    Navigator.of(context).pop();
-  }
-
   String _appBarTitle() {
     if (_isSearchPage) return '検索結果一覧';
     if (_path.startsWith('/user/')) return '${widget.initialUserName ?? ""} の作品';
@@ -396,7 +320,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   /// display-only filter, so no refetch — but load more if the view got short.
   void _onFilterChanged() {
     setState(_applyFilter);
-    _loadMoreIfNeeded();
+    _viewKey.currentState?.fillViewport();
   }
 
   Widget _buildFilterBar() {
@@ -456,52 +380,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GalleryKeyboardScrollable(
-      focusNode: _focusNode,
-      scrollController: _scrollController,
-      onPop: _popOnce,
-      child: Scaffold(
-        appBar: _buildAppBar(),
-        body: Column(
-          children: [
-            _buildFilterBar(),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
-              ),
-            Expanded(child: _buildGrid()),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGrid() {
-    return GalleryGrid(
-      scrollController: _scrollController,
+    return GalleryView(
+      key: _viewKey,
+      session: _session,
       items: _visibleItems,
-      isLoading: _isLoading,
-      showTrailingLoader: _isLoading,
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,
-      anchor: _session.anchor,
-      onAnchorChanged: (a) => _session.anchor = a,
+      appBar: _buildAppBar(),
+      header: _buildFilterBar(),
+      onItemsChanged: () => setState(() {}),
     );
   }
 
-  Widget _buildTile(BuildContext context, int index) {
-    final image = _visibleItems[index];
+  Widget _buildTile(BuildContext context, ImageSource image, int index) {
     final thumb = _session.thumbnailFor(image.id);
     final pageCount = image.metadata?['pageCount'] as int? ?? 1;
-
-    // Trigger the next thumbnail batch when an item beyond the dispatched
-    // range becomes visible.
-    if (_session.needsBatchFor(image)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _session.thumbnails.loadNextBatch();
-      });
-    }
 
     return GestureDetector(
       onTap: () => _openViewer(index),

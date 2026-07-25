@@ -70,10 +70,10 @@ class _GalleryGridState extends State<GalleryGrid> {
   }
 
   @override
-  void didUpdateWidget(GalleryGrid old) {
-    super.didUpdateWidget(old);
-    if (old.scrollController != widget.scrollController) {
-      old.scrollController.removeListener(_recordAnchor);
+  void didUpdateWidget(GalleryGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController.removeListener(_recordAnchor);
       widget.scrollController.addListener(_recordAnchor);
     }
   }
