@@ -12,3 +12,4 @@
 | [006](006-thumbnail-source-generalization.md) | ギャラリーのサムネイル取得を ImageSourceProvider に一般化 | Accepted |
 | [007](007-virtualized-gallery.md) | ギャラリーを仮想化ページリストモデルに統一 (閲覧状態はタブ所有) | Accepted (決定 4 は 008 で改訂) |
 | [008](008-tab-identity-and-history.md) | タブ identity をタブ ID とし、URI はタブ内ナビ履歴の要素とする | Accepted |
+| [009](009-navigation-toolbar.md) | 戻る・進むはツールバーの明示ボタンにする (Android 15 で端と長押しが使えない) | Accepted |
