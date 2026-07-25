@@ -260,11 +260,14 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     return 'Pixiv';
   }
 
-  /// Jump to another Pixiv section. Lives in the filter row rather than the app
-  /// bar, because the app bar now belongs to the tab strip.
+  /// Where this tab is, and a way to jump elsewhere in Pixiv.
+  ///
+  /// Both jobs used to belong to the app bar — its title said the place, its
+  /// menu moved between them — and the app bar now belongs to the tab strip.
+  /// Labelling the button with the current page keeps the place visible and
+  /// makes the menu findable; a bare icon here was neither.
   Widget _buildSectionMenu() {
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.menu),
       tooltip: 'Pixiv のページ',
       onSelected: _navigate,
       itemBuilder: (_) => const [
@@ -272,6 +275,24 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
         PopupMenuItem(value: '/bookmarks', child: Text('ブックマーク')),
         PopupMenuItem(value: '/favorites', child: Text('お気に入り')),
       ],
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 150, minHeight: 48),
+        padding: const EdgeInsets.only(left: 10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                _session.title,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
     );
   }
 

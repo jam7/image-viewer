@@ -532,6 +532,40 @@ void main() {
           registry: registry,
         );
 
+    testWidgets('the section menu says where the tab is and reaches bookmarks',
+        (tester) async {
+      // The app bar used to do both jobs — its title said the place, its menu
+      // moved between them — and it now belongs to the tab strip.
+      final tab = GalleryTab(GallerySession.fromUri(
+        pixivGalleryUri('/top'),
+        provider: _FakePixivSource(const []),
+        cacheManager: cacheManager,
+        title: 'Pixiv',
+      ));
+      await pumpHome(
+        tester,
+        PixivGalleryBody(
+          tab: tab,
+          onOpenInNewTab: (s) => openedInNewTab.add(s),
+          cacheManager: cacheManager,
+          favoritesStore: favoritesStore,
+          registry: registry,
+        ),
+      );
+
+      expect(find.text('Pixiv'), findsOneWidget); // the place, on the button
+
+      await tester.tap(find.text('Pixiv'));
+      await tester.pumpAndSettle();
+      expect(find.text('ブックマーク'), findsOneWidget);
+      expect(find.text('お気に入り'), findsOneWidget);
+
+      await tester.tap(find.text('ブックマーク'));
+      await tester.pumpAndSettle();
+
+      expect(pixivPathOf(tab.current.sourceUri), '/bookmarks');
+    });
+
     testWidgets('empty result shows the not-found message', (tester) async {
       await pumpHome(tester, build(_FakePixivSource(const [])));
       expect(find.text('画像が見つかりませんでした'), findsOneWidget);
