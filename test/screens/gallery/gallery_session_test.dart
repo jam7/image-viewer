@@ -173,6 +173,29 @@ void main() {
     expect(changes, 0);
   });
 
+  test('a failure survives detach, since nothing could restore it', () async {
+    // A PDF with no cached bytes cannot have a thumbnail made for it, and that
+    // answer is not in the cache to be read back.
+    final source = _FakePagedSource([
+      [img('ok'), img('nope')],
+    ], unsupported: {'nope'});
+    final t = session(source);
+    await t.loadNextPage();
+    await t.thumbnails.loadNextBatch();
+    expect(t.thumbnailFor('nope'), isA<ThumbnailFailed>());
+
+    t.detach();
+
+    expect(t.thumbnailFor('ok'), isNull); // decoded image dropped
+    expect(t.thumbnailFor('nope'), isA<ThumbnailFailed>()); // answer kept
+
+    await t.attach();
+
+    // Still answered, and not fetched again just to fail the same way.
+    expect(t.thumbnailFor('nope'), isA<ThumbnailFailed>());
+    expect(source.thumbnailIds.where((id) => id == 'nope').length, 1);
+  });
+
   test('attach restores thumbnails from the cache without refetching',
       () async {
     final source = _FakePagedSource([
@@ -228,9 +251,12 @@ void main() {
 class _FakePagedSource extends SmbSource {
   final List<List<ImageSource>> pages;
   final List<String> thumbnailIds = [];
+
+  /// Ids that cannot have a thumbnail made (an uncached PDF, a ZIP of nothing).
+  final Set<String> unsupported;
   int loadPageCalls = 0;
 
-  _FakePagedSource(this.pages)
+  _FakePagedSource(this.pages, {this.unsupported = const {}})
       : super(
           config: const ServerConfig(
             id: 't',
@@ -254,6 +280,9 @@ class _FakePagedSource extends SmbSource {
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async {
     thumbnailIds.add(source.id);
+    if (unsupported.contains(source.id)) {
+      throw ThumbnailNotSupportedException(source.id);
+    }
     return Uint8List.fromList(const [1]);
   }
 }

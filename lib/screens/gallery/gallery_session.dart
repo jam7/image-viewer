@@ -185,7 +185,11 @@ class GallerySession {
   void detach() {
     _attachGeneration++;
     thumbnails.cancel();
-    _thumbnailResults.clear();
+    // Only the decoded images cost memory. A recorded failure costs nothing and
+    // cannot be read back from the cache, so dropping it would leave the tile
+    // spinning for good: [attach] would find nothing to restore, and the loader
+    // — which still counts the item as answered — would not fetch it again.
+    _thumbnailResults.removeWhere((_, result) => result is ThumbnailData);
   }
 
   /// A view started showing this session again. Re-reads the thumbnails that
