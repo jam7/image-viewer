@@ -94,8 +94,10 @@ class _GalleryGridState extends State<GalleryGrid> {
     }
     if (oldWidget.restoreKey != widget.restoreKey) {
       _restoreForNewList();
-    } else if (_pendingRestore != null &&
-        oldWidget.items.length != widget.items.length) {
+    } else if (_pendingRestore != null) {
+      // Not "did items change": a session hands out the same growing list every
+      // build, so oldWidget.items and widget.items are one object and any
+      // before/after comparison of them is a comparison with itself.
       _runPendingRestore();
     }
   }

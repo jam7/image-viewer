@@ -144,14 +144,18 @@ void main() {
     await tester.pump();
     expect(reported?.itemId, 'item15');
 
-    await pumpAt(
-        tester,
-        harness(narrow,
-            anchor: reported, shown: const [], restoreKey: 'reread'));
+    // The same list instance, filled in place — which is what a session hands
+    // out. Anything comparing the old and new widget's items is comparing one
+    // object with itself.
+    final growing = <ImageSource>[];
+    await pumpAt(tester,
+        harness(narrow, anchor: reported, shown: growing, restoreKey: 'reread'));
     await tester.pump();
     await tester.pump();
 
-    await pumpAt(tester, harness(narrow, anchor: reported, restoreKey: 'reread'));
+    growing.addAll(items);
+    await pumpAt(tester,
+        harness(narrow, anchor: reported, shown: growing, restoreKey: 'reread'));
     await tester.pump();
     await tester.pump();
 

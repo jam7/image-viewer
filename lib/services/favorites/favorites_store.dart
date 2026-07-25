@@ -63,6 +63,7 @@ class FavoritesStore {
   Future<void> updateThumbnailUrl(String imageId, String url) async {
     final entry = _entries[imageId];
     if (entry == null || entry.thumbnailUrl == url) return;
+    _log.info('thumbnail URL kept for $imageId: $url');
     _entries[imageId] = entry.withThumbnailUrl(url);
     await _flush();
   }
