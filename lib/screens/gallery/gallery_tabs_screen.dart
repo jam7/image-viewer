@@ -6,6 +6,7 @@ import '../../services/smb/smb_config_store.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../settings/settings_screen.dart';
+import 'gallery_session.dart';
 import 'gallery_tab.dart';
 import 'gallery_tab_controller.dart';
 import 'gallery_tab_opener.dart';
@@ -79,6 +80,7 @@ class GalleryTabsScreen extends StatelessWidget {
           key: key,
           tab: tab,
           appBar: strip,
+          onOpenInNewTab: _openInNewTab,
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,
           registry: registry,
@@ -88,6 +90,7 @@ class GalleryTabsScreen extends StatelessWidget {
           key: key,
           tab: tab,
           appBar: strip,
+          onOpenInNewTab: _openInNewTab,
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,
           registry: registry,
@@ -124,6 +127,12 @@ class GalleryTabsScreen extends StatelessWidget {
           )),
         ),
       ];
+
+  /// A body asking for a second tab on a place it can already reach: the
+  /// provider is resolved, so this skips the registry. Opened in the background
+  /// so long-pressing several folders in a row keeps you where you are.
+  void _openInNewTab(GallerySession session) =>
+      controller.open(GalleryTab(session), activate: false);
 
   Future<void> _open(BuildContext context, Uri uri, String title) async {
     final tab = await opener.open(uri, context, title: title);

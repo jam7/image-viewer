@@ -20,10 +20,13 @@ class GalleryTabController extends ChangeNotifier {
   /// The tab on screen, or null when none are open.
   GalleryTab? get active => _tabs.isEmpty ? null : _tabs[_activeIndex];
 
-  /// Add [tab] at the end and show it.
-  void open(GalleryTab tab) {
+  /// Add [tab] at the end. [activate] switches to it; opening in the
+  /// background is what "open in a new tab" means when you long-press
+  /// something, so several places can be lined up without losing your place.
+  /// The chip appearing in the strip is the feedback either way.
+  void open(GalleryTab tab, {bool activate = true}) {
     _tabs.add(tab);
-    _activeIndex = _tabs.length - 1;
+    if (activate) _activeIndex = _tabs.length - 1;
     notifyListeners();
   }
 

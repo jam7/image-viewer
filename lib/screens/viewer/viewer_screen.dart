@@ -630,8 +630,25 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// Search a tag of the work being viewed. Handed back to the gallery to run,
   /// the same way "show this author" is, so the search lands in the tab's
   /// history instead of stacking another screen on top of the viewer.
-  void _searchTag(String tag) {
-    Navigator.of(context).pop({'action': 'searchTag', 'tag': tag});
+  ///
+  /// [newTab] carries a long-press: open it alongside rather than going there.
+  void _searchTag(String tag, {bool newTab = false}) {
+    Navigator.of(context)
+        .pop({'action': 'searchTag', 'tag': tag, 'newTab': newTab});
+  }
+
+  void _showAuthor(ImageSource image, {bool newTab = false}) {
+    final authorId = image.metadata?['authorId'];
+    if (authorId == null) return;
+    final authorName = image.metadata?['author'] as String? ?? '';
+    _log.info('pop with showUser: authorId=$authorId, name=$authorName, '
+        'newTab=$newTab');
+    Navigator.of(context).pop({
+      'action': 'showUser',
+      'userId': authorId,
+      'userName': authorName,
+      'newTab': newTab,
+    });
   }
 
   /// Horizontal, scrollable row of tappable tag chips for the current work.
@@ -645,7 +662,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
         separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (_, i) {
           final tag = tags[i];
-          return ActionChip(
+          return GestureDetector(
+            onLongPress: () => _searchTag(tag, newTab: true),
+            child: ActionChip(
             label: Text(tag),
             onPressed: () => _searchTag(tag),
             backgroundColor: Colors.white.withValues(alpha: 0.85),
@@ -653,6 +672,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
             side: BorderSide.none,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,
+          ),
           );
         },
       ),
@@ -874,39 +894,28 @@ class _ViewerScreenState extends State<ViewerScreen> {
                             Expanded(
                               child: Align(
                                 alignment: Alignment.centerLeft,
-                                child: ActionChip(
-                                  avatar: const Icon(Icons.person,
-                                      size: 16, color: Colors.black54),
-                                  label: Text(
-                                    currentImage.metadata?['author']
-                                            as String? ??
-                                        '',
-                                    overflow: TextOverflow.ellipsis,
+                                child: GestureDetector(
+                                  onLongPress: () =>
+                                      _showAuthor(currentImage, newTab: true),
+                                  child: ActionChip(
+                                    avatar: const Icon(Icons.person,
+                                        size: 16, color: Colors.black54),
+                                    label: Text(
+                                      currentImage.metadata?['author']
+                                              as String? ??
+                                          '',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    onPressed: () => _showAuthor(currentImage),
+                                    backgroundColor:
+                                        Colors.white.withValues(alpha: 0.85),
+                                    labelStyle: const TextStyle(
+                                        color: Colors.black87, fontSize: 12),
+                                    side: BorderSide.none,
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
                                   ),
-                                  onPressed: () {
-                                    final authorId =
-                                        currentImage.metadata?['authorId'];
-                                    final authorName = currentImage
-                                            .metadata?['author'] as String? ??
-                                        '';
-                                    if (authorId != null) {
-                                      _log.info(
-                                          'pop with showUser: authorId=$authorId, authorName=$authorName');
-                                      Navigator.of(context).pop({
-                                        'action': 'showUser',
-                                        'userId': authorId,
-                                        'userName': authorName,
-                                      });
-                                    }
-                                  },
-                                  backgroundColor:
-                                      Colors.white.withValues(alpha: 0.85),
-                                  labelStyle: const TextStyle(
-                                      color: Colors.black87, fontSize: 12),
-                                  side: BorderSide.none,
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  visualDensity: VisualDensity.compact,
                                 ),
                               ),
                             ),

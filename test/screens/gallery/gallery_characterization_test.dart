@@ -58,6 +58,9 @@ void main() {
   late SourceRegistry registry;
   late SmbProxyServer proxyServer;
 
+  /// Sessions the body asked to open alongside (long-press).
+  final openedInNewTab = <GallerySession>[];
+
   setUp(() async {
     tempDir = Directory.systemTemp.createTempSync('gallery_char_test');
     final l2 = DiskCache();
@@ -72,6 +75,7 @@ void main() {
   });
 
   tearDown(() {
+    openedInNewTab.clear();
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
@@ -170,6 +174,7 @@ void main() {
         SmbGalleryBody(
           tab: tab ?? smbTab(source, path),
           appBar: AppBar(title: Text(path)),
+          onOpenInNewTab: (s) => openedInNewTab.add(s),
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,
           registry: registry,
@@ -472,6 +477,23 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('long-pressing a folder asks for it alongside, not instead',
+        (tester) async {
+      final source = nestedSource();
+      final tab = smbTab(source, '/');
+      await pumpPushed(tester, build(source, tab: tab));
+
+      await tester.longPress(find.text('subdir'));
+      await settle(tester);
+
+      // Asked for a second tab, and stayed where it was.
+      expect(openedInNewTab.length, 1);
+      expect(smbPathOf(openedInNewTab.single.sourceUri), 'subdir');
+      expect(tab.history.length, 1);
+      expect(smbPathOf(tab.current.sourceUri), '/');
+      expect(find.text('subdir'), findsOneWidget); // the folder tile, still
+    });
+
     testWidgets('a mostly-vertical flick does not pop a short list',
         (tester) async {
       // Few enough items that the grid has nothing to scroll. Flutter's default
@@ -501,6 +523,7 @@ void main() {
             title: 'test-user の作品',
           )),
           appBar: AppBar(title: const Text('test-user の作品')),
+          onOpenInNewTab: (s) => openedInNewTab.add(s),
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,
           registry: registry,

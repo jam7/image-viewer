@@ -24,10 +24,14 @@ class SmbGalleryBody extends StatefulWidget {
   final SourceRegistry registry;
   final SmbProxyServer proxyServer;
 
+  /// Open a place in a new tab. Tabs are owned above this widget, so it asks.
+  final void Function(GallerySession session) onOpenInNewTab;
+
   const SmbGalleryBody({
     super.key,
     required this.tab,
     required this.appBar,
+    required this.onOpenInNewTab,
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
@@ -54,8 +58,7 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
   void _onItemTap(ImageSource item) {
     if (item.metadata?['isDirectory'] == true) {
       // Descending is a navigation within this tab, not a new screen (ADR 008).
-      final path = item.metadata?['path'] as String? ?? '/';
-      setState(() => _tab.navigate(_sessionFor(path)));
+      setState(() => _tab.navigate(_sessionFor(_pathOf(item))));
     } else if (item.metadata?['isVideo'] == true) {
       _session.thumbnails.cancel();
       Navigator.of(context).push(MaterialPageRoute(
@@ -86,6 +89,15 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
     }
   }
 
+  static String _pathOf(ImageSource item) =>
+      item.metadata?['path'] as String? ?? '/';
+
+  /// Long-pressing a folder opens it alongside instead of moving there.
+  void _onItemLongPress(ImageSource item) {
+    if (item.metadata?['isDirectory'] != true) return;
+    widget.onOpenInNewTab(_sessionFor(_pathOf(item)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return GalleryView(
@@ -105,6 +117,7 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
 
     return GestureDetector(
       onTap: () => _onItemTap(item),
+      onLongPress: isDir ? () => _onItemLongPress(item) : null,
       child: isDir
           ? _buildIconTile(item.name, Icons.folder, Colors.amber)
           : isVideo

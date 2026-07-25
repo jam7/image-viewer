@@ -24,10 +24,14 @@ class PixivGalleryBody extends StatefulWidget {
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
 
+  /// Open a place in a new tab. Tabs are owned above this widget, so it asks.
+  final void Function(GallerySession session) onOpenInNewTab;
+
   const PixivGalleryBody({
     super.key,
     required this.tab,
     required this.appBar,
+    required this.onOpenInNewTab,
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
@@ -98,6 +102,25 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
         _tab.navigate(_sessionFor(path, authorName: authorName)));
   }
 
+  /// Go to [path], either here or alongside. A long-press in the viewer asks
+  /// for alongside, which leaves this tab where the reader left it.
+  void _goTo(String path, {String? authorName, bool newTab = false}) {
+    final session = _sessionFor(path, authorName: authorName);
+    if (newTab) {
+      widget.onOpenInNewTab(session);
+    } else {
+      setState(() => _tab.navigate(session));
+    }
+  }
+
+  /// Run [action] once the viewer's pop has settled; navigating mid-pop fights
+  /// the route transition.
+  void _afterViewer(VoidCallback action) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) action();
+    });
+  }
+
   /// A search path carrying the current tag-match / order toggles.
   String _searchPathFor(String word) =>
       '/search?word=${Uri.encodeComponent(word)}'
@@ -151,11 +174,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     }
 
     return null;
-  }
-
-  void _showUserWorks(int userId, String userName) {
-    _log.info('showUserWorks: userId=$userId, userName=$userName');
-    _navigate('/user/$userId', authorName: userName);
   }
 
   /// Reload the same place (search options changed, favorites edited). Not a
@@ -218,18 +236,19 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     _log.info('viewer returned: result=$result, mounted=$mounted');
     if (!mounted) return;
     if (result != null && result['action'] == 'showUser') {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _showUserWorks(
-              result['userId'] as int, result['userName'] as String);
-        }
-      });
+      final userId = result['userId'] as int;
+      final userName = result['userName'] as String;
+      _afterViewer(() => _goTo(
+            '/user/$userId',
+            authorName: userName,
+            newTab: result['newTab'] == true,
+          ));
     } else if (result != null && result['action'] == 'searchTag') {
       final tag = result['tag'] as String;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _searchController.text = tag;
-        _navigate(_searchPathFor(tag));
+      final newTab = result['newTab'] == true;
+      _afterViewer(() {
+        if (!newTab) _searchController.text = tag;
+        _goTo(_searchPathFor(tag), newTab: newTab);
       });
     } else if (_isFavoritesPage) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み
