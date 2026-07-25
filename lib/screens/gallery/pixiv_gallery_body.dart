@@ -15,34 +15,29 @@ import '../viewer/viewer_screen.dart';
 
 final _log = Logger('Gallery');
 
-/// サムネイル一覧画面。
-class GalleryScreen extends StatefulWidget {
-  final PixivSource source;
+/// Pixiv のページを見せるタブの中身。The tab and the app bar come from the host
+/// screen, which owns them across every source.
+class PixivGalleryBody extends StatefulWidget {
+  final GalleryTab tab;
+  final PreferredSizeWidget appBar;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
-  final String? initialUserPath;
-  final String? initialUserName;
-  final String? initialSearchWord;
-  final String? initialFilterText;
 
-  const GalleryScreen({
+  const PixivGalleryBody({
     super.key,
-    required this.source,
+    required this.tab,
+    required this.appBar,
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
-    this.initialUserPath,
-    this.initialUserName,
-    this.initialSearchWord,
-    this.initialFilterText,
   });
 
   @override
-  State<GalleryScreen> createState() => _GalleryScreenState();
+  State<PixivGalleryBody> createState() => _PixivGalleryBodyState();
 }
 
-class _GalleryScreenState extends State<GalleryScreen> {
+class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   final _searchController = TextEditingController();
   final _filterController = TextEditingController();
   /// Lets the filter ask the view to top up when it narrows the list, and the
@@ -54,10 +49,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String _searchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分一致
   String _searchOrder = 'date_d'; // date_d=新着 / date=古い順
 
-  // The tab this screen shows. Sections, searches and author pages are entries
-  // in its history rather than separate screens (ADR 008).
-  late final GalleryTab _tab;
+  // Sections, searches and author pages are entries in the tab's history
+  // rather than separate screens (ADR 008).
+  GalleryTab get _tab => widget.tab;
   GallerySession get _session => _tab.current;
+  PixivSource get _source => _session.provider as PixivSource;
 
   /// Where the tab currently is, which is what the URI of its entry says.
   String get _path => pixivPathOf(_session.sourceUri);
@@ -89,7 +85,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   GallerySession _sessionFor(String path, {String? authorName}) {
     return GallerySession.fromUri(
       pixivGalleryUri(path),
-      provider: widget.source,
+      provider: _source,
       cacheManager: widget.cacheManager,
       title: _titleFor(path, authorName),
       favoritesStore: widget.favoritesStore,
@@ -113,35 +109,19 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialSearchWord != null) {
-      _searchController.text = widget.initialSearchWord!;
-    }
-    // Seed the toggles from the search path if it carries options (so the
-    // results screen reflects how the search was issued).
-    final initialPath = widget.initialUserPath;
-    if (initialPath != null && initialPath.startsWith('/search')) {
-      final q = Uri.parse('https://dummy$initialPath').queryParameters;
+    // Reflect how the tab's current search was issued, so the toggles agree
+    // with the results on screen.
+    if (_isSearchPage) {
+      final q = Uri.parse('https://dummy$_path').queryParameters;
+      _searchController.text = q['word'] ?? '';
       _searchMode = q['s_mode'] ?? _searchMode;
       _searchOrder = q['order'] ?? _searchOrder;
     }
-    if (widget.initialFilterText != null) {
-      _filterController.text = widget.initialFilterText!;
-      _applyFilter();
-    }
-    final initial = widget.initialUserPath ?? '/top';
-    _tab = GalleryTab(_sessionFor(
-      initial.startsWith('/search')
-          ? _searchPathFor(
-              Uri.parse('https://dummy$initial').queryParameters['word'] ?? '')
-          : initial,
-      authorName: widget.initialUserName,
-    ));
     _log.info('initState: path=$_path, tab=${_tab.id}');
   }
 
   @override
   void dispose() {
-    _tab.dispose();
     _searchController.dispose();
     _filterController.dispose();
     super.dispose();
@@ -189,8 +169,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         ? _searchPathFor(
             Uri.parse('https://dummy$_path').queryParameters['word'] ?? '')
         : _path;
-    setState(() => _tab.replaceCurrent(
-        _sessionFor(path, authorName: widget.initialUserName)));
+    setState(() => _tab.replaceCurrent(_sessionFor(path)));
   }
 
 
@@ -247,6 +226,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
           _showUserWorks(
               result['userId'] as int, result['userName'] as String);
         }
+      });
+    } else if (result != null && result['action'] == 'searchTag') {
+      final tag = result['tag'] as String;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _searchController.text = tag;
+        _navigate(_searchPathFor(tag));
       });
     } else if (_isFavoritesPage) {
       // ビューアでお気に入りが変更された可能性があるので再読み込み

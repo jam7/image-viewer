@@ -1,21 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:logging/logging.dart';
 
 import '../../models/server_config.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/smb/smb_config_store.dart';
-import '../../services/sources/pixiv_source.dart';
-import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
-import '../gallery/gallery_screen.dart';
-import '../gallery/smb_gallery_screen.dart';
+import '../gallery/gallery_tab_controller.dart';
+import '../gallery/gallery_tab_opener.dart';
+import '../gallery/gallery_tabs_screen.dart';
+import '../gallery/gallery_uri.dart';
 import '../settings/settings_screen.dart';
 import '../settings/smb_connection_dialog.dart';
 import 'favorites_tab.dart';
-
-final _log = Logger('HomeScreen');
 
 /// ランディングページ。下部タブバーでホームとお気に入りを切り替え。
 class HomeScreen extends StatefulWidget {
@@ -25,6 +22,9 @@ class HomeScreen extends StatefulWidget {
   final SourceRegistry registry;
   final SmbProxyServer proxyServer;
 
+  /// Open tabs, held above this screen so they outlive it.
+  final GalleryTabController tabs;
+
   const HomeScreen({
     super.key,
     required this.cacheManager,
@@ -32,6 +32,7 @@ class HomeScreen extends StatefulWidget {
     required this.smbConfigStore,
     required this.registry,
     required this.proxyServer,
+    required this.tabs,
   });
 
   @override
@@ -41,6 +42,30 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentTab = 0;
 
+  late final GalleryTabOpener _opener = GalleryTabOpener(
+    registry: widget.registry,
+    cacheManager: widget.cacheManager,
+    favoritesStore: widget.favoritesStore,
+  );
+
+  /// Open [uri] as a new tab and show the tab host.
+  Future<void> _openTab(Uri uri, String title) async {
+    final tab = await _opener.open(uri, context, title: title);
+    if (tab == null || !mounted) return;
+    widget.tabs.open(tab);
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => GalleryTabsScreen(
+        controller: widget.tabs,
+        opener: _opener,
+        smbConfigStore: widget.smbConfigStore,
+        proxyServer: widget.proxyServer,
+        cacheManager: widget.cacheManager,
+        favoritesStore: widget.favoritesStore,
+        registry: widget.registry,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -49,6 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
         favoritesStore: widget.favoritesStore,
         cacheManager: widget.cacheManager,
         registry: widget.registry,
+        onOpenUserWorks: (id, name) =>
+            _openTab(pixivGalleryUri('/user/$id'), '$name の作品'),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentTab,
@@ -191,51 +218,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _openPixiv() async {
-    _log.info('_openPixiv: resolving pixiv source');
-    final provider = await widget.registry.resolve('pixiv:default', context);
-    _log.info('_openPixiv: resolved=${provider != null}');
-    if (provider == null || provider is! PixivSource) {
-      _log.info('_openPixiv: provider is null or not PixivSource');
-      return;
-    }
-    if (!mounted) {
-      _log.info('_openPixiv: not mounted, aborting');
-      return;
-    }
-    _log.info('_openPixiv: pushing GalleryScreen');
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GalleryScreen(
-        source: provider,
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        registry: widget.registry,
-      ),
-    ));
-  }
+  Future<void> _openPixiv() => _openTab(pixivGalleryUri('/top'), 'Pixiv');
 
-  Future<void> _connectSmb(ServerConfig config) async {
-    final password = await widget.smbConfigStore.getPassword(config.id);
-    if (password == null) return;
-    if (!mounted) return;
-    final source = SmbSource(
-      config: config,
-      password: password,
-      cacheManager: widget.cacheManager,
-      proxyServer: widget.proxyServer,
-    );
-    widget.registry.register(SourceRegistry.keyForSmb(config), source);
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => SmbGalleryScreen(
-        source: source,
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        registry: widget.registry,
-        proxyServer: widget.proxyServer,
-        initialPath: config.basePath ?? '/',
-      ),
-    ));
-  }
+  Future<void> _connectSmb(ServerConfig config) => _openTab(
+        smbGalleryUri(config.id, config.basePath ?? '/'),
+        config.name,
+      );
 
   Future<void> _addSmbConfig() async {
     final result = await showDialog<Map<String, dynamic>>(

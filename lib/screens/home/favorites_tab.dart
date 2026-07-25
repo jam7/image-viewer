@@ -8,9 +8,7 @@ import '../../services/cache/cache_manager.dart';
 import '../gallery/gallery_constants.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
-import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
-import '../gallery/gallery_screen.dart';
 import '../viewer/viewer_screen.dart';
 
 final _log = Logger('FavoritesTab');
@@ -21,11 +19,16 @@ class FavoritesTab extends StatefulWidget {
   final CacheManager cacheManager;
   final SourceRegistry registry;
 
+  /// Open an author's works. Tabs live above this widget, so it asks rather
+  /// than navigating itself.
+  final void Function(int userId, String userName) onOpenUserWorks;
+
   const FavoritesTab({
     super.key,
     required this.favoritesStore,
     required this.cacheManager,
     required this.registry,
+    required this.onOpenUserWorks,
   });
 
   @override
@@ -112,7 +115,7 @@ class _FavoritesTabState extends State<FavoritesTab> {
     _log.info('viewer returned: result=$result, mounted=$mounted');
     if (result != null && result['action'] == 'showUser') {
       _log.info('opening user works: ${result['userId']}');
-      await _openUserWorks(result['userId'] as int, result['userName'] as String);
+      _openUserWorks(result['userId'] as int, result['userName'] as String);
     }
 
     // Refresh after returning (favorites may have changed)
@@ -122,23 +125,10 @@ class _FavoritesTabState extends State<FavoritesTab> {
     }
   }
 
-  Future<void> _openUserWorks(int userId, String userName) async {
-    _log.info('_openUserWorks: resolving pixiv source');
-    final provider = await widget.registry.resolve('pixiv:default', context);
-    if (provider == null || provider is! PixivSource) return;
-    if (!mounted) return;
-
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GalleryScreen(
-        source: provider,
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        registry: widget.registry,
-        initialUserPath: '/user/$userId',
-        initialUserName: userName,
-      ),
-    ));
-  }
+  /// Opening an author is a tab operation, and tabs are owned above this
+  /// widget, so it is handed up rather than pushed from here.
+  void _openUserWorks(int userId, String userName) =>
+      widget.onOpenUserWorks(userId, userName);
 
   @override
   Widget build(BuildContext context) {

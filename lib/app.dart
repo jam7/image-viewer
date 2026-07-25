@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
+import 'screens/gallery/gallery_tab_controller.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/pixiv/pixiv_login_screen.dart';
 import 'services/cache/cache_manager.dart';
@@ -44,6 +45,8 @@ class _AppRootState extends State<_AppRoot> {
   final _smbConfigStore = SmbConfigStore();
   final _proxyServer = SmbProxyServer();
   late final SourceRegistry _registry;
+  /// Open tabs live here so they outlive any gallery route (ADR 008).
+  final _tabs = GalleryTabController();
   CacheManager? _cacheManager;
   FavoritesStore? _favoritesStore;
   bool _isLoading = true;
@@ -117,6 +120,7 @@ class _AppRootState extends State<_AppRoot> {
 
   @override
   void dispose() {
+    _tabs.dispose();
     _proxyServer.dispose();
     _registry.disposeAll();
     _webClient.dispose();
@@ -137,6 +141,7 @@ class _AppRootState extends State<_AppRoot> {
       smbConfigStore: _smbConfigStore,
       registry: _registry,
       proxyServer: _proxyServer,
+      tabs: _tabs,
     );
   }
 }

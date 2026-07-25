@@ -14,55 +14,44 @@ import '../../widgets/thumbnail_result.dart';
 import '../video/video_player_screen.dart';
 import '../viewer/viewer_screen.dart';
 
-/// SMBディレクトリブラウズ画面。
-class SmbGalleryScreen extends StatefulWidget {
-  final SmbSource source;
+/// SMB ディレクトリを見せるタブの中身。The tab and the app bar come from the
+/// host screen, which owns them across every source.
+class SmbGalleryBody extends StatefulWidget {
+  final GalleryTab tab;
+  final PreferredSizeWidget appBar;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
   final SmbProxyServer proxyServer;
-  final String initialPath;
 
-  const SmbGalleryScreen({
+  const SmbGalleryBody({
     super.key,
-    required this.source,
+    required this.tab,
+    required this.appBar,
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
     required this.proxyServer,
-    this.initialPath = '/',
   });
 
   @override
-  State<SmbGalleryScreen> createState() => _SmbGalleryScreenState();
+  State<SmbGalleryBody> createState() => _SmbGalleryBodyState();
 }
 
-class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
-  late final GalleryTab _tab;
-  final _viewKey = GlobalKey<GalleryViewState>();
+class _SmbGalleryBodyState extends State<SmbGalleryBody> {
+  GalleryTab get _tab => widget.tab;
   GallerySession get _session => _tab.current;
-
-  @override
-  void initState() {
-    super.initState();
-    _tab = GalleryTab(_sessionFor(widget.initialPath));
-  }
+  SmbSource get _source => _session.provider as SmbSource;
 
   GallerySession _sessionFor(String path) => GallerySession.fromUri(
-        smbGalleryUri(widget.source.config.id, path),
-        provider: widget.source,
+        smbGalleryUri(_source.config.id, path),
+        provider: _source,
         cacheManager: widget.cacheManager,
         title: path,
         onChanged: () {
           if (mounted) setState(() {});
         },
       );
-
-  @override
-  void dispose() {
-    _tab.dispose();
-    super.dispose();
-  }
 
   void _onItemTap(ImageSource item) {
     if (item.metadata?['isDirectory'] == true) {
@@ -74,7 +63,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           item: item,
-          source: widget.source,
+          source: _source,
           proxyServer: widget.proxyServer,
         ),
       )).then((_) {
@@ -102,23 +91,12 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   @override
   Widget build(BuildContext context) {
     return GalleryView(
-      key: _viewKey,
       tab: _tab,
       items: _session.loaded,
       emptyMessage: 'ファイルが見つかりませんでした',
       tileBuilder: _buildTile,
       onItemsChanged: () => setState(() {}),
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => _viewKey.currentState?.goBack(),
-        ),
-        title: Text(
-          _session.title,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-        ),
-      ),
+      appBar: widget.appBar,
     );
   }
 

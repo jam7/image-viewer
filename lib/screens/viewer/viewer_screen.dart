@@ -11,7 +11,6 @@ import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
-import '../gallery/gallery_screen.dart';
 
 final _log = Logger('Viewer');
 
@@ -628,25 +627,11 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   // --- UI ---
 
-  /// Open a tag search in a new gallery screen. Tags come from the Pixiv work
-  /// being viewed; tapping one searches that tag, mirroring the gallery's own
-  /// search-by-tag flow.
+  /// Search a tag of the work being viewed. Handed back to the gallery to run,
+  /// the same way "show this author" is, so the search lands in the tab's
+  /// history instead of stacking another screen on top of the viewer.
   void _searchTag(String tag) {
-    final source = widget.registry.createPixivSource();
-    if (source == null) {
-      _log.warning('searchTag: pixiv source unavailable');
-      return;
-    }
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => GalleryScreen(
-        source: source,
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        registry: widget.registry,
-        initialSearchWord: tag,
-        initialUserPath: '/search?word=${Uri.encodeComponent(tag)}',
-      ),
-    ));
+    Navigator.of(context).pop({'action': 'searchTag', 'tag': tag});
   }
 
   /// Horizontal, scrollable row of tappable tag chips for the current work.

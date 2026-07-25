@@ -9,8 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_viewer/models/image_source.dart';
 import 'package:image_viewer/models/server_config.dart';
 import 'package:image_viewer/screens/gallery/gallery_constants.dart';
-import 'package:image_viewer/screens/gallery/gallery_screen.dart';
-import 'package:image_viewer/screens/gallery/smb_gallery_screen.dart';
+import 'package:image_viewer/screens/gallery/gallery_session.dart';
+import 'package:image_viewer/screens/gallery/gallery_tab.dart';
+import 'package:image_viewer/screens/gallery/gallery_uri.dart';
+import 'package:image_viewer/screens/gallery/pixiv_gallery_body.dart';
+import 'package:image_viewer/screens/gallery/smb_gallery_body.dart';
 import 'package:image_viewer/services/cache/cache_manager.dart';
 import 'package:image_viewer/services/cache/disk_cache.dart';
 import 'package:image_viewer/services/cache/download_store.dart';
@@ -150,14 +153,25 @@ void main() {
 
   // ---------------------------------------------------------------------------
   group('SmbGalleryScreen characterization', () {
-    SmbGalleryScreen build(SmbSource source, {String path = '/'}) =>
-        SmbGalleryScreen(
-          source: source,
+    /// The body under a plain app bar, standing in for the tab strip the host
+    /// normally supplies.
+    GalleryTab smbTab(SmbSource source, String path) =>
+        GalleryTab(GallerySession.fromUri(
+          smbGalleryUri(source.config.id, path),
+          provider: source,
+          cacheManager: cacheManager,
+          title: path,
+        ));
+
+    SmbGalleryBody build(SmbSource source,
+            {String path = '/', GalleryTab? tab}) =>
+        SmbGalleryBody(
+          tab: tab ?? smbTab(source, path),
+          appBar: AppBar(title: Text(path)),
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,
           registry: registry,
           proxyServer: proxyServer,
-          initialPath: path,
         );
 
     testWidgets('empty directory shows the not-found message', (tester) async {
@@ -286,15 +300,22 @@ void main() {
 
     testWidgets('a directory opens in the same tab, not a new screen',
         (tester) async {
-      await pumpPushed(tester, build(nestedSource()));
-      expect(find.text('subdir'), findsOneWidget);
+      final source = nestedSource();
+      final tab = smbTab(source, '/');
+      await pumpPushed(tester, build(source, tab: tab));
+      expect(find.text('subdir'), findsOneWidget); // the folder tile
+      expect(tab.history.length, 1);
 
       await tester.tap(find.text('subdir'));
       await settle(tester);
 
-      // The app bar follows the tab, and only one gallery screen ever existed.
-      expect(find.text('subdir'), findsOneWidget); // now the title
-      expect(find.byType(SmbGalleryScreen), findsOneWidget);
+      // Descended within the one tab: history grew, no second body appeared,
+      // and the folder tile gave way to the subdirectory's contents.
+      expect(tab.history.length, 2);
+      expect(tab.index, 1);
+      expect(smbPathOf(tab.current.sourceUri), 'subdir');
+      expect(find.byType(SmbGalleryBody), findsOneWidget);
+      expect(find.text('subdir'), findsNothing);
     });
 
     testWidgets('back from a subdirectory returns to its parent, not out',
@@ -430,13 +451,17 @@ void main() {
 
   // ---------------------------------------------------------------------------
   group('GalleryScreen (Pixiv, user-works path) characterization', () {
-    GalleryScreen build(PixivSource source) => GalleryScreen(
-          source: source,
+    PixivGalleryBody build(PixivSource source) => PixivGalleryBody(
+          tab: GalleryTab(GallerySession.fromUri(
+            pixivGalleryUri('/user/123'),
+            provider: source,
+            cacheManager: cacheManager,
+            title: 'test-user の作品',
+          )),
+          appBar: AppBar(title: const Text('test-user の作品')),
           cacheManager: cacheManager,
           favoritesStore: favoritesStore,
           registry: registry,
-          initialUserPath: '/user/123',
-          initialUserName: 'test-user',
         );
 
     testWidgets('empty result shows the not-found message', (tester) async {

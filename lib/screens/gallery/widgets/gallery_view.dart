@@ -91,7 +91,14 @@ class GalleryViewState extends State<GalleryView> {
     super.initState();
     _shown = widget.tab.current;
     _scrollController.addListener(_onScroll);
-    loadNextPage();
+    // Switching tabs builds a fresh view over a session that may already hold
+    // its items; fetching again would append a duplicate page. Same rule as
+    // [_onSessionChanged], which handles the moves within one view.
+    if (_shown.hasLoaded) {
+      _shown.attach();
+    } else {
+      loadNextPage();
+    }
   }
 
   @override
