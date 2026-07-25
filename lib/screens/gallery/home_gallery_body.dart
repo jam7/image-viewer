@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/server_config.dart';
 import '../../services/cache/cache_manager.dart';
+import '../../services/platform/host_activity.dart';
 import '../../services/smb/smb_config_store.dart';
 import '../../services/sources/home_source.dart';
 import '../settings/smb_connection_dialog.dart';
@@ -57,11 +58,16 @@ class _HomeGalleryBodyState extends State<HomeGalleryBody> {
   Widget build(BuildContext context) {
     return PopScope(
       // The same rule every body follows: walk the history while there is any,
-      // then let the OS have the gesture. Home is not special — it only looked
-      // that way while back could close a tab.
-      canPop: !widget.tab.canGoBack,
+      // then leave the app without ending it. Home is not special — it only
+      // looked that way while back could close a tab.
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(widget.tab.back);
+        if (didPop) return;
+        if (widget.tab.canGoBack) {
+          setState(widget.tab.back);
+        } else {
+          const HostActivity().moveToBackground();
+        }
       },
       // Grouped by what the entries are, because that decides what tapping one
       // does. Services and servers are out there and have to be reached;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import '../../../models/image_source.dart';
+import '../../../services/platform/host_activity.dart';
 import '../gallery_session.dart';
 import '../gallery_tab.dart';
 import 'gallery_grid.dart';
@@ -31,8 +32,8 @@ final _log = Logger('GalleryView');
 /// side effect of navigating (ADR 009 追記) — history is not recoverable, and a
 /// double-tapped back button should not be able to destroy it. Every way of
 /// asking — Escape, Backspace, the mouse back button, a rightward swipe — goes
-/// through [goBack]; the system gesture is handled by [PopScope] below, which
-/// hands it to the OS once there is no history left.
+/// through [goBack]; the system gesture goes through the [PopScope] in [build],
+/// which leaves the app once there is no history left.
 class GalleryView extends StatefulWidget {
   /// The tab being shown. Its current entry is the place on screen.
   final GalleryTab tab;
@@ -230,13 +231,19 @@ class GalleryViewState extends State<GalleryView> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Claim the system gesture only while there is history to walk. Once
-      // there is not, it belongs to the OS — on Android that backgrounds the
-      // app, which is what back at a root screen is supposed to do, and it
-      // lets the predictive-back preview animate instead of being swallowed.
-      canPop: !widget.tab.canGoBack,
+      // Always ours, even at the first entry, because letting the route pop is
+      // finish(): the activity dies and every tab goes with it. Leaving is
+      // still what happens there -- just as a move to the background, so
+      // coming back is instant and nothing is lost.
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) goBack();
+        if (didPop) return;
+        if (!widget.tab.back()) {
+          const HostActivity().moveToBackground();
+          return;
+        }
+        setState(_onSessionChanged);
+        widget.onItemsChanged?.call();
       },
       child: GalleryKeyboardScrollable(
         focusNode: _focusNode,

@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/models/image_source.dart';
@@ -103,6 +103,25 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
+  /// What the app asked the host activity to do. Leaving is a platform call
+  /// now, not a route pop, so this is where "we left" shows up.
+  late List<String> hostCalls;
+
+  setUp(() {
+    hostCalls = [];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('app/activity'),
+            (call) async {
+      hostCalls.add(call.method);
+      return null;
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('app/activity'), null);
+  });
+
   testWidgets('system back walks the history of the tab just switched to',
       (tester) async {
     final deep = GalleryTab(sessionAt('a'))..navigate(sessionAt(r'a\inner'));
@@ -161,16 +180,17 @@ void main() {
     expect(browsing.index, 0);
   });
 
-  testWidgets('the system gesture goes to the OS at a tab\'s first entry',
+  testWidgets('the system gesture leaves the app at a tab\'s first entry',
       (tester) async {
-    // Nothing left to walk, so the route pops -- in the app this screen is the
-    // root, which is Android backgrounding the app. It does not close the tab.
+    // Leaving is a move to the background, not a pop: popping the root route
+    // is finish(), which destroys the activity and every tab with it.
     controller.open(GalleryTab(sessionAt('only')));
     await pumpHost(tester);
 
     await systemBack(tester);
 
-    expect(find.text('HOME_MARKER'), findsOneWidget);
+    expect(hostCalls, ['moveToBackground']);
+    expect(find.text('HOME_MARKER'), findsNothing); // the route stayed
     expect(controller.tabs.length, 1);
   });
 
@@ -195,8 +215,8 @@ void main() {
     await systemBack(tester);
     expect(smbPathOf(tab.current.sourceUri), 'a');
 
-    await systemBack(tester); // no history left: the OS gets it
-    expect(find.text('HOME_MARKER'), findsOneWidget);
+    await systemBack(tester); // no history left: leave the app instead
+    expect(hostCalls, ['moveToBackground']);
 
     // The tab and the entry back left are both still there.
     expect(controller.tabs.length, 1);
