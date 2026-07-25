@@ -63,15 +63,18 @@ class PageResult { List<ImageSource> items; Object? nextCursor; int? total; }
 タブ・アイテム・キャッシュキーを URI で表す。既存の sourceKey (`pixiv:default`,
 `smb:<id>`) と Pixiv パス (`/search?word=`, `/user/123`, `/bookmarks`, `/top`) を統合:
 
+形は全スキーム共通で **`<scheme>://<instanceId>/<path>`**。authority が
+「ソースのどのインスタンスか」、path が「その中のどこか」を表す。
+
 ```
-smb://<serverId>/<dir>/<subdir>               (ディレクトリ)
-pixiv:/top
-pixiv:/bookmarks
-pixiv:/favorites
-pixiv:/user/123
-pixiv:/search?word=...&s_mode=...&order=date_d
-fav://                                        (お気に入り一覧、フェーズ 3)
-dl://                                         (DL 済み一覧、フェーズ 3)
+smb://<configId>/<dir>/<subdir>               (登録済みサーバー 1 台の中のディレクトリ)
+pixiv://default/top
+pixiv://default/bookmarks
+pixiv://default/favorites
+pixiv://default/user/123
+pixiv://default/search?word=...&s_mode=...&order=date_d
+fav://<instance>/                             (お気に入り一覧、フェーズ 3)
+dl://<instance>/                              (DL 済み一覧、フェーズ 3)
 ```
 
 - **URI は「場所」の表現**。タブの識別子ではない ([ADR 008](../adr/008-tab-identity-and-history.md))。
@@ -84,6 +87,16 @@ dl://                                         (DL 済み一覧、フェーズ 3)
 実装は `lib/screens/gallery/gallery_uri.dart`。往復テストは
 `test/screens/gallery/gallery_uri_test.dart`。
 
+- **authority には常に「インスタンス ID」を入れる**。ADR 007 は `pixiv://top` /
+  `pixiv://user/123` と書いていたが、これは `top` や `user` を**ホスト位置**に置く形で、
+  SMB の `smb://<configId>/...` (ホスト = サーバー) と意味が揃わない。Pixiv は
+  インスタンスが 1 つしか無いだけで authority が無いわけではないので、`default` を
+  明示して `pixiv://default/top` とする。この結果:
+  - **`sourceKey` の取り出しが全スキーム共通で `'${uri.scheme}:${uri.host}'`** になり、
+    registry の既存キー (`smb:<configId>` / `pixiv:default`) とそのまま一致する。
+    2B-10 で `registry.resolve()` に渡すときにスキームごとの分岐が要らない
+  - `uri.path` が純粋に「場所」だけになる (host と path を組み直す必要がない)
+  - フェーズ 3 の `fav://` / `dl://` も同じ形に従う
 - **SMB パスは区切りを `\` ↔ `/` に対応付けて URI の path *segments* に載せる**。
   実際の SMB パスは `books\作品集第2巻.pdf` のようにバックスラッシュ区切りで、
   空白・`#`・`%`・非 ASCII を含む。`Uri` の path 成分にそのまま入れるとバックスラッシュが
@@ -91,9 +104,6 @@ dl://                                         (DL 済み一覧、フェーズ 3)
   `/` を使えないので、区切りとして対応付ければ可逆になる。**デコードは
   `Uri.pathSegments` を使うこと** (`Uri.path` はパーセントエンコードされたまま返す)。
   先頭の区切りは落ちるが、dart_smb2 の `_normalizePath` が同じことをするので影響なし
-- **Pixiv は authority を使わず `pixiv:/top`** (ADR 007 の `pixiv://top` から変更)。
-  内部パス (`/user/123`, `/search?...`) をそのまま URI の path + query に載せられ、
-  取り出すときに host と path を組み直さずに済む
 
 ### 3. タブモデル (R2, R7) — ブラウザのタブ ([ADR 008](../adr/008-tab-identity-and-history.md))
 

@@ -4,14 +4,24 @@
 /// may be open in several tabs — and it is what a link or a duplicated tab
 /// carries.
 ///
+/// One shape for every scheme: **`<scheme>://<instanceId>/<path>`**. The
+/// authority names which instance of the source, and the path names the place
+/// within it.
+///
 /// ```
-/// smb://<configId>/<dir>/<subdir>     an SMB directory
-/// pixiv:/top                          the Pixiv top page
-/// pixiv:/bookmarks                    bookmarks
-/// pixiv:/favorites                    locally starred works
-/// pixiv:/user/<id>                    one author's works
-/// pixiv:/search?word=..&s_mode=..&order=..
+/// smb://<configId>/<dir>/<subdir>     a directory on one registered server
+/// pixiv://default/top                 the Pixiv top page
+/// pixiv://default/bookmarks           bookmarks
+/// pixiv://default/favorites           locally starred works
+/// pixiv://default/user/<id>           one author's works
+/// pixiv://default/search?word=..&s_mode=..&order=..
 /// ```
+///
+/// SMB has many servers, so its instance id varies; Pixiv has one, so its
+/// instance id is always `default`. Spelling it out rather than dropping the
+/// authority is what keeps the two the same shape — and it makes [sourceKeyOf]
+/// a single rule, matching the keys the registry already uses (`smb:<configId>`,
+/// `pixiv:default`).
 ///
 /// SMB paths are backslash-separated and may hold any character a filename can
 /// (spaces, `#`, `%`, non-ASCII). They are carried as URI path *segments*, so
@@ -20,15 +30,14 @@
 /// only works via [Uri.pathSegments]; `Uri.path` hands back the still-encoded
 /// string. A leading separator is dropped, matching what dart_smb2's
 /// `_normalizePath` does to the path anyway.
-///
-/// Pixiv keeps its internal path (`/user/123`, `/search?...`) in the URI's own
-/// path and query, so `pixiv:` has no authority and reads `pixiv:/top` rather
-/// than the `pixiv://top` sketched in ADR 007. Same information, one less
-/// reassembly step.
 library;
 
 const smbUriScheme = 'smb';
 const pixivUriScheme = 'pixiv';
+
+/// The one Pixiv instance. Pixiv needs no per-server id the way SMB does, but
+/// it still occupies the authority slot so every scheme reads the same.
+const pixivInstance = 'default';
 
 /// Address of the SMB directory [path] on the server registered as [configId].
 Uri smbGalleryUri(String configId, String path) => Uri(
@@ -39,11 +48,12 @@ Uri smbGalleryUri(String configId, String path) => Uri(
 
 /// Address of the Pixiv page at the internal [path] (`/top`, `/user/123`,
 /// `/search?word=...`).
-Uri pixivGalleryUri(String path) => Uri.parse('$pixivUriScheme:$path');
+Uri pixivGalleryUri(String path) =>
+    Uri.parse('$pixivUriScheme://$pixivInstance$path');
 
-/// The SMB server config id [uri] points at, or null if it is not an SMB URI.
-String? smbConfigIdOf(Uri uri) =>
-    uri.scheme == smbUriScheme ? uri.host : null;
+/// The registry key for the source [uri] lives on: scheme plus instance, which
+/// is exactly the `type:id` form `SourceRegistry.resolve` takes.
+String sourceKeyOf(Uri uri) => '${uri.scheme}:${uri.host}';
 
 /// The SMB directory [uri] points at, in the backslash-separated form the
 /// provider expects. `/` for the share root.

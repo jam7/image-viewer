@@ -15,7 +15,7 @@ void main() {
       if (asUri != null) expect(uri.toString(), asUri);
       // Via a string, as a link or a restored tab would arrive.
       expect(smbPathOf(Uri.parse(uri.toString())), expected);
-      expect(smbConfigIdOf(uri), configId);
+      expect(sourceKeyOf(uri), 'smb:$configId');
     }
 
     test('share root', () => roundTrips('/', '/', asUri: 'smb://$configId'));
@@ -57,9 +57,10 @@ void main() {
       final uri = pixivGalleryUri(path);
       if (asUri != null) expect(uri.toString(), asUri);
       expect(pixivPathOf(Uri.parse(uri.toString())), path);
+      expect(sourceKeyOf(uri), 'pixiv:default');
     }
 
-    test('top', () => roundTrips('/top', asUri: 'pixiv:/top'));
+    test('top', () => roundTrips('/top', asUri: 'pixiv://default/top'));
     test('bookmarks', () => roundTrips('/bookmarks'));
     test('one author', () => roundTrips('/user/12345'));
 
@@ -72,9 +73,12 @@ void main() {
       expect(isPixivFavoritesUri(pixivGalleryUri('/top')), isFalse);
       expect(isPixivFavoritesUri(pixivGalleryUri('/user/1')), isFalse);
     });
+  });
 
-    test('smbConfigIdOf declines a Pixiv URI', () {
-      expect(smbConfigIdOf(pixivGalleryUri('/top')), isNull);
-    });
+  test('every scheme yields its registry key the same way', () {
+    // The one rule the tab controller will use to resolve a provider (2B-10).
+    expect(sourceKeyOf(smbGalleryUri('1700000000000', 'books')),
+        'smb:1700000000000');
+    expect(sourceKeyOf(pixivGalleryUri('/user/1')), 'pixiv:default');
   });
 }
