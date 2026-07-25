@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'gallery_tab.dart';
 import 'gallery_uri.dart';
 import 'widgets/gallery_view.dart';
 import '../../services/cache/cache_manager.dart';
@@ -37,24 +38,25 @@ class SmbGalleryScreen extends StatefulWidget {
 }
 
 class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
-  late final GallerySession _session;
+  late final GalleryTab _tab;
+  GallerySession get _session => _tab.current;
 
   @override
   void initState() {
     super.initState();
-    _session = GallerySession.fromUri(
+    _tab = GalleryTab(GallerySession.fromUri(
       smbGalleryUri(widget.source.config.id, widget.initialPath),
       provider: widget.source,
       cacheManager: widget.cacheManager,
       onChanged: () {
         if (mounted) setState(() {});
       },
-    );
+    ));
   }
 
   @override
   void dispose() {
-    _session.dispose();
+    _tab.dispose();
     super.dispose();
   }
 

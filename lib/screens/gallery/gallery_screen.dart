@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'gallery_tab.dart';
 import 'gallery_uri.dart';
 import 'widgets/gallery_view.dart';
 import '../../services/cache/cache_manager.dart';
@@ -55,7 +56,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
   // Single-page state (one Pixiv page per screen; sections/search/author are
   // reached by pushing a new screen and navigating back — ADR 007). The page's
   // items / cursor / thumbnail loader live in the GallerySession.
-  late GallerySession _session;
+  late final GalleryTab _tab;
+  GallerySession get _session => _tab.current;
 
   bool get _isSearchPage => _path.startsWith('/search');
   bool get _isFavoritesPage => _path == '/favorites';
@@ -123,12 +125,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _filterController.text = widget.initialFilterText!;
       _applyFilter();
     }
-    _session = _createSession();
+    _tab = GalleryTab(_createSession());
   }
 
   @override
   void dispose() {
-    _session.dispose();
+    _tab.dispose();
     _searchController.dispose();
     _filterController.dispose();
     super.dispose();
@@ -179,11 +181,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
     ));
   }
 
-  /// Reset to a fresh page (search option / section change): drop the old
-  /// session and start over. The view reloads when it sees the new session.
+  /// Reload the same place (search options changed, favorites edited). Not a
+  /// navigation, so it swaps the history entry rather than adding one. The view
+  /// reloads when it sees the new session.
   void _reload() {
-    _session.dispose();
-    setState(() => _session = _createSession());
+    setState(() => _tab.replaceCurrent(_createSession()));
   }
 
   /// Push a new gallery screen for a Pixiv section (top / bookmarks / favorites),
