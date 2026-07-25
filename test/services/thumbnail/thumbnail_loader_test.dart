@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -142,6 +143,38 @@ void main() {
     // Only c and d fetched; a and b kept their results.
     expect(source.fetchCount, 4);
     expect(results.keys.toSet(), {'a', 'b', 'c', 'd'});
+  });
+
+  test('retryUnsupported re-fetches the items it selects', () async {
+    var supported = false;
+    final source = _FakeSource(onFetch: (_) async {
+      if (!supported) throw ThumbnailNotSupportedException('x');
+      return Uint8List.fromList([7]);
+    });
+    final results = <String, ThumbnailResult>{};
+    // retryUnsupported does not await the reload, so wait on the result itself
+    // rather than on a fixed number of event-loop turns.
+    final retried = Completer<void>();
+    final l = loader(source, (id, r) {
+      results[id] = r;
+      if (id == 'a' && r is ThumbnailData && !retried.isCompleted) {
+        retried.complete();
+      }
+    })..setItems([img('a'), img('b')]);
+
+    await l.loadNextBatch();
+    expect(source.fetchCount, 2);
+    expect((results['a'] as ThumbnailFailed).reason,
+        ThumbnailFailReason.notSupported);
+
+    // Standing in for the viewer having cached the data meanwhile.
+    supported = true;
+    l.retryUnsupported((id) => id == 'a');
+    await retried.future.timeout(const Duration(seconds: 5));
+
+    expect(source.fetchCount, 3); // only 'a' refetched
+    expect(results['a'], isA<ThumbnailData>());
+    expect(results['b'], isA<ThumbnailFailed>()); // untouched by the retry
   });
 
   test('cancel delegates to source.cancelThumbnailWork', () async {

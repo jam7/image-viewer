@@ -112,6 +112,9 @@ class ThumbnailLoader {
   void retryUnsupported(bool Function(String id) isUnsupported) {
     final retryItems = _items.where((img) => isUnsupported(img.id)).toList();
     if (retryItems.isEmpty) return;
+    // A failure is a result, so these ids are in _resultIds and _loadThumbnails
+    // would skip every one of them. Forget the old outcome to let them run.
+    _resultIds.removeAll(retryItems.map((img) => img.id));
     _loadThumbnails(retryItems);
   }
 
