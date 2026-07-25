@@ -40,22 +40,12 @@ class HomeGalleryBody extends StatefulWidget {
   /// of the tabs rather than inside one.
   final VoidCallback onOpenSettings;
 
-  /// The user asked to go back. Passed straight to [GalleryView]; the host
-  /// walks the tab's history.
-  final VoidCallback? onBack;
-
-  /// Back with nothing left in this tab's history. Null means home is the last
-  /// thing standing and back belongs to the system.
-  final VoidCallback? onExitTab;
-
   const HomeGalleryBody({
     super.key,
     required this.tab,
     required this.smbConfigStore,
     required this.onOpenPlace,
     required this.onOpenSettings,
-    this.onBack,
-    this.onExitTab,
   });
 
   @override
@@ -65,14 +55,13 @@ class HomeGalleryBody extends StatefulWidget {
 class _HomeGalleryBodyState extends State<HomeGalleryBody> {
   @override
   Widget build(BuildContext context) {
-    final exit = widget.onExitTab;
     return PopScope(
-      // The only body that ever lets the gesture through: when home is the last
-      // tab with nothing behind it, leaving is the system's business (this is
-      // the app's root route), not something to swallow.
-      canPop: exit == null,
+      // The same rule every body follows: walk the history while there is any,
+      // then let the OS have the gesture. Home is not special — it only looked
+      // that way while back could close a tab.
+      canPop: !widget.tab.canGoBack,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) exit?.call();
+        if (!didPop) setState(widget.tab.back);
       },
       // Grouped by what the entries are, because that decides what tapping one
       // does. Services and servers are out there and have to be reached;

@@ -90,14 +90,10 @@ class GalleryTabsScreen extends StatelessWidget {
             onOpenSettings: () => _openSettings(context),
             // Home with nothing behind it is the floor: there is no tab to fall
             // back to and no route underneath, so back belongs to the system.
-            onBack: () => _goBack(context, tab),
-            onExitTab: _isLastHome(tab) ? null : () => _exitTab(context, tab),
           ),
         favUriScheme => FavoritesGalleryBody(
             key: key,
             tab: tab,
-            onBack: () => _goBack(context, tab),
-            onExitTab: () => _exitTab(context, tab),
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
             registry: registry,
@@ -108,8 +104,6 @@ class GalleryTabsScreen extends StatelessWidget {
         smbUriScheme => SmbGalleryBody(
             key: key,
             tab: tab,
-            onBack: () => _goBack(context, tab),
-            onExitTab: () => _exitTab(context, tab),
             onOpenInNewTab: _openInNewTab,
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
@@ -119,8 +113,6 @@ class GalleryTabsScreen extends StatelessWidget {
         _ => PixivGalleryBody(
             key: key,
             tab: tab,
-            onBack: () => _goBack(context, tab),
-            onExitTab: () => _exitTab(context, tab),
             onOpenInNewTab: _openInNewTab,
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
@@ -194,7 +186,7 @@ class GalleryTabsScreen extends StatelessWidget {
         title: _titleOf(tab),
         canGoBack: tab.canGoBack,
         canGoForward: tab.canGoForward,
-        onBack: () => _goBack(context, tab),
+        onBack: () => _goBack(tab),
         onForward: () => tab.forward(),
         menuItems: _menuItems(context, tab),
       ),
@@ -208,12 +200,10 @@ class GalleryTabsScreen extends StatelessWidget {
     return session.title.isEmpty ? '${session.sourceUri}' : session.title;
   }
 
-  /// The one place that decides what "go back" means, so the toolbar button and
-  /// the gestures inside the body cannot answer it differently.
-  void _goBack(BuildContext context, GalleryTab tab) {
-    if (tab.back()) return; // the revision bump rebuilds the body
-    _exitTab(context, tab);
-  }
+  /// One history step. The revision bump rebuilds the body, which notices the
+  /// entry changed. Nothing happens at the first entry — closing a tab is the
+  /// chip's `x`, never a side effect of navigating (ADR 009 追記).
+  void _goBack(GalleryTab tab) => tab.back();
 
   /// The hamburger: this tab's own places on top (2C-3 moves the Pixiv
   /// sections here), operations on the whole app below.
@@ -241,30 +231,6 @@ class GalleryTabsScreen extends StatelessWidget {
       cacheManager: cacheManager,
       title: current.title,
     )..anchor = current.anchor);
-  }
-
-  /// Whether [tab] is home, alone, and at its first entry — the state the app
-  /// starts in and the one back cannot go anywhere from.
-  bool _isLastHome(GalleryTab tab) =>
-      controller.tabs.length == 1 &&
-      !tab.canGoBack &&
-      tab.current.sourceUri.scheme == homeUriScheme;
-
-  /// Back at [tab]'s first entry: there is nowhere left to go inside it.
-  ///
-  /// Browser-like — a tab you were taken to is a place you came to, so backing
-  /// out of it closes it and hands you to the neighbour. The last tab has no
-  /// neighbour and nothing underneath (this screen is the app's root), so it
-  /// becomes home instead: there is always somewhere to be.
-  void _exitTab(BuildContext context, GalleryTab tab) {
-    final index = controller.tabs.indexOf(tab);
-    if (index < 0) return;
-    if (controller.tabs.length > 1) {
-      controller.close(index);
-      return;
-    }
-    controller.open(GalleryTab(homeSession(cacheManager)));
-    controller.close(index);
   }
 
   /// Follow a link from inside [tab]: go there in this tab, pushing onto its

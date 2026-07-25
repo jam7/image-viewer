@@ -54,10 +54,7 @@ class GalleryToolbar extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.arrow_back, size: 20),
               tooltip: '戻る',
-              // Enabled even at the first entry: back still means something
-              // there -- it closes this tab and hands you the neighbour
-              // (ADR 008 追記). Greying it out would say otherwise.
-              onPressed: onBack,
+              onPressed: canGoBack ? onBack : null,
             ),
             IconButton(
               icon: const Icon(Icons.arrow_forward, size: 20),

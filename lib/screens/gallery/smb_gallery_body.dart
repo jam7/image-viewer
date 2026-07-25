@@ -26,19 +26,9 @@ class SmbGalleryBody extends StatefulWidget {
   /// Open a place in a new tab. Tabs are owned above this widget, so it asks.
   final void Function(GallerySession session) onOpenInNewTab;
 
-  /// The user asked to go back. Passed straight to [GalleryView]; the host
-  /// walks the tab's history.
-  final VoidCallback? onBack;
-
-  /// Back at this tab's first entry. Passed straight to [GalleryView]; the
-  /// host decides whether that closes the tab or leaves the gallery.
-  final VoidCallback? onExitTab;
-
   const SmbGalleryBody({
     super.key,
     required this.tab,
-    this.onBack,
-    this.onExitTab,
     required this.onOpenInNewTab,
     required this.cacheManager,
     required this.favoritesStore,
@@ -113,8 +103,6 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
       items: _session.loaded,
       emptyMessage: 'ファイルが見つかりませんでした',
       tileBuilder: _buildTile,
-      onBack: widget.onBack,
-      onExitTab: widget.onExitTab,
       onItemsChanged: () => setState(() {}),
     );
   }

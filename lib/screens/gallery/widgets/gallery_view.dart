@@ -26,10 +26,13 @@ final _log = Logger('GalleryView');
 /// the loader for another thumbnail batch. A finite source simply reports no
 /// more pages, so the first half stops firing after its one page.
 ///
-/// Going back means going back in [tab]'s history; only at its first entry does
-/// it leave the screen. Every way of asking — Escape, Backspace, the mouse back
-/// button, a rightward swipe, and the system back gesture — goes through
-/// [goBack] so they cannot drift apart (ADR 008 決定 3).
+/// Going back means going back in [tab]'s history, and nothing else: at the
+/// first entry it does nothing at all. Closing a tab is the chip's `x`, never a
+/// side effect of navigating (ADR 009 追記) — history is not recoverable, and a
+/// double-tapped back button should not be able to destroy it. Every way of
+/// asking — Escape, Backspace, the mouse back button, a rightward swipe — goes
+/// through [goBack]; the system gesture is handled by [PopScope] below, which
+/// hands it to the OS once there is no history left.
 class GalleryView extends StatefulWidget {
   /// The tab being shown. Its current entry is the place on screen.
   final GalleryTab tab;
@@ -47,23 +50,6 @@ class GalleryView extends StatefulWidget {
   /// Optional row between the app bar and the grid (search / filter controls).
   final Widget? header;
 
-  /// The user asked to go back, by any of the affordances this view owns
-  /// (Escape, Backspace, the mouse back button, a rightward swipe, the system
-  /// gesture). Walking the tab's history belongs to whoever owns the tabs —
-  /// leaving one already does, see [onExitTab] — and there is now a toolbar
-  /// button asking for the same thing, so the decision lives in one place
-  /// rather than being made the same way twice.
-  ///
-  /// Null keeps this view's own walk-then-exit behaviour, for tests that stand
-  /// a body up without a host.
-  final VoidCallback? onBack;
-
-  /// Back was pressed at the tab's first entry, so there is nowhere left to go
-  /// inside this tab. What that means belongs to whoever owns the tabs: with
-  /// others open, closing this one is the browser-like answer; with none left,
-  /// leaving the gallery. Null falls back to popping the route.
-  final VoidCallback? onExitTab;
-
   /// Called when what should be on screen has changed under the caller's feet —
   /// a page was appended, or a back step moved the tab to another entry. The
   /// caller derives [items] and the [appBar] title from the tab, so it has to
@@ -77,8 +63,6 @@ class GalleryView extends StatefulWidget {
     required this.tileBuilder,
     required this.emptyMessage,
     this.header,
-    this.onBack,
-    this.onExitTab,
     this.onItemsChanged,
   });
 
@@ -96,7 +80,6 @@ class GalleryViewState extends State<GalleryView> {
   final _focusNode = FocusNode();
   bool _isLoading = false;
   String? _error;
-  bool _isPopping = false;
 
   /// The entry currently on screen. Compared against the tab's current entry to
   /// notice a navigation, which the tab performs without telling us.
@@ -235,47 +218,24 @@ class GalleryViewState extends State<GalleryView> {
     });
   }
 
-  /// Step back one history entry, or leave the screen if this is the first one.
-  /// Every back affordance routes here.
+  /// Step back one history entry. At the first entry it does nothing: the tab
+  /// stays, its history stays, and leaving is the system gesture's business
+  /// (see the [PopScope] in [build]).
   void goBack() {
-    final up = widget.onBack;
-    if (up != null) {
-      up();
-      return;
-    }
-    _log.info('goBack: tab=${widget.tab.id} '
-        'index=${widget.tab.index}/${widget.tab.history.length} '
-        'canGoBack=${widget.tab.canGoBack}');
-    if (widget.tab.back()) {
-      setState(_onSessionChanged);
-      widget.onItemsChanged?.call();
-      _log.info('goBack: stepped to ${_shown.sourceUri}');
-      return;
-    }
-    _log.info('goBack: first entry, leaving this tab');
-    // Guard against multiple calls in the same frame (e.g. ESC key and mouse
-    // back button firing simultaneously).
-    if (_isPopping) return;
-    _isPopping = true;
-    final exit = widget.onExitTab;
-    if (exit != null) {
-      exit();
-      return;
-    }
-    Navigator.of(context).pop();
+    if (!widget.tab.back()) return;
+    setState(_onSessionChanged);
+    widget.onItemsChanged?.call();
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Never let the gesture pop the route by itself. Even at the tab's first
-      // entry the answer may not be "leave" — with other tabs open this one
-      // closes instead — and that is decided in [goBack], which every other
-      // back affordance also goes through.
-      canPop: false,
+      // Claim the system gesture only while there is history to walk. Once
+      // there is not, it belongs to the OS — on Android that backgrounds the
+      // app, which is what back at a root screen is supposed to do, and it
+      // lets the predictive-back preview animate instead of being swallowed.
+      canPop: !widget.tab.canGoBack,
       onPopInvokedWithResult: (didPop, _) {
-        _log.info('onPopInvoked: didPop=$didPop tab=${widget.tab.id} '
-            'canGoBack=${widget.tab.canGoBack}');
         if (!didPop) goBack();
       },
       child: GalleryKeyboardScrollable(

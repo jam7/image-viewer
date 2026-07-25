@@ -135,19 +135,19 @@ void main() {
     expect(find.text('サービス'), findsOneWidget);
   });
 
-  testWidgets('backing out of the last tab lands on home, not nowhere',
+  testWidgets('the last tab is not special, and is not swapped for home',
       (tester) async {
-    // There is no route under the tab host any more, so "leave the gallery"
-    // has to mean something else.
+    // It used to be replaced by home so that "leave the gallery" had somewhere
+    // to land. Back no longer destroys anything, so there is nothing to land
+    // from: the tab stays put and the gesture goes to the OS.
     controller.close(0);
     controller.open(GalleryTab(await _pixivSession(registry, cache)));
     await pumpHost(tester);
-    expect(controller.active!.current.sourceUri.scheme, pixivUriScheme);
 
     await systemBack(tester);
 
     expect(controller.tabs.length, 1);
-    expect(controller.active!.current.sourceUri.scheme, homeUriScheme);
+    expect(controller.active!.current.sourceUri.scheme, pixivUriScheme);
   });
 
   testWidgets('back on the lone home tab is left to the system',

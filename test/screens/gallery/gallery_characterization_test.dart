@@ -237,7 +237,8 @@ void main() {
       expect(gridScrollState(tester).position.pixels, 0);
     });
 
-    testWidgets('Escape pops the screen', (tester) async {
+    testWidgets('Escape at the first entry leaves the tab alone',
+        (tester) async {
       // Non-empty: the key handler bails when the grid has no scroll clients.
       final items = smbImageItems(6);
       seedThumbnails(items);
@@ -248,10 +249,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.text('HOME_MARKER'), findsOneWidget);
+      // Back at the first entry does nothing now: closing a tab is the chip's
+      // `x`, never a side effect of navigating, so a double-tap cannot throw
+      // away a history that has no undo (ADR 009 追記).
+      expect(find.text('HOME_MARKER'), findsNothing);
     });
 
-    testWidgets('back mouse button pops the screen', (tester) async {
+    testWidgets('the back mouse button leaves the tab alone', (tester) async {
       await pumpPushed(tester, build(_FakeSmbSource(const [])));
 
       // Anywhere in the tab's content: the app bar is the host's, not the
@@ -265,10 +269,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.text('HOME_MARKER'), findsOneWidget);
+      // Back at the first entry does nothing now: closing a tab is the chip's
+      // `x`, never a side effect of navigating, so a double-tap cannot throw
+      // away a history that has no undo (ADR 009 追記).
+      expect(find.text('HOME_MARKER'), findsNothing);
     });
 
-    testWidgets('horizontal swipe pops the screen', (tester) async {
+    testWidgets('a horizontal swipe leaves the tab alone', (tester) async {
       final items = smbImageItems(6);
       seedThumbnails(items);
       await pumpPushed(tester, build(_FakeSmbSource(items)));
@@ -277,7 +284,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.text('HOME_MARKER'), findsOneWidget);
+      // Back at the first entry does nothing now: closing a tab is the chip's
+      // `x`, never a side effect of navigating, so a double-tap cannot throw
+      // away a history that has no undo (ADR 009 追記).
+      expect(find.text('HOME_MARKER'), findsNothing);
     });
 
     // -- Tab history (ADR 008, phase 2B-9) --------------------------------
@@ -344,17 +354,25 @@ void main() {
       expect(find.text('subdir'), findsOneWidget); // the parent's tile again
     });
 
-    testWidgets('back at the first entry leaves the screen', (tester) async {
-      await pumpPushed(tester, build(nestedSource()));
+    testWidgets('back at the first entry keeps the tab and its history',
+        (tester) async {
+      final tab = smbTab(nestedSource(), '/');
+      await pumpPushed(tester, build(nestedSource(), tab: tab));
       await tester.tap(find.text('subdir'));
       await settle(tester);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape); // to parent
       await settle(tester);
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape); // out
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape); // nowhere to go
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.text('HOME_MARKER'), findsOneWidget);
+      // Back at the first entry does nothing now: closing a tab is the chip's
+      // `x`, never a side effect of navigating, so a double-tap cannot throw
+      // away a history that has no undo (ADR 009 追記).
+      expect(find.text('HOME_MARKER'), findsNothing);
+      // And forward still works, which is the point of not discarding it.
+      expect(tab.history.length, 2);
+      expect(tab.canGoForward, isTrue);
     });
 
     testWidgets('returning to a visited directory does not refetch it',
@@ -597,7 +615,8 @@ void main() {
       expect(gridScrollState(tester).position.pixels, 0);
     });
 
-    testWidgets('Escape pops the screen', (tester) async {
+    testWidgets('Escape at the first entry leaves the tab alone',
+        (tester) async {
       // Non-empty: the key handler bails when the grid has no scroll clients.
       final items = pixivItems(6);
       seedThumbnails(items);
@@ -607,10 +626,14 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.text('HOME_MARKER'), findsOneWidget);
+      // Back at the first entry does nothing now: closing a tab is the chip's
+      // `x`, never a side effect of navigating, so a double-tap cannot throw
+      // away a history that has no undo (ADR 009 追記).
+      expect(find.text('HOME_MARKER'), findsNothing);
     });
 
-    testWidgets('Backspace pops the screen', (tester) async {
+    testWidgets('Backspace at the first entry leaves the tab alone',
+        (tester) async {
       final items = pixivItems(6);
       seedThumbnails(items);
       await pumpPushed(tester, build(_FakePixivSource(items)));
@@ -619,7 +642,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.text('HOME_MARKER'), findsOneWidget);
+      // Back at the first entry does nothing now: closing a tab is the chip's
+      // `x`, never a side effect of navigating, so a double-tap cannot throw
+      // away a history that has no undo (ADR 009 追記).
+      expect(find.text('HOME_MARKER'), findsNothing);
     });
   });
 }

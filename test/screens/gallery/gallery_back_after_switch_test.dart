@@ -79,15 +79,6 @@ void main() {
               body: SmbGalleryBody(
                 key: ValueKey(tab.id),
                 tab: tab,
-                // Mirrors GalleryTabsScreen._exitTab.
-                onExitTab: () {
-                  final index = controller.tabs.indexOf(tab);
-                  if (controller.tabs.length > 1 && index >= 0) {
-                    controller.close(index);
-                  } else {
-                    Navigator.of(context).pop();
-                  }
-                },
                 onOpenInNewTab: (_) {},
                 cacheManager: cache,
                 favoritesStore: favoritesStore,
@@ -170,57 +161,47 @@ void main() {
     expect(browsing.index, 0);
   });
 
-  testWidgets('system back at a tab\'s first entry leaves the gallery',
+  testWidgets('the system gesture goes to the OS at a tab\'s first entry',
       (tester) async {
+    // Nothing left to walk, so the route pops -- in the app this screen is the
+    // root, which is Android backgrounding the app. It does not close the tab.
     controller.open(GalleryTab(sessionAt('only')));
     await pumpHost(tester);
 
     await systemBack(tester);
 
     expect(find.text('HOME_MARKER'), findsOneWidget);
+    expect(controller.tabs.length, 1);
   });
 
-  testWidgets('back out of a tab closes it while others are open',
-      (tester) async {
-    // A tab opened from a long press is a place you were taken to; backing out
-    // of it should hand you to the neighbour, not drop the whole set.
+  testWidgets('backing out of a tab never closes it', (tester) async {
+    // Back is navigation. Discarding a tab -- and a history with no undo --
+    // takes the chip's `x` (ADR 009 追記).
     controller.open(GalleryTab(sessionAt('first')));
     controller.open(GalleryTab(sessionAt('opened'))); // active, no history
     await pumpHost(tester);
 
     await systemBack(tester);
 
-    expect(find.text('HOME_MARKER'), findsNothing);
-    expect(controller.tabs.length, 1);
-    expect(smbPathOf(controller.active!.current.sourceUri), 'first');
+    expect(controller.tabs.length, 2);
+    expect(smbPathOf(controller.active!.current.sourceUri), 'opened');
   });
 
-  testWidgets('backing out of the last tab still leaves the gallery',
-      (tester) async {
-    controller.open(GalleryTab(sessionAt('first')));
-    controller.open(GalleryTab(sessionAt('opened')));
+  testWidgets('history is walked to the end, and then kept', (tester) async {
+    final tab = GalleryTab(sessionAt('a'))..navigate(sessionAt(r'a\inner'));
+    controller.open(tab);
     await pumpHost(tester);
 
-    await systemBack(tester); // closes 'opened'
-    await systemBack(tester); // nothing left to close
+    await systemBack(tester);
+    expect(smbPathOf(tab.current.sourceUri), 'a');
 
+    await systemBack(tester); // no history left: the OS gets it
     expect(find.text('HOME_MARKER'), findsOneWidget);
-  });
 
-  testWidgets('history is walked before the tab is closed', (tester) async {
-    controller.open(GalleryTab(sessionAt('other')));
-    controller.open(GalleryTab(sessionAt('a'))..navigate(sessionAt(r'a\inner')));
-    await pumpHost(tester);
-
-    await systemBack(tester);
-
-    expect(controller.tabs.length, 2); // still open, just stepped back
-    expect(smbPathOf(controller.active!.current.sourceUri), 'a');
-
-    await systemBack(tester);
-
+    // The tab and the entry back left are both still there.
     expect(controller.tabs.length, 1);
-    expect(smbPathOf(controller.active!.current.sourceUri), 'other');
+    expect(tab.history.length, 2);
+    expect(tab.canGoForward, isTrue);
   });
 }
 

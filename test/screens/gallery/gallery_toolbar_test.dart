@@ -123,26 +123,32 @@ void main() {
     expect(controller.active!.history.length, 2); // moved, did not re-add
   });
 
-  testWidgets('the back button answers the same as the back gesture',
+  testWidgets('back goes dead at the first entry rather than closing the tab',
       (tester) async {
-    // Both go through the host, so backing out of a tab closes it either way.
+    // Discarding a tab, and a history that has no undo, is the chip's `x`.
+    // A greyed-out button says "nothing here" without being able to destroy
+    // anything when it is tapped twice (ADR 009 追記).
     controller.open(GalleryTab(homeSession(cache)));
     await pumpHost(tester);
     expect(controller.tabs.length, 2);
 
+    expect(controller.active!.canGoBack, isFalse);
+    expect(enabled(tester, back()), isFalse);
+    expect(controller.tabs.length, 2);
+  });
+
+  testWidgets('back and forward light up with the history', (tester) async {
+    await pumpHost(tester);
+    expect(enabled(tester, back()), isFalse);
+
+    await goSomewhere(tester);
+    expect(enabled(tester, back()), isTrue);
+
     await tester.tap(back());
     await tester.pumpAndSettle();
 
-    expect(controller.tabs.length, 1);
-  });
-
-  testWidgets('back stays enabled at the first entry', (tester) async {
-    // It still does something there: it closes the tab. Greying it out would
-    // say otherwise.
-    await pumpHost(tester);
-
-    expect(controller.active!.canGoBack, isFalse);
-    expect(enabled(tester, back()), isTrue);
+    expect(enabled(tester, back()), isFalse);
+    expect(enabled(tester, forward()), isTrue);
   });
 
   testWidgets('the menu reloads the place without leaving it', (tester) async {
