@@ -49,16 +49,36 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ (iOS/i
 ドキュメントや記録は性質で 3 つに分けて置く。「現在の正」「時系列の記録」「生きた
 やることリスト」を混ぜない。
 
-| 種類 | 性質 | 置き場 |
-|---|---|---|
-| 要件・仕様・設計 | 現在の正 (常に最新に保つ) | `docs/<feature>/` |
-| 調査メモ・fix-loop 台帳・review-log | 時系列の記録 (追記のみ、消さない) | `notes/` |
-| レビュー指摘由来の TODO | 生きたやることリスト (完了したら消し込む) | `TODO.md` (repo 直下) |
+| 種類 | 性質 | 置き場 | 公開 |
+|---|---|---|---|
+| 要件・仕様・設計 | 現在の正 (常に最新に保つ) | `docs/<feature>/` | 公開 |
+| 調査メモ・fix-loop 台帳・review-log | 時系列の記録 (追記のみ、消さない) | `notes/` | **非公開** |
+| やることリスト | 生きたリスト (完了したら消し込む) | `notes/TODO.md` | **非公開** |
 
-- `notes/` の内訳: fix-loop 台帳は `notes/fix-sessions/YYYYMMDD-<topic>.md`、
-  調査・レビューの全文記録は `notes/reviews/YYYYMMDD-<topic>.md`、
-  繰り返し出る指摘の台帳は `notes/review-log.md`
+- `notes/` の内訳: やることリストは `notes/TODO.md`、fix-loop 台帳は
+  `notes/fix-sessions/YYYYMMDD-<topic>.md`、調査・レビューの全文記録は
+  `notes/reviews/YYYYMMDD-<topic>.md`、繰り返し出る指摘の台帳は `notes/review-log.md`
 - dart_smb2 の設計記録はサブモジュール内 `dart_smb2/docs/reviews/` に置く (別リポジトリ)
+
+### notes/ は非公開の別リポジトリ (必須)
+
+このリポジトリは GitHub 上で public。`notes/` は開発中の記録 (実機ログの抜粋、実際の
+ファイルパス、試行錯誤の履歴) を貯める場所で、公開価値がない一方で実データが混入
+しやすい。そのため `notes/` は**この repo の管理外**にしてある:
+
+- `.gitignore` で `notes/` を除外済み。親 repo からは見えない (`git status` にも出ない)
+- `notes/` 自身が独立した git repo (非公開)。ネスト構成なので submodule にはしない
+  (submodule にすると `.gitmodules` に非公開 URL が載り、他人の clone が壊れる)
+- **notes/ の変更は notes/ 内で commit する**。親 repo の commit には含まれない
+
+この分離の帰結として、以下を守る:
+
+- **公開して困る実データ (実ファイルパス、実機ログ、購入済み作品の情報) は
+  `notes/` にだけ書く**。`docs/` や commit message には書かない
+- 調査で得た**結論**は `docs/` か ADR に昇格させる。notes は非公開なので、
+  結論を notes だけに置くと公開側から経緯が追えなくなる
+- `notes/` から `docs/` や `lib/` を参照するときはリンクにせずパス文字列で書く
+  (別 repo なので相対リンクが解決しない)
 
 ### レビュー結果の行き先
 
@@ -68,7 +88,7 @@ Flutter製のクロスプラットフォーム画像ビューアアプリ (iOS/i
 |---|---|
 | PR に対するレビュー | PR コメント (repo 外、変更に紐づく) |
 | ローカルレビューの全文記録 | `notes/reviews/YYYYMMDD-<topic>.md` |
-| 今直さない指摘 | `TODO.md` に 1 行 |
+| 今直さない指摘 | `notes/TODO.md` に 1 行 |
 | 繰り返し出る指摘パターン | `notes/review-log.md` → 同じ指摘が 3 回出たら checklist に昇格 |
 
 ### TODO 項目の進め方

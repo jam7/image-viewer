@@ -56,3 +56,7 @@ windows/flutter/generated_plugins.cmake
 
 # Private API docs (paid service internals)
 docs/dmm_auth.md
+
+# Development records (investigation notes, fix-loop ledgers, TODO list).
+# Kept in a separate private repository nested at notes/ -- see CLAUDE.md.
+notes/

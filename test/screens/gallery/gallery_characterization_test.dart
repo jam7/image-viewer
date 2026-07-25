@@ -26,9 +26,9 @@ import 'package:image_viewer/services/video/smb_proxy_server.dart';
 
 /// Characterization tests: pin down the CURRENT rendering / keyboard / scroll /
 /// pop behavior shared by both gallery screens before extracting the common
-/// `GalleryGrid` / `GalleryKeyboardScrollable` widgets (see TODO.md gallery
-/// unification). They describe what the two screens do today so the extraction
-/// can be verified as behavior-preserving.
+/// `GalleryGrid` / `GalleryKeyboardScrollable` widgets (see
+/// docs/gallery_unification/design.md). They describe what the two screens do
+/// today so the extraction can be verified as behavior-preserving.
 ///
 /// Design notes that make these tests possible without network / WebView / SMB:
 /// - The fake sources override the page fetch (`listImages` for SMB via the
