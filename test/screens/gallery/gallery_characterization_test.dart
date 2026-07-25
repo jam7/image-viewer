@@ -11,6 +11,7 @@ import 'package:image_viewer/models/server_config.dart';
 import 'package:image_viewer/screens/gallery/gallery_constants.dart';
 import 'package:image_viewer/screens/gallery/gallery_session.dart';
 import 'package:image_viewer/screens/gallery/gallery_tab.dart';
+import 'package:image_viewer/screens/gallery/gallery_tab_controller.dart';
 import 'package:image_viewer/screens/gallery/gallery_uri.dart';
 import 'package:image_viewer/screens/gallery/pixiv_gallery_body.dart';
 import 'package:image_viewer/screens/gallery/smb_gallery_body.dart';
@@ -27,6 +28,7 @@ import 'package:image_viewer/services/sources/pixiv_source.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
 import 'package:image_viewer/services/sources/source_registry.dart';
 import 'package:image_viewer/services/video/smb_proxy_server.dart';
+import 'package:image_viewer/widgets/thumbnail_result.dart';
 
 /// Characterization tests: pin down the CURRENT rendering / keyboard / scroll /
 /// pop behavior shared by both gallery screens before extracting the common
@@ -428,6 +430,46 @@ void main() {
       // The subdirectory is long enough to hold the parent's offset, so this
       // fails if the shared controller simply keeps its position.
       expect(gridScrollState(tester).position.pixels, 0);
+    });
+
+    testWidgets('thumbnails appear on a session nobody wired a callback to',
+        (tester) async {
+      // Tabs made by the opener carry no repaint callback — the view showing
+      // the session installs one. Without that, every tile spins forever even
+      // though the results have arrived.
+      final items = smbImageItems(4);
+      seedThumbnails(items);
+      final source = _FakeSmbSource(items);
+      final tab = smbTab(source, '/');
+      expect(tab.current.onChanged, isNull);
+
+      await pumpPushed(tester, build(source, tab: tab));
+
+      expect(tab.current.thumbnailFor('f0'), isA<ThumbnailData>());
+      expect(find.byType(Image), findsWidgets); // painted, not still spinning
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('closing the tab being shown does not blow up the teardown',
+        (tester) async {
+      // Closing disposes the tab's history, so anything that then asks the tab
+      // for its current entry throws — which is exactly what the view's
+      // deactivate used to do on the way out.
+      final items = smbImageItems(4);
+      seedThumbnails(items);
+      final source = _FakeSmbSource(items);
+      final tab = smbTab(source, '/');
+      final controller = GalleryTabController()..open(tab);
+      addTearDown(controller.dispose);
+
+      await pumpPushed(tester, build(source, tab: tab));
+
+      controller.close(0);
+      await tester.pumpWidget(const MaterialApp(
+          home: Scaffold(body: Center(child: Text('HOME_MARKER')))));
+      await settle(tester);
+
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('a mostly-vertical flick does not pop a short list',

@@ -90,6 +90,7 @@ class GalleryViewState extends State<GalleryView> {
   void initState() {
     super.initState();
     _shown = widget.tab.current;
+    _shown.onChanged = _repaint;
     _scrollController.addListener(_onScroll);
     // Switching tabs builds a fresh view over a session that may already hold
     // its items; fetching again would append a duplicate page. Same rule as
@@ -99,6 +100,12 @@ class GalleryViewState extends State<GalleryView> {
     } else {
       loadNextPage();
     }
+  }
+
+  /// Repaint for something the session did — a thumbnail arriving. Installed on
+  /// whichever session is on screen, so it does not matter who created it.
+  void _repaint() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -111,27 +118,33 @@ class GalleryViewState extends State<GalleryView> {
   /// place. Hand the thumbnails over, and fetch only if the new entry has never
   /// loaded — revisiting one from the history must not append another page.
   void _onSessionChanged() {
+    _shown.onChanged = null;
     _shown.detach();
     _shown = widget.tab.current;
+    _shown.onChanged = _repaint;
     _error = null;
     _shown.attach();
     if (!_shown.hasLoaded) loadNextPage();
   }
 
+  // These go through [_shown] rather than the tab: a closed tab has already
+  // disposed its history, so asking it for a current entry throws just as the
+  // view is being torn down.
   @override
   void deactivate() {
-    _session.detach();
+    _shown.detach();
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    _session.attach();
+    _shown.attach();
   }
 
   @override
   void dispose() {
+    _shown.onChanged = null;
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();

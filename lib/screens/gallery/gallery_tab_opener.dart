@@ -28,13 +28,10 @@ class GalleryTabOpener {
   /// Open [uri] as a new tab, or null if the source could not be resolved
   /// (login cancelled, server gone). [title] labels the tab where the URI
   /// cannot say it — an author's name, a server's nickname.
-  ///
-  /// [onChanged] is handed to the session so the view showing it can repaint.
   Future<GalleryTab?> open(
     Uri uri,
     BuildContext context, {
     String title = '',
-    VoidCallback? onChanged,
   }) async {
     final key = sourceKeyOf(uri);
     final provider = await registry.resolve(key, context);
@@ -48,7 +45,6 @@ class GalleryTabOpener {
       cacheManager: cacheManager,
       title: title,
       favoritesStore: favoritesStore,
-      onChanged: onChanged,
     ));
   }
 }

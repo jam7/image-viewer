@@ -48,9 +48,6 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
         provider: _source,
         cacheManager: widget.cacheManager,
         title: path,
-        onChanged: () {
-          if (mounted) setState(() {});
-        },
       );
 
   void _onItemTap(ImageSource item) {

@@ -89,9 +89,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       cacheManager: widget.cacheManager,
       title: _titleFor(path, authorName),
       favoritesStore: widget.favoritesStore,
-      onChanged: () {
-        if (mounted) setState(() {});
-      },
     );
   }
 
@@ -250,22 +247,17 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     return 'Pixiv';
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      title: Text(
-        _session.title,
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      ),
-      actions: [
-        PopupMenuButton<String>(
-          onSelected: _navigate,
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: '/top', child: Text('トップ')),
-            PopupMenuItem(value: '/bookmarks', child: Text('ブックマーク')),
-            PopupMenuItem(value: '/favorites', child: Text('お気に入り')),
-          ],
-        ),
+  /// Jump to another Pixiv section. Lives in the filter row rather than the app
+  /// bar, because the app bar now belongs to the tab strip.
+  Widget _buildSectionMenu() {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.menu),
+      tooltip: 'Pixiv のページ',
+      onSelected: _navigate,
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: '/top', child: Text('トップ')),
+        PopupMenuItem(value: '/bookmarks', child: Text('ブックマーク')),
+        PopupMenuItem(value: '/favorites', child: Text('お気に入り')),
       ],
     );
   }
@@ -303,6 +295,8 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       padding: const EdgeInsets.all(8),
       child: Row(
         children: [
+          _buildSectionMenu(),
+          const SizedBox(width: 4),
           Expanded(
             child: TextField(
               controller: _searchController,
@@ -356,7 +350,7 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       items: _visibleItems,
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,
-      appBar: _buildAppBar(),
+      appBar: widget.appBar,
       header: _buildFilterBar(),
       onItemsChanged: () => setState(() {}),
     );

@@ -43,9 +43,13 @@ class GallerySession {
   /// not carry — so the caller supplies it.
   final String title;
 
-  /// Called when a thumbnail result arrives and the view should repaint. Page
-  /// loads are awaited by the caller instead, so they do not go through here.
-  final void Function()? onChanged;
+  /// Called when a thumbnail result arrives and the view should repaint.
+  ///
+  /// Installed by whichever view is showing this session, not by whoever built
+  /// it — a session is often created by a tab opener or a navigation, far from
+  /// the widget that will display it, and a session with no view needs no
+  /// repaints. Page loads are awaited by the caller instead of reported here.
+  void Function()? onChanged;
 
   /// Thumbnail engine for this session. Its `source` is [provider] and its
   /// results land in this session (see [thumbnailFor]).
@@ -90,7 +94,6 @@ class GallerySession {
     required CacheManager cacheManager,
     this.title = '',
     this.path,
-    this.onChanged,
     bool Function(ImageSource)? thumbnailFilter,
     List<ImageSource>? seedItems,
   })  : _cacheManager = cacheManager,
@@ -118,7 +121,6 @@ class GallerySession {
     required CacheManager cacheManager,
     String title = '',
     FavoritesStore? favoritesStore,
-    void Function()? onChanged,
   }) {
     final seed = isPixivFavoritesUri(uri) && favoritesStore != null
         ? _favoriteItems(favoritesStore)
@@ -135,7 +137,6 @@ class GallerySession {
           ? ((i) => i.metadata?['isDirectory'] != true)
           : null,
       seedItems: seed,
-      onChanged: onChanged,
     );
   }
 

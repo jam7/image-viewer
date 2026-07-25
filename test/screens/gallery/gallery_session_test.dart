@@ -47,8 +47,7 @@ void main() {
       provider: source,
       cacheManager: cache,
       thumbnailFilter: filter,
-      onChanged: onChanged,
-    );
+    )..onChanged = onChanged;
   }
 
   test('finite source: one page, hasMore becomes false', () async {
