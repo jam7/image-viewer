@@ -84,6 +84,7 @@ class GalleryTabsScreen extends StatelessWidget {
         favUriScheme => FavoritesGalleryBody(
             key: key,
             tab: tab,
+            onExitTab: () => _exitTab(context, tab),
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
             registry: registry,
@@ -94,6 +95,7 @@ class GalleryTabsScreen extends StatelessWidget {
         smbUriScheme => SmbGalleryBody(
             key: key,
             tab: tab,
+            onExitTab: () => _exitTab(context, tab),
             onOpenInNewTab: _openInNewTab,
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
@@ -103,6 +105,7 @@ class GalleryTabsScreen extends StatelessWidget {
         _ => PixivGalleryBody(
             key: key,
             tab: tab,
+            onExitTab: () => _exitTab(context, tab),
             onOpenInNewTab: _openInNewTab,
             cacheManager: cacheManager,
             favoritesStore: favoritesStore,
@@ -152,6 +155,20 @@ class GalleryTabsScreen extends StatelessWidget {
   /// so long-pressing several folders in a row keeps you where you are.
   void _openInNewTab(GallerySession session) =>
       controller.open(GalleryTab(session), activate: false);
+
+  /// Back at [tab]'s first entry: there is nowhere left to go inside it.
+  ///
+  /// Browser-like — a tab opened from a long press is a place you came to, so
+  /// backing out of it closes it and hands you to the neighbour rather than
+  /// dropping the whole set. Only the last tab standing leaves the gallery.
+  void _exitTab(BuildContext context, GalleryTab tab) {
+    final index = controller.tabs.indexOf(tab);
+    if (controller.tabs.length > 1 && index >= 0) {
+      controller.close(index);
+      return;
+    }
+    Navigator.of(context).pop();
+  }
 
   /// Follow a link from inside [tab]: go there in this tab, pushing onto its
   /// history so back comes home to where it was followed from.

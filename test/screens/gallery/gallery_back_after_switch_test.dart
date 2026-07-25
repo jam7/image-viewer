@@ -79,6 +79,15 @@ void main() {
               body: SmbGalleryBody(
                 key: ValueKey(tab.id),
                 tab: tab,
+                // Mirrors GalleryTabsScreen._exitTab.
+                onExitTab: () {
+                  final index = controller.tabs.indexOf(tab);
+                  if (controller.tabs.length > 1 && index >= 0) {
+                    controller.close(index);
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
                 onOpenInNewTab: (_) {},
                 cacheManager: cache,
                 favoritesStore: favoritesStore,
@@ -169,6 +178,49 @@ void main() {
     await systemBack(tester);
 
     expect(find.text('HOME_MARKER'), findsOneWidget);
+  });
+
+  testWidgets('back out of a tab closes it while others are open',
+      (tester) async {
+    // A tab opened from a long press is a place you were taken to; backing out
+    // of it should hand you to the neighbour, not drop the whole set.
+    controller.open(GalleryTab(sessionAt('first')));
+    controller.open(GalleryTab(sessionAt('opened'))); // active, no history
+    await pumpHost(tester);
+
+    await systemBack(tester);
+
+    expect(find.text('HOME_MARKER'), findsNothing);
+    expect(controller.tabs.length, 1);
+    expect(smbPathOf(controller.active!.current.sourceUri), 'first');
+  });
+
+  testWidgets('backing out of the last tab still leaves the gallery',
+      (tester) async {
+    controller.open(GalleryTab(sessionAt('first')));
+    controller.open(GalleryTab(sessionAt('opened')));
+    await pumpHost(tester);
+
+    await systemBack(tester); // closes 'opened'
+    await systemBack(tester); // nothing left to close
+
+    expect(find.text('HOME_MARKER'), findsOneWidget);
+  });
+
+  testWidgets('history is walked before the tab is closed', (tester) async {
+    controller.open(GalleryTab(sessionAt('other')));
+    controller.open(GalleryTab(sessionAt('a'))..navigate(sessionAt(r'a\inner')));
+    await pumpHost(tester);
+
+    await systemBack(tester);
+
+    expect(controller.tabs.length, 2); // still open, just stepped back
+    expect(smbPathOf(controller.active!.current.sourceUri), 'a');
+
+    await systemBack(tester);
+
+    expect(controller.tabs.length, 1);
+    expect(smbPathOf(controller.active!.current.sourceUri), 'other');
   });
 }
 

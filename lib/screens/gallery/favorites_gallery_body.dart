@@ -33,9 +33,14 @@ class FavoritesGalleryBody extends StatefulWidget {
   /// leaving, which is what a long press asks for.
   final void Function(Uri uri, String title, {bool inNewTab}) onOpenPlace;
 
+  /// Back at this tab's first entry. Passed straight to [GalleryView]; the
+  /// host decides whether that closes the tab or leaves the gallery.
+  final VoidCallback? onExitTab;
+
   const FavoritesGalleryBody({
     super.key,
     required this.tab,
+    this.onExitTab,
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
@@ -126,6 +131,7 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
       items: _session.loaded,
       emptyMessage: 'お気に入りがありません',
       tileBuilder: _buildTile,
+      onExitTab: widget.onExitTab,
       onItemsChanged: () => setState(() {}),
     );
   }

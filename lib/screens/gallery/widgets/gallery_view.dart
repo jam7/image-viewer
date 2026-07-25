@@ -47,6 +47,12 @@ class GalleryView extends StatefulWidget {
   /// Optional row between the app bar and the grid (search / filter controls).
   final Widget? header;
 
+  /// Back was pressed at the tab's first entry, so there is nowhere left to go
+  /// inside this tab. What that means belongs to whoever owns the tabs: with
+  /// others open, closing this one is the browser-like answer; with none left,
+  /// leaving the gallery. Null falls back to popping the route.
+  final VoidCallback? onExitTab;
+
   /// Called when what should be on screen has changed under the caller's feet —
   /// a page was appended, or a back step moved the tab to another entry. The
   /// caller derives [items] and the [appBar] title from the tab, so it has to
@@ -60,6 +66,7 @@ class GalleryView extends StatefulWidget {
     required this.tileBuilder,
     required this.emptyMessage,
     this.header,
+    this.onExitTab,
     this.onItemsChanged,
   });
 
@@ -228,20 +235,27 @@ class GalleryViewState extends State<GalleryView> {
       _log.info('goBack: stepped to ${_shown.sourceUri}');
       return;
     }
-    _log.info('goBack: first entry, leaving the gallery');
-    // Guard against multiple pop calls in the same frame (e.g. ESC key and
-    // mouse back button firing simultaneously).
+    _log.info('goBack: first entry, leaving this tab');
+    // Guard against multiple calls in the same frame (e.g. ESC key and mouse
+    // back button firing simultaneously).
     if (_isPopping) return;
     _isPopping = true;
+    final exit = widget.onExitTab;
+    if (exit != null) {
+      exit();
+      return;
+    }
     Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Let the system back gesture through only when there is no history left
-      // to walk; otherwise handle it here like every other back affordance.
-      canPop: !widget.tab.canGoBack,
+      // Never let the gesture pop the route by itself. Even at the tab's first
+      // entry the answer may not be "leave" — with other tabs open this one
+      // closes instead — and that is decided in [goBack], which every other
+      // back affordance also goes through.
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         _log.info('onPopInvoked: didPop=$didPop tab=${widget.tab.id} '
             'canGoBack=${widget.tab.canGoBack}');
