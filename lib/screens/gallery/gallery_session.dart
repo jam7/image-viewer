@@ -6,12 +6,17 @@ import '../../services/thumbnail/thumbnail_loader.dart';
 /// loader and scroll position. Owns the session state that used to be scattered
 /// across the source (pagination cursor) and the screen (loaded items, scroll).
 ///
-/// The source ([provider]) is stateless: [GalleryTab] drives it via
+/// A session is one *place* being browsed. A tab (ADR 008) is a stack of these
+/// — its history — and the tab, not the session, carries the identity; hence
+/// [sourceUri] describes where this session looks rather than naming a tab.
+///
+/// The source ([provider]) is stateless: [GallerySession] drives it via
 /// `loadPage(cursor)` and holds the resulting [loaded] list and [_cursor].
 /// Directories and other non-thumbnail items are kept in [loaded] (for the
 /// grid) but excluded from the loader via [_thumbnailFilter].
-class GalleryTab {
-  /// Stable identity for this tab (also cache-key prefix / restore key).
+class GallerySession {
+  /// Where this session looks (also cache-key prefix / restore key). Not a tab
+  /// identity — the same URI may be open in several tabs (ADR 008).
   final Uri sourceUri;
   final ImageSourceProvider provider;
 
@@ -19,7 +24,7 @@ class GalleryTab {
   /// list is fully described by [sourceUri].
   final String? path;
 
-  /// Thumbnail engine for this tab. Its `source` is [provider].
+  /// Thumbnail engine for this session. Its `source` is [provider].
   final ThumbnailLoader thumbnails;
 
   final List<ImageSource> loaded = [];
@@ -40,7 +45,7 @@ class GalleryTab {
   bool _firstPageLoaded = false;
   bool _loadingPage = false;
 
-  GalleryTab({
+  GallerySession({
     required this.sourceUri,
     required this.provider,
     required this.thumbnails,

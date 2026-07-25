@@ -5,7 +5,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
-import 'gallery_tab.dart';
+import 'gallery_session.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
@@ -47,9 +47,9 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   final Map<String, ThumbnailResult> _thumbnailData = {};
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
-  late final GalleryTab _tab;
-  /// id → index within [GalleryTab.thumbnailItems] (the loader's list), for the
-  /// batch trigger. Rebuilt after each page load.
+  late final GallerySession _session;
+  /// id → index within [GallerySession.thumbnailItems] (the loader's list),
+  /// for the batch trigger. Rebuilt after each page load.
   Map<String, int> _thumbIndex = {};
   bool _isLoading = false;
   String? _error;
@@ -67,7 +67,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         if (mounted) setState(() => _thumbnailData[id] = result);
       },
     );
-    _tab = GalleryTab(
+    _session = GallerySession(
       sourceUri: Uri.parse('smb://${widget.source.config.id}${widget.initialPath}'),
       provider: widget.source,
       thumbnails: loader,
@@ -86,13 +86,13 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   @override
   void activate() {
     super.activate();
-    if (_tab.thumbnailItems.isNotEmpty && _thumbnailData.isEmpty) {
+    if (_session.thumbnailItems.isNotEmpty && _thumbnailData.isEmpty) {
       _reloadThumbnailsFromCache();
     }
   }
 
   Future<void> _reloadThumbnailsFromCache() async {
-    for (final image in _tab.thumbnailItems) {
+    for (final image in _session.thumbnailItems) {
       if (!mounted) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
@@ -109,7 +109,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
 
   @override
   void dispose() {
-    _tab.dispose();
+    _session.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -123,14 +123,14 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     _thumbnailData.clear();
 
     try {
-      await _tab.loadNextPage();
+      await _session.loadNextPage();
       if (!mounted) return;
       _thumbIndex = {
-        for (var i = 0; i < _tab.thumbnailItems.length; i++)
-          _tab.thumbnailItems[i].id: i
+        for (var i = 0; i < _session.thumbnailItems.length; i++)
+          _session.thumbnailItems[i].id: i
       };
       setState(() => _isLoading = false);
-      await _tab.thumbnails.loadNextBatch();
+      await _session.thumbnails.loadNextBatch();
       _loadMoreIfNeeded();
     } catch (e, st) {
       _log.warning('loadDirectory error', e, st);
@@ -143,11 +143,11 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   void _loadMoreIfNeeded() {
-    if (_tab.thumbnails.allDispatched) return;
+    if (_session.thumbnails.allDispatched) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent <= 0) {
-        _tab.thumbnails.loadNextBatch();
+        _session.thumbnails.loadNextBatch();
       }
     });
   }
@@ -166,7 +166,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         ),
       ));
     } else if (item.metadata?['isVideo'] == true) {
-      _tab.thumbnails.cancel();
+      _session.thumbnails.cancel();
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => VideoPlayerScreen(
           item: item,
@@ -175,11 +175,11 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
         ),
       )).then((_) {
         _retryNotSupportedThumbnails();
-        _tab.thumbnails.retryInterrupted();
+        _session.thumbnails.retryInterrupted();
       });
     } else {
       final viewerItems =
-          _tab.thumbnailItems.where((i) => i.metadata?['isVideo'] != true).toList();
+          _session.thumbnailItems.where((i) => i.metadata?['isVideo'] != true).toList();
       final index = viewerItems.indexWhere((i) => i.id == item.id);
       if (index >= 0) {
         Navigator.of(context).push(MaterialPageRoute(
@@ -198,7 +198,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   /// After returning from the viewer/player, retry thumbnails that failed as
   /// notSupported (their backing data may now be cached).
   void _retryNotSupportedThumbnails() {
-    _tab.thumbnails.retryUnsupported((id) {
+    _session.thumbnails.retryUnsupported((id) {
       final thumb = _thumbnailData[id];
       if (thumb is ThumbnailFailed &&
           thumb.reason == ThumbnailFailReason.notSupported) {
@@ -258,7 +258,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   Widget _buildGrid() {
     return GalleryGrid(
       scrollController: _scrollController,
-      itemCount: _tab.loaded.length,
+      itemCount: _session.loaded.length,
       isLoading: _isLoading,
       emptyMessage: 'ファイルが見つかりませんでした',
       tileBuilder: _buildTile,
@@ -266,15 +266,15 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   }
 
   Widget _buildTile(BuildContext context, int index) {
-    final item = _tab.loaded[index];
+    final item = _session.loaded[index];
     final isDir = item.metadata?['isDirectory'] == true;
     final thumb = _thumbnailData[item.id];
 
     // Trigger next batch when an item beyond current batch becomes visible.
     final itemIndex = _thumbIndex[item.id] ?? -1;
-    if (!isDir && _tab.thumbnails.needsBatch(itemIndex)) {
+    if (!isDir && _session.thumbnails.needsBatch(itemIndex)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _tab.thumbnails.loadNextBatch();
+        if (mounted) _session.thumbnails.loadNextBatch();
       });
     }
 

@@ -353,7 +353,7 @@ class _FakePixivSource extends PixivSource {
   _FakePixivSource(this.items)
       : super(client: PixivApiClient(webClient: PixivWebClient()));
 
-  // GalleryTab pages via loadPage, so override that (not listImages).
+  // GallerySession pages via loadPage, so override that (not listImages).
   @override
   Future<PageResult> loadPage({String? path, Object? cursor}) async =>
       PageResult(items: items);

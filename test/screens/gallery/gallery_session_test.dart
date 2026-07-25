@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/models/image_source.dart';
 import 'package:image_viewer/models/server_config.dart';
-import 'package:image_viewer/screens/gallery/gallery_tab.dart';
+import 'package:image_viewer/screens/gallery/gallery_session.dart';
 import 'package:image_viewer/services/cache/cache_manager.dart';
 import 'package:image_viewer/services/cache/disk_cache.dart';
 import 'package:image_viewer/services/cache/download_store.dart';
@@ -14,13 +14,13 @@ import 'package:image_viewer/services/sources/image_source_provider.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
 import 'package:image_viewer/services/thumbnail/thumbnail_loader.dart';
 
-/// Tests the GalleryTab paging + thumbnail-feed logic (ADR 007) without UI.
+/// Tests the GallerySession paging + thumbnail-feed logic (ADR 007) without UI.
 void main() {
   late Directory tempDir;
   late CacheManager cache;
 
   setUp(() async {
-    tempDir = Directory.systemTemp.createTempSync('gallery_tab_test');
+    tempDir = Directory.systemTemp.createTempSync('gallery_session_test');
     final l2 = DiskCache();
     await l2.init(baseDir: Directory('${tempDir.path}/l2')..createSync());
     final l3 = DownloadStore();
@@ -40,7 +40,7 @@ void main() {
         metadata: {'isDirectory': dir},
       );
 
-  GalleryTab tab(_FakePagedSource source,
+  GallerySession session(_FakePagedSource source,
       {bool Function(ImageSource)? filter}) {
     final loader = ThumbnailLoader(
       source: source,
@@ -49,7 +49,7 @@ void main() {
       parallelCount: 5,
       onResult: (_, _) {},
     );
-    return GalleryTab(
+    return GallerySession(
       sourceUri: Uri.parse('test://x'),
       provider: source,
       thumbnails: loader,
@@ -58,7 +58,7 @@ void main() {
   }
 
   test('finite source: one page, hasMore becomes false', () async {
-    final t = tab(_FakePagedSource([
+    final t = session(_FakePagedSource([
       [img('a'), img('b')],
     ]));
     expect(t.hasMore, isTrue); // nothing loaded yet
@@ -73,7 +73,7 @@ void main() {
   });
 
   test('paged source: appends pages and tracks cursor', () async {
-    final t = tab(_FakePagedSource([
+    final t = session(_FakePagedSource([
       [img('a'), img('b')],
       [img('c'), img('d')],
     ]));
@@ -95,7 +95,7 @@ void main() {
       parallelCount: 5,
       onResult: (_, _) {},
     );
-    final t = GalleryTab(
+    final t = GallerySession(
       sourceUri: Uri.parse('fav://'),
       provider: source,
       thumbnails: loader,
@@ -114,7 +114,7 @@ void main() {
     final source = _FakePagedSource([
       [img('dir', dir: true), img('a'), img('b')],
     ]);
-    final t = tab(source, filter: (i) => i.metadata?['isDirectory'] != true);
+    final t = session(source, filter: (i) => i.metadata?['isDirectory'] != true);
 
     await t.loadNextPage();
     await t.thumbnails.loadNextBatch();

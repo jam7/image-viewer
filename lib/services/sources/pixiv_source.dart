@@ -65,7 +65,7 @@ class PixivSource extends ImageSourceProvider {
   @override
   Future<List<ImageSource>> listImages({String? path}) async {
     // Stateful wrapper over loadPage for the current (non-virtualized) screen:
-    // carry the cursor in _nextOffset. GalleryTab will call loadPage directly.
+    // carry the cursor in _nextOffset. GallerySession will call loadPage directly.
     final page = await loadPage(path: path, cursor: _nextOffset);
     _nextOffset = page.nextCursor as int?;
     return page.items;

@@ -5,7 +5,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_constants.dart';
-import 'gallery_tab.dart';
+import 'gallery_session.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
 import '../../services/cache/cache_manager.dart';
@@ -61,10 +61,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   // Single-page state (one Pixiv page per screen; sections/search/author are
   // reached by pushing a new screen and navigating back — ADR 007). The page's
-  // items / cursor / thumbnail loader live in the GalleryTab.
-  late GalleryTab _tab;
+  // items / cursor / thumbnail loader live in the GallerySession.
+  late GallerySession _session;
   final Map<String, ThumbnailResult> _thumbnailData = {};
-  /// id → index within _tab.thumbnailItems (the loader's list), for the batch
+  /// id → index within _session.thumbnailItems (the loader's list), for the batch
   /// trigger. Rebuilt after each page load.
   Map<String, int> _thumbIndex = {};
 
@@ -72,7 +72,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   bool get _isFavoritesPage => _path == '/favorites';
 
   /// Items shown in the grid: loaded items minus the page-count (`>N`) filter.
-  List<ImageSource> get _visibleItems => _filterImages(_tab.loaded);
+  List<ImageSource> get _visibleItems => _filterImages(_session.loaded);
 
   void _applyFilter() {
     final text = _filterController.text.trim();
@@ -91,7 +91,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   /// Build a fresh tab for the current [_path]. Favorites are a finite local
   /// list (seedItems); other pages page through the shared source via loadPage.
-  GalleryTab _createTab() {
+  GallerySession _createSession() {
     final loader = ThumbnailLoader(
       source: widget.source,
       cacheManager: widget.cacheManager,
@@ -101,7 +101,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         if (mounted) setState(() => _thumbnailData[id] = result);
       },
     );
-    return GalleryTab(
+    return GallerySession(
       sourceUri: Uri.parse('pixiv:$_path'),
       provider: widget.source,
       thumbnails: loader,
@@ -122,8 +122,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   void _rebuildThumbIndex() {
     _thumbIndex = {
-      for (var i = 0; i < _tab.thumbnailItems.length; i++)
-        _tab.thumbnailItems[i].id: i
+      for (var i = 0; i < _session.thumbnailItems.length; i++)
+        _session.thumbnailItems[i].id: i
     };
   }
 
@@ -158,7 +158,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       _filterController.text = widget.initialFilterText!;
       _applyFilter();
     }
-    _tab = _createTab();
+    _session = _createSession();
     _scrollController.addListener(_onScroll);
     _loadPage();
   }
@@ -173,19 +173,19 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void activate() {
     super.activate();
-    if (_tab.loaded.isNotEmpty && _thumbnailData.isEmpty) {
+    if (_session.loaded.isNotEmpty && _thumbnailData.isEmpty) {
       _reloadThumbnailsFromCache();
     }
   }
 
   Future<void> _reloadThumbnailsFromCache() async {
-    final tab = _tab;
-    for (final image in tab.thumbnailItems) {
-      if (!mounted || _tab != tab) return;
+    final session = _session;
+    for (final image in session.thumbnailItems) {
+      if (!mounted || _session != session) return;
       if (_thumbnailData.containsKey(image.id)) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}');
-        if (cached != null && mounted && _tab == tab) {
+        if (cached != null && mounted && _session == session) {
           setState(() => _thumbnailData[image.id] =
               ThumbnailData(Uint8List.fromList(cached.data)));
         }
@@ -197,7 +197,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   void dispose() {
-    _tab.dispose();
+    _session.dispose();
     _searchController.dispose();
     _filterController.dispose();
     _scrollController.dispose();
@@ -209,7 +209,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
         !_isLoading &&
-        _tab.hasMore) {
+        _session.hasMore) {
       _loadPage();
     }
   }
@@ -266,14 +266,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (!mounted || _isLoading) return;
     setState(() => _isLoading = true);
     try {
-      await _tab.loadNextPage();
+      await _session.loadNextPage();
       if (!mounted) return;
       _rebuildThumbIndex();
       setState(() {
         _isLoading = false;
         _error = null;
       });
-      await _tab.thumbnails.loadNextBatch();
+      await _session.thumbnails.loadNextBatch();
       _loadMoreIfNeeded();
     } catch (e, st) {
       _log.warning('loadPage error', e, st);
@@ -288,16 +288,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
   /// Reset to a fresh page (search option / section change): drop the old tab
   /// and reload from the start.
   void _reload() {
-    _tab.dispose();
+    _session.dispose();
     _thumbnailData.clear();
-    _tab = _createTab();
+    _session = _createSession();
     _thumbIndex = {};
     _loadPage();
   }
 
   /// コンテンツが画面に収まってスクロールできない場合、追加読み込みする
   void _loadMoreIfNeeded() {
-    if (!_tab.hasMore) return;
+    if (!_session.hasMore) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent <= 0) {
@@ -549,9 +549,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
     // Trigger the next thumbnail batch when an item beyond the dispatched
     // range becomes visible (index into the loader's item list).
     final loaderIndex = _thumbIndex[image.id] ?? -1;
-    if (_tab.thumbnails.needsBatch(loaderIndex)) {
+    if (_session.thumbnails.needsBatch(loaderIndex)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _tab.thumbnails.loadNextBatch();
+        if (mounted) _session.thumbnails.loadNextBatch();
       });
     }
 
