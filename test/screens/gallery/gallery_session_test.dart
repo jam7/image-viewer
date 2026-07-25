@@ -12,7 +12,7 @@ import 'package:image_viewer/services/cache/download_store.dart';
 import 'package:image_viewer/services/cache/memory_cache.dart';
 import 'package:image_viewer/services/sources/image_source_provider.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
-import 'package:image_viewer/services/thumbnail/thumbnail_loader.dart';
+import 'package:image_viewer/widgets/thumbnail_result.dart';
 
 /// Tests the GallerySession paging + thumbnail-feed logic (ADR 007) without UI.
 void main() {
@@ -41,19 +41,13 @@ void main() {
       );
 
   GallerySession session(_FakePagedSource source,
-      {bool Function(ImageSource)? filter}) {
-    final loader = ThumbnailLoader(
-      source: source,
-      cacheManager: cache,
-      batchSize: 30,
-      parallelCount: 5,
-      onResult: (_, _) {},
-    );
+      {bool Function(ImageSource)? filter, void Function()? onChanged}) {
     return GallerySession(
       sourceUri: Uri.parse('test://x'),
       provider: source,
-      thumbnails: loader,
+      cacheManager: cache,
       thumbnailFilter: filter,
+      onChanged: onChanged,
     );
   }
 
@@ -88,17 +82,10 @@ void main() {
 
   test('seedItems: finite list served as one page, no provider call', () async {
     final source = _FakePagedSource(const []); // provider.loadPage must not be called
-    final loader = ThumbnailLoader(
-      source: source,
-      cacheManager: cache,
-      batchSize: 30,
-      parallelCount: 5,
-      onResult: (_, _) {},
-    );
     final t = GallerySession(
       sourceUri: Uri.parse('fav://'),
       provider: source,
-      thumbnails: loader,
+      cacheManager: cache,
       seedItems: [img('a'), img('b')],
     );
 
@@ -122,6 +109,48 @@ void main() {
     // dir is shown in loaded but not fetched as a thumbnail.
     expect(t.loaded.length, 3);
     expect(source.thumbnailIds, ['a', 'b']);
+  });
+
+  test('loader results are stored on the session and reported once each',
+      () async {
+    var changes = 0;
+    final t = session(
+      _FakePagedSource([
+        [img('a'), img('b')],
+      ]),
+      onChanged: () => changes++,
+    );
+
+    await t.loadNextPage();
+    await t.thumbnails.loadNextBatch();
+
+    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
+    expect(t.thumbnailFor('b'), isA<ThumbnailData>());
+    expect(t.thumbnailFor('missing'), isNull);
+    expect(t.hasThumbnailResults, isTrue);
+    expect(changes, 2);
+  });
+
+  test('releasing thumbnails clears the results but keeps the item list',
+      () async {
+    var changes = 0;
+    final t = session(
+      _FakePagedSource([
+        [img('a')],
+      ]),
+      onChanged: () => changes++,
+    );
+    await t.loadNextPage();
+    await t.thumbnails.loadNextBatch();
+    changes = 0;
+
+    t.releaseThumbnailResults();
+
+    expect(t.hasThumbnailResults, isFalse);
+    expect(t.thumbnailFor('a'), isNull);
+    expect(t.loaded.map((i) => i.id), ['a']); // items survive the release
+    // No repaint request: this runs from deactivate, i.e. during a build.
+    expect(changes, 0);
   });
 }
 

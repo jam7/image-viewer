@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
-import 'gallery_constants.dart';
 import 'gallery_session.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
@@ -12,7 +11,6 @@ import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
-import '../../services/thumbnail/thumbnail_loader.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../../widgets/thumbnail_result.dart';
 import '../video/video_player_screen.dart';
@@ -44,7 +42,6 @@ class SmbGalleryScreen extends StatefulWidget {
 }
 
 class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
-  final Map<String, ThumbnailResult> _thumbnailData = {};
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   late final GallerySession _session;
@@ -58,35 +55,29 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   @override
   void initState() {
     super.initState();
-    final loader = ThumbnailLoader(
-      source: widget.source,
-      cacheManager: widget.cacheManager,
-      batchSize: galleryCrossAxisCount * 6,
-      parallelCount: galleryCrossAxisCount,
-      onResult: (id, result) {
-        if (mounted) setState(() => _thumbnailData[id] = result);
-      },
-    );
     _session = GallerySession(
       sourceUri: Uri.parse('smb://${widget.source.config.id}${widget.initialPath}'),
       provider: widget.source,
-      thumbnails: loader,
+      cacheManager: widget.cacheManager,
       path: widget.initialPath,
       thumbnailFilter: (i) => i.metadata?['isDirectory'] != true,
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
     );
     _loadDirectory();
   }
 
   @override
   void deactivate() {
-    _thumbnailData.clear();
+    _session.releaseThumbnailResults();
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    if (_session.thumbnailItems.isNotEmpty && _thumbnailData.isEmpty) {
+    if (_session.thumbnailItems.isNotEmpty && !_session.hasThumbnailResults) {
       _reloadThumbnailsFromCache();
     }
   }
@@ -94,12 +85,13 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   Future<void> _reloadThumbnailsFromCache() async {
     for (final image in _session.thumbnailItems) {
       if (!mounted) return;
-      if (_thumbnailData.containsKey(image.id)) continue;
+      if (_session.thumbnailFor(image.id) != null) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}')
             ?? await widget.cacheManager.get('full:${image.id}');
         if (cached != null && mounted) {
-          setState(() => _thumbnailData[image.id] = ThumbnailData(Uint8List.fromList(cached.data)));
+          _session.recordThumbnail(
+              image.id, ThumbnailData(Uint8List.fromList(cached.data)));
         }
       } catch (e, st) {
         _log.warning('reloadThumbnail error', e, st);
@@ -120,7 +112,6 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
       _isLoading = true;
       _error = null;
     });
-    _thumbnailData.clear();
 
     try {
       await _session.loadNextPage();
@@ -174,7 +165,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
           proxyServer: widget.proxyServer,
         ),
       )).then((_) {
-        _retryNotSupportedThumbnails();
+        _session.retryUnsupportedThumbnails();
         _session.thumbnails.retryInterrupted();
       });
     } else {
@@ -190,25 +181,10 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
             cacheManager: widget.cacheManager,
             favoritesStore: widget.favoritesStore,
           ),
-        )).then((_) => _retryNotSupportedThumbnails());
+        )).then((_) => _session.retryUnsupportedThumbnails());
       }
     }
   }
-
-  /// After returning from the viewer/player, retry thumbnails that failed as
-  /// notSupported (their backing data may now be cached).
-  void _retryNotSupportedThumbnails() {
-    _session.thumbnails.retryUnsupported((id) {
-      final thumb = _thumbnailData[id];
-      if (thumb is ThumbnailFailed &&
-          thumb.reason == ThumbnailFailReason.notSupported) {
-        _thumbnailData.remove(id);
-        return true;
-      }
-      return false;
-    });
-  }
-
 
 
   /// Guard against multiple pop calls in the same frame
@@ -268,7 +244,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
   Widget _buildTile(BuildContext context, int index) {
     final item = _session.loaded[index];
     final isDir = item.metadata?['isDirectory'] == true;
-    final thumb = _thumbnailData[item.id];
+    final thumb = _session.thumbnailFor(item.id);
 
     // Trigger next batch when an item beyond current batch becomes visible.
     final itemIndex = _thumbIndex[item.id] ?? -1;
@@ -279,7 +255,7 @@ class _SmbGalleryScreenState extends State<SmbGalleryScreen> {
     }
 
     final isVideo = item.metadata?['isVideo'] == true;
-    final videoThumb = isVideo ? _thumbnailData[item.id] : null;
+    final videoThumb = isVideo ? thumb : null;
 
     return GestureDetector(
       onTap: () => _onItemTap(item),

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
-import 'gallery_constants.dart';
 import 'gallery_session.dart';
 import 'widgets/gallery_grid.dart';
 import 'widgets/gallery_keyboard_scrollable.dart';
@@ -12,7 +11,6 @@ import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
-import '../../services/thumbnail/thumbnail_loader.dart';
 import '../../widgets/thumbnail_result.dart';
 import '../viewer/viewer_screen.dart';
 
@@ -63,7 +61,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   // reached by pushing a new screen and navigating back — ADR 007). The page's
   // items / cursor / thumbnail loader live in the GallerySession.
   late GallerySession _session;
-  final Map<String, ThumbnailResult> _thumbnailData = {};
   /// id → index within _session.thumbnailItems (the loader's list), for the batch
   /// trigger. Rebuilt after each page load.
   Map<String, int> _thumbIndex = {};
@@ -92,21 +89,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
   /// Build a fresh tab for the current [_path]. Favorites are a finite local
   /// list (seedItems); other pages page through the shared source via loadPage.
   GallerySession _createSession() {
-    final loader = ThumbnailLoader(
-      source: widget.source,
-      cacheManager: widget.cacheManager,
-      batchSize: galleryCrossAxisCount * 6,
-      parallelCount: galleryCrossAxisCount,
-      onResult: (id, result) {
-        if (mounted) setState(() => _thumbnailData[id] = result);
-      },
-    );
     return GallerySession(
       sourceUri: Uri.parse('pixiv:$_path'),
       provider: widget.source,
-      thumbnails: loader,
+      cacheManager: widget.cacheManager,
       path: _path,
       seedItems: _isFavoritesPage ? _favoriteItems() : null,
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
     );
   }
 
@@ -166,14 +157,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   void deactivate() {
     // Release decoded thumbnails to save memory; reloaded from cache on return.
-    _thumbnailData.clear();
+    _session.releaseThumbnailResults();
     super.deactivate();
   }
 
   @override
   void activate() {
     super.activate();
-    if (_session.loaded.isNotEmpty && _thumbnailData.isEmpty) {
+    if (_session.loaded.isNotEmpty && !_session.hasThumbnailResults) {
       _reloadThumbnailsFromCache();
     }
   }
@@ -182,12 +173,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final session = _session;
     for (final image in session.thumbnailItems) {
       if (!mounted || _session != session) return;
-      if (_thumbnailData.containsKey(image.id)) continue;
+      if (session.thumbnailFor(image.id) != null) continue;
       try {
         final cached = await widget.cacheManager.get('thumb:${image.id}');
         if (cached != null && mounted && _session == session) {
-          setState(() => _thumbnailData[image.id] =
-              ThumbnailData(Uint8List.fromList(cached.data)));
+          session.recordThumbnail(
+              image.id, ThumbnailData(Uint8List.fromList(cached.data)));
         }
       } catch (e, st) {
         _log.warning('reloadThumbnail error', e, st);
@@ -289,7 +280,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   /// and reload from the start.
   void _reload() {
     _session.dispose();
-    _thumbnailData.clear();
     _session = _createSession();
     _thumbIndex = {};
     _loadPage();
@@ -543,7 +533,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Widget _buildTile(BuildContext context, int index) {
     final image = _visibleItems[index];
-    final thumb = _thumbnailData[image.id];
+    final thumb = _session.thumbnailFor(image.id);
     final pageCount = image.metadata?['pageCount'] as int? ?? 1;
 
     // Trigger the next thumbnail batch when an item beyond the dispatched
