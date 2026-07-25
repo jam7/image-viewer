@@ -78,20 +78,7 @@ class GalleryTabsScreen extends StatelessWidget {
     // scroll position, loading flags — instead of inheriting the old one's.
     final key = ValueKey(tab.id);
     return Scaffold(
-      appBar: GalleryHeader(
-        strip: GalleryTabStrip(
-          controller: controller,
-          newTabOptions: _newTabOptions(context),
-        ),
-        toolbar: GalleryToolbar(
-          title: _titleOf(tab),
-          canGoBack: tab.canGoBack,
-          canGoForward: tab.canGoForward,
-          onBack: () => _goBack(context, tab),
-          onForward: () => tab.forward(),
-          menuItems: _menuItems(context, tab),
-        ),
-      ),
+      appBar: _buildHeader(context, tab),
       body: switch (tab.current.sourceUri.scheme) {
         homeUriScheme => HomeGalleryBody(
             key: key,
@@ -195,6 +182,24 @@ class GalleryTabsScreen extends StatelessWidget {
   /// so long-pressing several folders in a row keeps you where you are.
   void _openInNewTab(GallerySession session) =>
       controller.open(GalleryTab(session), activate: false);
+
+  /// The two header rows: the tab strip over the navigation toolbar (ADR 009).
+  PreferredSizeWidget _buildHeader(BuildContext context, GalleryTab tab) {
+    return GalleryHeader(
+      strip: GalleryTabStrip(
+        controller: controller,
+        newTabOptions: _newTabOptions(context),
+      ),
+      toolbar: GalleryToolbar(
+        title: _titleOf(tab),
+        canGoBack: tab.canGoBack,
+        canGoForward: tab.canGoForward,
+        onBack: () => _goBack(context, tab),
+        onForward: () => tab.forward(),
+        menuItems: _menuItems(context, tab),
+      ),
+    );
+  }
 
   /// Where [tab] is now, for the toolbar. Falls back to the URI when a place
   /// has no name of its own.

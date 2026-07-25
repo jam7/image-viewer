@@ -45,9 +45,8 @@ class GalleryToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: scheme.surface,
+      color: Theme.of(context).colorScheme.surface,
       child: SizedBox(
         height: height,
         child: Row(
@@ -57,7 +56,7 @@ class GalleryToolbar extends StatelessWidget {
               tooltip: '戻る',
               // Enabled even at the first entry: back still means something
               // there -- it closes this tab and hands you the neighbour
-              // (ADR 008 追記). Greying it out would hide that.
+              // (ADR 008 追記). Greying it out would say otherwise.
               onPressed: onBack,
             ),
             IconButton(
@@ -65,47 +64,53 @@ class GalleryToolbar extends StatelessWidget {
               tooltip: '進む',
               onPressed: canGoForward ? onForward : null,
             ),
-            Expanded(
-              child: Container(
-                height: 32,
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  title,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
-            ),
-            if (menuItems.isNotEmpty)
-              PopupMenuButton<ToolbarMenuItem>(
-                icon: const Icon(Icons.menu, size: 20),
-                tooltip: 'メニュー',
-                onSelected: (item) => item.onSelected(),
-                itemBuilder: (_) => [
-                  for (final item in menuItems)
-                    PopupMenuItem(
-                      value: item,
-                      child: Row(
-                        children: [
-                          Icon(item.icon, size: 20),
-                          const SizedBox(width: 12),
-                          Text(item.label),
-                        ],
-                      ),
-                    ),
-                ],
-              )
+            Expanded(child: _buildAddressField(context)),
+            if (menuItems.isEmpty)
+              const SizedBox(width: 8)
             else
-              const SizedBox(width: 8),
+              _buildMenuButton(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAddressField(BuildContext context) {
+    return Container(
+      height: 32,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        title,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        style: const TextStyle(fontSize: 13),
+      ),
+    );
+  }
+
+  Widget _buildMenuButton() {
+    return PopupMenuButton<ToolbarMenuItem>(
+      icon: const Icon(Icons.menu, size: 20),
+      tooltip: 'メニュー',
+      onSelected: (item) => item.onSelected(),
+      itemBuilder: (_) => [
+        for (final item in menuItems)
+          PopupMenuItem(
+            value: item,
+            child: Row(
+              children: [
+                Icon(item.icon, size: 20),
+                const SizedBox(width: 12),
+                Text(item.label),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
