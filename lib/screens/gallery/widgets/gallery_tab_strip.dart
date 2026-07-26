@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../gallery_tab.dart';
 import '../gallery_tab_controller.dart';
 import '../gallery_uri.dart';
+import '../gallery_uri_dialect.dart';
 
 /// One entry in the `+` menu: somewhere a new tab can be opened.
 class NewTabOption {
@@ -178,7 +179,7 @@ class _TabChip extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final session = tab.current;
     return Tooltip(
-      message: session.title.isEmpty ? '${session.sourceUri}' : session.title,
+      message: placeTitle(session.sourceUri, session.title),
       child: Material(
         color: selected ? scheme.surface : scheme.surfaceContainerHighest,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
@@ -234,9 +235,7 @@ class _TabChip extends StatelessWidget {
   /// whatever the source uses natively — no need to put SMB's backslashes back
   /// just to show them.
   static String _labelFor(Uri uri, String title, {required bool withParent}) {
-    if (uri.scheme != smbUriScheme) {
-      return title.isEmpty ? uri.toString() : title;
-    }
+    if (uri.scheme != smbUriScheme) return placeTitle(uri, title);
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) return uri.host; // the share root
     final keep = withParent && segments.length >= 2 ? 2 : 1;

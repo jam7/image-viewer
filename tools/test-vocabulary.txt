@@ -94,7 +94,12 @@ test-user
 新しいタブで開きました:
 ファイルが見つかりませんでした
 画像が見つかりませんでした
-~^[^\n]*(お気に入り|サービス|サーバー|ライブラリ|ブックマーク|設定|ホーム|再読み込み|の作品|見つかりませんでした|新しいタブで開きました)[^\n]*$
+# How the toolbar names a search whose options are not the usual ones
+# (gallery_uri_dialect.dart). They annotate a word from this file, so the
+# whole label has to be allowed as well -- hence the alternation below.
+部分
+古い順
+~^[^\n]*(お気に入り|サービス|サーバー|ライブラリ|ブックマーク|設定|ホーム|再読み込み|の作品|部分|古い順|見つかりませんでした|新しいタブで開きました)[^\n]*$
 
 # -- documentation examples -------------------------------------------------
 # Paths in the developer commands in CLAUDE.md. Written as an environment

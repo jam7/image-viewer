@@ -49,8 +49,9 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
         smbGalleryUri(_source.config.id, path),
         provider: _source,
         cacheManager: widget.cacheManager,
-        // Shown, not used for I/O: slashes read the same across sources.
-        title: path.replaceAll(r'\', '/'),
+        // No title: a directory is named by its own address, and the URI
+        // dialect already says so (gallery_uri_dialect.dart). Only the
+        // server's nickname needs carrying, and that is set when the tab opens.
       );
 
   void _onItemTap(ImageSource item) {

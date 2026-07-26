@@ -47,9 +47,10 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   final _viewKey = GlobalKey<GalleryViewState>();
   int _minPageCount = 0;
 
-  // Search options (session-only). Apply to tag searches.
-  String _searchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分一致
-  String _searchOrder = 'date_d'; // date_d=新着 / date=古い順
+  // Search options (session-only). Apply to tag searches. 2C-3 moves these
+  // into the toolbar's window; the values themselves live in the URI already.
+  String _searchMode = pixivDefaultSearchMode;
+  String _searchOrder = pixivDefaultSearchOrder;
 
   // Sections, searches and author pages are entries in the tab's history
   // rather than separate screens (ADR 008).
@@ -114,10 +115,10 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     });
   }
 
-  /// A search path carrying the current tag-match / order toggles.
-  String _searchPathFor(String word) =>
-      '/search?word=${Uri.encodeComponent(word)}'
-      '&s_mode=$_searchMode&order=$_searchOrder';
+  /// A search path carrying the current tag-match / order toggles. The query's
+  /// shape belongs to the Pixiv URI dialect, which is also what reads it back.
+  String _searchPathFor(String word) => pixivPathOf(
+      pixivSearchUri(word, mode: _searchMode, order: _searchOrder));
 
   @override
   void initState() {
@@ -245,15 +246,17 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     }
   }
 
-  /// Label for the Pixiv page at [path], fixed at session creation because the
-  /// author name is known only at the moment we navigate there.
-  static String _titleFor(String path, String? authorName) {
-    if (path.startsWith('/search')) return '検索結果一覧';
-    if (path.startsWith('/user/')) return '${authorName ?? ""} の作品';
-    if (path == '/bookmarks') return 'ブックマーク一覧';
-    if (path == '/favorites') return 'お気に入り';
-    return 'Pixiv';
-  }
+  /// The one label for the Pixiv page at [path] that its address cannot
+  /// supply: the author's name, known only at the moment we navigate there.
+  ///
+  /// Everything else is left empty on purpose, so the URI dialect answers
+  /// instead (gallery_uri_dialect.dart). Two rules for naming the same page
+  /// would drift, and the dialect's has to work for a restored tab that has
+  /// not connected yet.
+  static String _titleFor(String path, String? authorName) =>
+      authorName != null && path.startsWith('/user/')
+          ? '$authorName の作品'
+          : '';
 
   /// A way to jump elsewhere in Pixiv. Labelled rather than a bare icon, which
   /// nobody found — but with a fixed label, since the tab chip already says

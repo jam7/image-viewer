@@ -61,6 +61,25 @@ Uri homeGalleryUri() => Uri(scheme: homeUriScheme, host: pixivInstance);
 Uri pixivGalleryUri(String path) =>
     Uri.parse('$pixivUriScheme://$pixivInstance$path');
 
+/// What a Pixiv search asks for when nothing says otherwise: exact tags,
+/// newest first.
+const pixivDefaultSearchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分
+const pixivDefaultSearchOrder = 'date_d'; // date_d=新着 / date=古い順
+
+/// Address of the Pixiv search for [word].
+///
+/// The options travel in the URI rather than beside it, so the address is the
+/// whole record of what is on screen: copying it reproduces the same results,
+/// and a restored tab needs nothing else.
+///
+/// Built by hand rather than through `Uri(queryParameters:)` because that
+/// escapes a space as `+`; the API is given this query verbatim and has only
+/// ever been sent `%20`.
+Uri pixivSearchUri(String word, {String? mode, String? order}) =>
+    pixivGalleryUri('/search?word=${Uri.encodeComponent(word)}'
+        '&s_mode=${mode ?? pixivDefaultSearchMode}'
+        '&order=${order ?? pixivDefaultSearchOrder}');
+
 /// The registry key for the source [uri] lives on: scheme plus instance, which
 /// is exactly the `type:id` form `SourceRegistry.resolve` takes.
 String sourceKeyOf(Uri uri) => '${uri.scheme}:${uri.host}';

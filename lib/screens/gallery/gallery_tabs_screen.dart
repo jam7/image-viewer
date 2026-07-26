@@ -183,27 +183,14 @@ class GalleryTabsScreen extends StatelessWidget {
         newTabOptions: _newTabOptions(context),
       ),
       toolbar: GalleryToolbar(
-        title: _titleOf(tab),
-        canGoBack: tab.canGoBack,
-        canGoForward: tab.canGoForward,
-        onBack: () => _goBack(tab),
-        onForward: () => tab.forward(),
+        tab: tab,
+        // Typed in rather than followed from a link, so nothing is known about
+        // the destination but its address; the name comes from getting there.
+        onNavigate: (uri) => _goTo(context, tab, uri, ''),
         menuItems: _menuItems(context, tab),
       ),
     );
   }
-
-  /// Where [tab] is now, for the toolbar. Falls back to the URI when a place
-  /// has no name of its own.
-  String _titleOf(GalleryTab tab) {
-    final session = tab.current;
-    return session.title.isEmpty ? '${session.sourceUri}' : session.title;
-  }
-
-  /// One history step. The revision bump rebuilds the body, which notices the
-  /// entry changed. Nothing happens at the first entry — closing a tab is the
-  /// chip's `x`, never a side effect of navigating (ADR 009 追記).
-  void _goBack(GalleryTab tab) => tab.back();
 
   /// The hamburger: this tab's own places on top (2C-3 moves the Pixiv
   /// sections here), operations on the whole app below.

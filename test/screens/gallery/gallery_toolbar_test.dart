@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/models/image_source.dart';
@@ -149,6 +150,97 @@ void main() {
 
     expect(enabled(tester, back()), isFalse);
     expect(enabled(tester, forward()), isTrue);
+  });
+
+  /// Tap the window and get at the field it turns into.
+  Future<TextField> startTyping(WidgetTester tester, String shownNow) async {
+    await tester.tap(inToolbar(find.text(shownNow)));
+    await tester.pumpAndSettle();
+    return tester.widget<TextField>(inToolbar(find.byType(TextField)));
+  }
+
+  Future<void> submit(WidgetTester tester, String text) async {
+    await tester.enterText(inToolbar(find.byType(TextField)), text);
+    await tester.testTextInput.receiveAction(TextInputAction.go);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('tapping the window offers the address, selected whole',
+      (tester) async {
+    // The address is the thing worth taking elsewhere, and handing it over
+    // selected is the whole of "copy this place" — no feature of ours needed.
+    await pumpHost(tester);
+    expect(inToolbar(find.text('ホーム')), findsOneWidget);
+
+    final field = await startTyping(tester, 'ホーム');
+
+    expect(field.controller!.text, '${homeGalleryUri()}');
+    expect(field.controller!.selection,
+        TextSelection(baseOffset: 0, extentOffset: field.controller!.text.length));
+  });
+
+  testWidgets('an address goes there, in this tab', (tester) async {
+    await pumpHost(tester);
+    await startTyping(tester, 'ホーム');
+
+    await submit(tester, '${pixivGalleryUri('/bookmarks')}');
+
+    final tab = controller.active!;
+    expect(tab.current.sourceUri.path, '/bookmarks');
+    expect(tab.history.length, 2); // pushed, so back comes home
+    expect(controller.tabs.length, 1); // and not a second tab
+  });
+
+  testWidgets('anything else is a search of the source we are on',
+      (tester) async {
+    await pumpHost(tester);
+    await goSomewhere(tester); // to Pixiv, which has a search
+    await startTyping(tester, 'Pixiv');
+
+    await submit(tester, 'books');
+
+    final uri = controller.active!.current.sourceUri;
+    expect(uri.path, '/search');
+    expect(uri.queryParameters['word'], 'books');
+  });
+
+  testWidgets('a half-typed address searches rather than complaining',
+      (tester) async {
+    // Hitting enter partway through `smb://` is a normal accident. Searching
+    // for it is recoverable; an error dialog would be in the way.
+    await pumpHost(tester);
+    await goSomewhere(tester);
+    await startTyping(tester, 'Pixiv');
+
+    await submit(tester, 'smb://');
+
+    expect(controller.active!.current.sourceUri.path, '/search');
+  });
+
+  testWidgets('a source with no search drops what was typed', (tester) async {
+    await pumpHost(tester);
+    final before = controller.active!.current.sourceUri;
+    await startTyping(tester, 'ホーム'); // home cannot be searched
+
+    await submit(tester, 'books');
+
+    expect(controller.active!.current.sourceUri, before);
+    expect(controller.active!.history.length, 1);
+    expect(inToolbar(find.byType(TextField)), findsNothing); // back to showing
+  });
+
+  testWidgets('escape abandons the edit and shows where we still are',
+      (tester) async {
+    await pumpHost(tester);
+    await startTyping(tester, 'ホーム');
+    await tester.enterText(inToolbar(find.byType(TextField)), 'books');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(inToolbar(find.byType(TextField)), findsNothing);
+    expect(inToolbar(find.text('ホーム')), findsOneWidget);
+    expect(controller.active!.history.length, 1);
   });
 
   testWidgets('the menu reloads the place without leaving it', (tester) async {
