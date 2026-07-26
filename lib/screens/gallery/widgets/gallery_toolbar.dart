@@ -62,6 +62,10 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   /// address the provider could not read. Options belong to the search.
   late Uri _pendingSearch;
 
+  /// Set while an edit is opening: focus lands a frame or more after the text
+  /// does, and arriving can move the caret, so the selection is restated then.
+  bool _selectOnFocus = false;
+
   Uri get _uri => widget.tab.current.sourceUri;
 
   @override
@@ -91,13 +95,21 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
     // A search issued from here starts as the one already on screen, so its
     // switches read the way the results were fetched.
     _pendingSearch = searchFrom(_uri, '') ?? _uri;
-    final text = editableOf(_uri);
-    _controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection(baseOffset: 0, extentOffset: text.length),
-    );
+    _controller.text = editableOf(_uri);
+    _selectOnFocus = true;
     setState(() => _editing = true);
+    // Ask for focus rather than declaring `autofocus` on the field. Autofocus
+    // is a request a scope may decline, and it declines whenever something in
+    // it is already focused — which on every tab but home is the grid, holding
+    // focus for its scroll keys. The symptom was a first tap that changed the
+    // window but brought up no keyboard. An explicit request is not declined.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _editing) _focus.requestFocus();
+    });
   }
+
+  void _selectAll() => _controller.selection =
+      TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
 
   /// Flip one of the search switches: it changes the search about to be made,
   /// and nothing about where we are.
@@ -106,14 +118,22 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
 
   void _endEditing() {
     if (!_editing) return;
+    _selectOnFocus = false;
     setState(() => _editing = false);
     _focus.unfocus();
   }
 
   void _onFocusChanged() {
+    if (!mounted) return;
     // Looking away is the same as pressing Escape — an abandoned edit, not a
     // half-typed address to keep hold of.
-    if (mounted && !_focus.hasFocus) _endEditing();
+    if (!_focus.hasFocus) {
+      _endEditing();
+      return;
+    }
+    if (!_selectOnFocus) return; // a later tap is the reader placing a caret
+    _selectOnFocus = false;
+    _selectAll();
   }
 
   /// What was typed decides what happens: an address goes there, anything else
@@ -192,7 +212,6 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
             child: TextField(
               controller: _controller,
               focusNode: _focus,
-              autofocus: true,
               style: const TextStyle(fontSize: 13),
               decoration: InputDecoration(
                 border: InputBorder.none,

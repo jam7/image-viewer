@@ -352,15 +352,18 @@ void main() {
     expect(copied, ['${homeGalleryUri()}']);
   });
 
-  testWidgets('the offered text is selected whole on every source',
+  testWidgets('one tap is enough to start typing, on every source',
       (tester) async {
-    // Home worked from the start; a Pixiv tab has a focus-hungry grid under
-    // the toolbar, so it gets its own check.
+    // On a Pixiv tab the grid below holds focus for its scroll keys, and a
+    // scope that already has a focused child declines an autofocus request —
+    // so the first tap opened the field, brought up no keyboard, and left the
+    // selection unused until a second tap put the caret at the end.
     await pumpHost(tester);
     await goSomewhere(tester);
 
     final field = await startTyping(tester, 'Pixiv');
 
+    expect(field.focusNode!.hasFocus, isTrue);
     expect(field.controller!.selection,
         TextSelection(baseOffset: 0, extentOffset: field.controller!.text.length));
   });
