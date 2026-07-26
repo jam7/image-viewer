@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_viewer/models/image_source.dart';
 import 'package:image_viewer/models/server_config.dart';
 import 'package:image_viewer/screens/gallery/gallery_session.dart';
+import 'package:image_viewer/screens/gallery/gallery_tab.dart';
+import 'package:image_viewer/screens/gallery/gallery_uri.dart';
 import 'package:image_viewer/services/cache/cache_manager.dart';
 import 'package:image_viewer/services/cache/disk_cache.dart';
 import 'package:image_viewer/services/cache/download_store.dart';
@@ -266,6 +268,73 @@ void main() {
     await reload;
 
     expect(t.hasThumbnailResults, isFalse);
+  });
+
+  /// A place opened by typing its address, or restored from disk, arrives with
+  /// no name — nobody was there to supply one. The contents carry it.
+  group('learning a title from the first page', () {
+    ImageSource work(String id, {String? author}) => ImageSource(
+          id: id,
+          name: id,
+          uri: id,
+          type: ImageSourceType.pixiv,
+          metadata: {'author': ?author},
+        );
+
+    GallerySession authorPage(_FakePagedSource source, {String title = ''}) =>
+        GallerySession(
+          sourceUri: pixivGalleryUri('/user/1700000000000'),
+          provider: source,
+          cacheManager: cache,
+          title: title,
+        );
+
+    test('the author page takes its name out of its own works', () async {
+      final t = authorPage(_FakePagedSource([
+        [work('a', author: 'テスト作者')],
+      ]));
+      expect(t.title, isEmpty); // the URI answers for now: 1700000000000 の作品
+
+      await t.loadNextPage();
+
+      expect(t.title, 'テスト作者 の作品');
+    });
+
+    test('a name given up front is not overwritten by the fetch', () async {
+      // Following a link from the viewer already knows the author. Keeping it
+      // is what stops the header showing a number and then changing.
+      final t = authorPage(
+        _FakePagedSource([
+          [work('a', author: 'テスト作者')]
+        ]),
+        title: 'テスト作者 の作品',
+      );
+
+      await t.loadNextPage();
+
+      expect(t.title, 'テスト作者 の作品');
+    });
+
+    test('items that say nothing leave the place unnamed', () async {
+      final t = authorPage(_FakePagedSource([
+        [work('a')],
+      ]));
+
+      await t.loadNextPage();
+
+      expect(t.title, isEmpty);
+    });
+
+    test('the tab hears about it, since the header watches the tab', () async {
+      final tab = GalleryTab(authorPage(_FakePagedSource([
+        [work('a', author: 'テスト作者')],
+      ])));
+      final before = tab.revision.value;
+
+      await tab.current.loadNextPage();
+
+      expect(tab.revision.value, greaterThan(before));
+    });
   });
 }
 

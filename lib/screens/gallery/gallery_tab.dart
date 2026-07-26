@@ -18,14 +18,24 @@ class GalleryTab {
   final List<GallerySession> _history;
   int _index = 0;
 
-  /// Bumped whenever the tab moves to a different entry. A tab bar showing this
-  /// tab's label has to follow along, and it is not the one doing the moving —
-  /// navigation happens inside the body.
+  /// Bumped whenever the tab moves to a different entry, or the entry it is on
+  /// learns its name. A tab bar showing this tab's label has to follow along,
+  /// and it is not the one doing either — navigation happens inside the body,
+  /// and the name can arrive with the first page.
   final ValueNotifier<int> revision = ValueNotifier(0);
 
   GalleryTab(GallerySession initial, {String? id})
       : id = id ?? 'tab${_nextId++}',
-        _history = [initial];
+        _history = [initial] {
+    _adopt(initial);
+  }
+
+  /// Sessions report a late-discovered title back to the tab, which is the only
+  /// thing the header is watching.
+  GallerySession _adopt(GallerySession session) {
+    session.onTitleChanged = _bump;
+    return session;
+  }
 
   /// The place this tab is showing.
   GallerySession get current => _history[_index];
@@ -46,7 +56,7 @@ class GalleryTab {
       dropped.dispose();
     }
     _history.removeRange(_index + 1, _history.length);
-    _history.add(session);
+    _history.add(_adopt(session));
     _index = _history.length - 1;
     _bump();
   }
@@ -56,7 +66,7 @@ class GalleryTab {
   /// the stale entry in the history.
   void replaceCurrent(GallerySession session) {
     _history[_index].dispose();
-    _history[_index] = session;
+    _history[_index] = _adopt(session);
     _bump();
   }
 
@@ -79,10 +89,12 @@ class GalleryTab {
   void _bump() => revision.value++;
 
   Future<void> dispose() async {
-    revision.dispose();
+    // Sessions first: disposing one drops its report-back, and a page still in
+    // flight would otherwise bump a notifier that is already gone.
     for (final session in _history) {
       await session.dispose();
     }
     _history.clear();
+    revision.dispose();
   }
 }

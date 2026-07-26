@@ -285,6 +285,13 @@ abstract class GalleryUriDialect {
 - 取得しないと分からないもの (作者名、SMB サーバーの愛称) は
   `GallerySession.title` が持ち、**title があればそちらが勝つ** (`placeTitle`)。
   逆に URI から導けるものは title に入れない — 名前の付け方が 2 つあると必ずずれる
+- 取得して初めて分かる名前は `titleFrom(uri, items)` で**中身から拾う**。
+  作者名は作品 1 件 1 件に載っているので、最初のページが返れば分かる。
+  URI 直打ちや復元で開いたときは渡してくれる相手がいないため、この経路が要る。
+  遷移元が既に知っている場合 (リンク・ビューア) は先に title を渡す方が勝ち、
+  「数字が出てから名前に変わる」ちらつきを避ける。
+  `GallerySession.title` は可変で、確定したら `onTitleChanged` →
+  `GalleryTab.revision` でヘッダーが追随する
 - 2C-3 / 2C-4 でトグルとページ数フィルタを URI のクエリへ移すときも、
   足すのは `describe` の 1 分岐とクエリ 1 個で済む
 

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:image_viewer/models/image_source.dart';
 import 'package:image_viewer/screens/gallery/gallery_uri.dart';
 import 'package:image_viewer/screens/gallery/gallery_uri_dialect.dart';
 
@@ -105,6 +106,45 @@ void main() {
       expect(searchHintFor(pixivGalleryUri('/top')), isNotNull);
       expect(searchHintFor(homeGalleryUri()), isNull);
       expect(searchHintFor(smbGalleryUri('1700000000000', '/')), isNull);
+    });
+  });
+
+  group('titleFrom', () {
+    ImageSource work({String? author}) => ImageSource(
+          id: 'a',
+          name: 'a',
+          uri: 'a',
+          type: ImageSourceType.pixiv,
+          metadata: {'author': ?author},
+        );
+
+    test('an author page is named by the works on it', () {
+      expect(
+          titleFromItems(pixivGalleryUri('/user/1700000000000'),
+              [work(author: 'テスト作者')]),
+          'テスト作者 の作品',
+      );
+    });
+
+    test('nothing to learn where the URI already said it all', () {
+      // A search knows its own word; the top page has no name to find.
+      expect(titleFromItems(pixivSearchUri('books'), [work(author: 'テスト作者')]),
+          isNull);
+      expect(titleFromItems(pixivGalleryUri('/top'), [work(author: 'テスト作者')]),
+          isNull);
+    });
+
+    test('an empty or silent page teaches nothing', () {
+      expect(titleFromItems(pixivGalleryUri('/user/1700000000000'), []), isNull);
+      expect(titleFromItems(pixivGalleryUri('/user/1700000000000'), [work()]),
+          isNull);
+    });
+
+    test('sources with no such name say so', () {
+      expect(titleFromItems(homeGalleryUri(), [work(author: 'テスト作者')]), isNull);
+      expect(
+          titleFromItems(smbGalleryUri('1700000000000', '/books'), [work()]),
+          isNull);
     });
   });
 

@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import 'gallery_uri.dart';
+import 'gallery_uri_dialect.dart';
 import '../../services/sources/image_source_provider.dart';
 import '../../services/thumbnail/thumbnail_loader.dart';
 import '../../widgets/thumbnail_result.dart';
@@ -37,10 +38,19 @@ class GallerySession {
   /// list is fully described by [sourceUri].
   final String? path;
 
-  /// What to call this place in the app bar and, later, on a tab. Not derivable
-  /// from [sourceUri] in every case — an author page shows a name the URI does
-  /// not carry — so the caller supplies it.
-  final String title;
+  /// What to call this place, when the URI alone cannot say — an author page
+  /// shows a name the address does not carry. Empty means "ask the URI"
+  /// (`placeTitle` in gallery_uri_dialect.dart).
+  ///
+  /// Not final, because the name may only turn up with the contents: opening
+  /// an author page by typing its address, or restoring one from disk, means
+  /// nobody is there to supply it up front. See [_learnTitle].
+  String _title;
+  String get title => _title;
+
+  /// Called when [title] becomes known after the fact. Whatever shows the tab's
+  /// name is not the one loading the page, and has no other way to hear of it.
+  void Function()? onTitleChanged;
 
   /// Called when a thumbnail result arrives and the view should repaint.
   ///
@@ -91,11 +101,12 @@ class GallerySession {
     required this.sourceUri,
     required this.provider,
     required CacheManager cacheManager,
-    this.title = '',
+    String title = '',
     this.path,
     bool Function(ImageSource)? thumbnailFilter,
     List<ImageSource>? seedItems,
-  })  : _cacheManager = cacheManager,
+  })  : _title = title,
+        _cacheManager = cacheManager,
         _thumbnailFilter = thumbnailFilter ?? ((_) => true),
         _seedItems = seedItems {
     thumbnails = ThumbnailLoader(
@@ -251,6 +262,7 @@ class GallerySession {
       _cursor = page.nextCursor;
       _firstPageLoaded = true;
       loaded.addAll(page.items);
+      if (firstPage) _learnTitle(page.items);
 
       final eligible = page.items.where(_thumbnailFilter).toList();
       if (firstPage) {
@@ -268,8 +280,21 @@ class GallerySession {
     }
   }
 
+  /// Take the name out of the first page, for a place that arrived without one.
+  ///
+  /// A title supplied by whoever sent us here always wins: it was known before
+  /// the fetch, so using it avoids showing the address and then replacing it.
+  void _learnTitle(List<ImageSource> items) {
+    if (_title.isNotEmpty) return;
+    final learned = titleFromItems(sourceUri, items);
+    if (learned == null) return;
+    _title = learned;
+    onTitleChanged?.call();
+  }
+
   Future<void> dispose() {
     _attachGeneration++;
+    onTitleChanged = null; // a page still in flight must not report back
     return thumbnails.dispose();
   }
 

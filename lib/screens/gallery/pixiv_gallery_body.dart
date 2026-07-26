@@ -5,6 +5,7 @@ import '../../models/image_source.dart';
 import 'gallery_session.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
+import 'gallery_uri_dialect.dart';
 import 'widgets/gallery_view.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
@@ -247,15 +248,16 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   }
 
   /// The one label for the Pixiv page at [path] that its address cannot
-  /// supply: the author's name, known only at the moment we navigate there.
+  /// supply: the author's name, when whoever sent us here already knew it.
   ///
   /// Everything else is left empty on purpose, so the URI dialect answers
-  /// instead (gallery_uri_dialect.dart). Two rules for naming the same page
-  /// would drift, and the dialect's has to work for a restored tab that has
-  /// not connected yet.
+  /// instead (gallery_uri_dialect.dart) — including the author's name when it
+  /// was not known in advance, which the session takes out of the first page.
+  /// Passing it here still matters: it is the difference between the name
+  /// being there from the start and a number that changes once the page lands.
   static String _titleFor(String path, String? authorName) =>
       authorName != null && path.startsWith('/user/')
-          ? '$authorName の作品'
+          ? pixivAuthorTitle(authorName)
           : '';
 
   /// A way to jump elsewhere in Pixiv. Labelled rather than a bare icon, which

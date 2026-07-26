@@ -1,3 +1,4 @@
+import '../../models/image_source.dart';
 import 'gallery_uri.dart';
 
 /// How each source writes a place down, and reads one back out for a human.
@@ -21,6 +22,15 @@ abstract class GalleryUriDialect {
   /// abbreviating — the tab chip is the short form, and it shortens
   /// differently because it only has to tell two tabs apart.
   String describe(Uri uri);
+
+  /// The name this place turns out to have once its contents arrive, or null
+  /// if [items] say nothing the URI did not already.
+  ///
+  /// The counterpart to [describe]: an author page is `12345 の作品` until the
+  /// first page comes back, and the author's name is in every item of it. Only
+  /// the source knows where in its own data that name is, which is why this is
+  /// here and not in the session.
+  String? titleFrom(Uri uri, List<ImageSource> items) => null;
 
   /// What the address field invites when this source can be searched, e.g.
   /// 'タグ検索'. Null means it cannot, and [search] then returns null too.
@@ -66,6 +76,15 @@ Uri? searchFrom(Uri from, String query) =>
 /// See [GalleryUriDialect.searchHint].
 String? searchHintFor(Uri uri) => _dialects[uri.scheme]?.searchHint;
 
+/// See [GalleryUriDialect.titleFrom].
+String? titleFromItems(Uri uri, List<ImageSource> items) =>
+    _dialects[uri.scheme]?.titleFrom(uri, items);
+
+/// What a Pixiv author page is called once the author is known. One wording,
+/// used both by whoever already knew the name (a link, the viewer) and by the
+/// page that had to wait for its first fetch to find out.
+String pixivAuthorTitle(String name) => '$name の作品';
+
 /// What to call the place at [uri], given the [known] name a session picked up
 /// on arriving there. The name wins when there is one: only the source can
 /// know an author is called テスト作者, while the URI knows the rest.
@@ -98,6 +117,16 @@ class _PixivDialect extends GalleryUriDialect {
     if (user != null) return '${user.group(1)} の作品';
     if (uri.path == '/bookmarks') return 'ブックマーク一覧';
     return 'Pixiv';
+  }
+
+  /// Every work on an author's page carries the author, so the first page to
+  /// arrive settles the name. Nothing else here is worth learning: a search
+  /// already knows its own word, and the top page has no name to find.
+  @override
+  String? titleFrom(Uri uri, List<ImageSource> items) {
+    if (!_user.hasMatch(uri.path) || items.isEmpty) return null;
+    final author = items.first.metadata?['author'] as String?;
+    return author == null || author.isEmpty ? null : pixivAuthorTitle(author);
   }
 
   /// The word, plus only the options that are *not* the default. A search that
