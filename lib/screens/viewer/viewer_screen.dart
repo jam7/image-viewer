@@ -108,6 +108,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
   final Map<String, CacheSource> _cacheSources = {};
   final Map<String, bool> _loadingStates = {};
   final Map<String, (int received, int total)> _loadProgress = {};
+
+  /// Pages that could not be read, by id, with what went wrong.
+  ///
+  /// Kept because a page with no bytes and no answer looks exactly like a page
+  /// still arriving, and stays looking like it for as long as the viewer is
+  /// open. The reader is owed the difference.
+  final Map<String, String> _loadFailures = {};
   bool _showOverlay = true;
 
   /// The player of the video on screen, if that is what is on screen. Handed
@@ -293,6 +300,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       widget.onNotAnItem?.call();
     } catch (e, st) {
       _log.warning('loadFullImage error (${image.name})', e, st);
+      if (mounted) setState(() => _loadFailures[image.id] = '$e');
     } finally {
       _loadingStates[image.id] = false;
       _loadProgress.remove(image.id);
@@ -358,6 +366,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     _cacheSources.clear();
     _loadingStates.clear();
     _loadProgress.clear();
+    _loadFailures.clear();
   }
 
   static bool _isVideo(ImageSource item) => item.metadata?['isVideo'] == true;
@@ -366,6 +375,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
   bool _worthLoading(ImageSource image) {
     if (_fullImages.containsKey(image.id)) return false;
     if (_loadingStates[image.id] == true) return false;
+    // Already tried and failed. Asking again on every scroll would hammer a
+    // source that has just said no; asking again is the reader's to do.
+    if (_loadFailures.containsKey(image.id)) return false;
     // Unsupported formats (a ZIP inside a ZIP) have nothing to show.
     if (image.metadata?['unsupported'] == true) return false;
     // A video is streamed through the proxy a piece at a time. Fetching it
@@ -377,6 +389,39 @@ class _ViewerScreenState extends State<ViewerScreen> {
   ThumbnailResult? _posterFor(ImageSource item) {
     final data = _fullImages[item.id];
     return data == null ? null : ThumbnailData(data);
+  }
+
+  /// What went wrong with this page, if anything did — and a way to ask
+  /// again, since the usual reason is a share that went away for a moment.
+  Widget? _buildUnreadable(ImageSource image) {
+    final failure = _loadFailures[image.id];
+    if (failure == null) return null;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _loadFailures.remove(image.id));
+        _loadFullImage(image);
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.broken_image, color: Colors.white38, size: 64),
+            const SizedBox(height: 12),
+            const Text(
+              '読み込めませんでした。タップで再試行',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              failure,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white30, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildLoadingIndicator(String imageId) {
@@ -1012,7 +1057,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
                             ..scale(_scale), // ignore: deprecated_member_use
                           child: Image.memory(data, fit: BoxFit.contain),
                         )
-                      : _buildLoadingIndicator(currentImage.id),
+                      : _buildUnreadable(currentImage) ??
+                          _buildLoadingIndicator(currentImage.id),
                 ),
                 // Page sidebar (right edge)
                 if (pages.length > 1)

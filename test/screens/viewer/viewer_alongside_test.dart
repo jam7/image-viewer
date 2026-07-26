@@ -142,6 +142,23 @@ void main() {
     expect(shown, [false, true, false]);
   });
 
+  testWidgets('a page that cannot be read says so, and can be asked again',
+      (tester) async {
+    // It used to log and leave the spinner turning, which looks exactly like
+    // a page still arriving — for as long as the viewer is open.
+    final source = _FakeSource()..failReads = true;
+    registry.register('smb:test', source);
+    await pumpViewer(tester);
+
+    expect(find.text('読み込めませんでした。タップで再試行'), findsOneWidget);
+
+    source.failReads = false;
+    await tester.tap(find.byIcon(Icons.broken_image));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('読み込めませんでした。タップで再試行'), findsNothing);
+  });
+
   testWidgets('a chip with nowhere to lead does nothing at all',
       (tester) async {
     // Non-Pixiv content has no author or tag to follow, so the callbacks are
@@ -156,6 +173,9 @@ void main() {
 }
 
 class _FakeSource extends SmbSource {
+  /// Whether reading bytes should fail, for the page that says so.
+  bool failReads = false;
+
   _FakeSource()
       : super(
           config: const ServerConfig(
@@ -172,8 +192,10 @@ class _FakeSource extends SmbSource {
 
   @override
   Future<Uint8List> fetchFullImage(ImageSource source,
-          {void Function(int, int)? onProgress}) async =>
-      Uint8List.fromList(const [1]);
+      {void Function(int, int)? onProgress}) async {
+    if (failReads) throw Exception('no');
+    return Uint8List.fromList(const [1]);
+  }
 
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async =>

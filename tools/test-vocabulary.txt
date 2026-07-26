@@ -111,6 +111,7 @@ test-user
 新しいタブで開きました:
 ファイルが見つかりませんでした
 画像が見つかりませんでした
+読み込めませんでした。タップで再試行
 # How the toolbar names a search whose options are not the usual ones
 # (gallery_uri_dialect.dart). They annotate a word from this file, so the
 # whole label has to be allowed as well -- hence the alternation below.
