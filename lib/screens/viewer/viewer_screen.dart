@@ -9,6 +9,7 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
+import '../../services/sources/image_source_provider.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
 
@@ -30,6 +31,10 @@ class ViewerScreen extends StatefulWidget {
   /// Leave the viewer: a step back in the tab's history, onto the list this
   /// was opened from.
   final VoidCallback onClose;
+
+  /// What was opened is a list rather than one thing to look at — see
+  /// [NotAnItemException]. Null leaves the failure on screen.
+  final VoidCallback? onNotAnItem;
 
   /// Follow this work's author, or one of its tags, in place. Null where the
   /// source has no such thing — only Pixiv works carry them.
@@ -55,6 +60,7 @@ class ViewerScreen extends StatefulWidget {
     this.index = 0,
     this.onIndexChanged,
     required this.onClose,
+    this.onNotAnItem,
     this.onShowAuthor,
     this.onSearchTag,
     required this.registry,
@@ -171,6 +177,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
           _preloadAround(0);
         }
       }
+    } on NotAnItemException catch (e) {
+      // The address named a list after all, which only an address from outside
+      // can get wrong. Showing "cannot read this" would be true and useless;
+      // the caller can go to the listing (ADR 010).
+      _log.info('not an item: ${e.path}');
+      widget.onNotAnItem?.call();
     } catch (e, st) {
       _log.warning('resolvePages error', e, st);
       if (mounted) {

@@ -62,6 +62,10 @@ abstract class GalleryUriDialect {
   /// and has its own address as such).
   Uri? placeOf(ImageSource item) => null;
 
+  /// The same address read as a list, for when one taken for an item turns
+  /// out to be a directory. Null where the source cannot make that mistake.
+  Uri? asList(Uri uri) => null;
+
   /// Whether [uri] names somewhere this source can actually be.
   ///
   /// A URI can be perfectly well-formed and still be nowhere:
@@ -155,6 +159,9 @@ String editableOf(Uri uri) => _dialects[uri.scheme]?.editable(uri) ?? '';
 
 /// See [GalleryUriDialect.itemOf].
 ImageSource? itemOf(Uri uri) => _dialects[uri.scheme]?.itemOf(uri);
+
+/// See [GalleryUriDialect.asList].
+Uri? listAt(Uri uri) => _dialects[uri.scheme]?.asList(uri);
 
 /// See [GalleryUriDialect.placeOf]. The source is read off the item, which
 /// carries the same `type:instance` key the dialects are registered under.
@@ -381,6 +388,9 @@ class _SmbDialect extends GalleryUriDialect {
       metadata: {'isDirectory': false, 'path': path},
     );
   }
+
+  @override
+  Uri? asList(Uri uri) => smbGalleryUri(uri.host, smbPathOf(uri));
 
   /// Null for anything that is not a single thing to look at: a directory is a
   /// list, and a video is not in the viewer yet (ADR 010 段階 6).

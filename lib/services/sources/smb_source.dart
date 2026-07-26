@@ -223,7 +223,10 @@ class SmbSource extends ImageSourceProvider {
   }
 
   @override
-  Future<List<ImageSource>> resolvePages(ImageSource source) async {
+  Future<List<ImageSource>> resolvePages(ImageSource source) =>
+      _asItem(source.uri, () => _resolvePages(source));
+
+  Future<List<ImageSource>> _resolvePages(ImageSource source) async {
     if (source.metadata?['isPdf'] == true) {
       return _resolvePdfPages(source);
     }
@@ -401,8 +404,27 @@ class SmbSource extends ImageSourceProvider {
     return tree.readRange(path, offset: 0, length: length).timeout(_ioTimeout);
   }
 
+  /// Reading a path the server turns out to consider a directory. Only an
+  /// address from outside can be wrong this way — the app's own say which they
+  /// are — so it is reported as such rather than as a failed read, and the
+  /// caller can go to the listing instead (ADR 010).
+  Future<T> _asItem<T>(String path, Future<T> Function() read) async {
+    try {
+      return await read();
+    } on Smb2Exception catch (e) {
+      if (e.status != NtStatus.fileIsADirectory) rethrow;
+      throw NotAnItemException(path);
+    }
+  }
+
   @override
   Future<Uint8List> fetchFullImage(
+    ImageSource source, {
+    void Function(int received, int total)? onProgress,
+  }) async =>
+      _asItem(source.uri, () => _fetchFullImage(source, onProgress: onProgress));
+
+  Future<Uint8List> _fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
   }) async {

@@ -106,6 +106,20 @@ void main() {
     });
   });
 
+  group('an address that turns out to be a list', () {
+    test('SMB can say where the listing is', () {
+      // Only an outside address can be wrong this way, and only the server can
+      // settle it — so when it does, there has to be somewhere to go.
+      expect(listAt(smbFileUri('1700000000000', 'test.jpg')),
+          smbGalleryUri('1700000000000', 'test.jpg'));
+    });
+
+    test('a source that cannot make the mistake says nothing', () {
+      // A Pixiv work id is not a page id; the shapes cannot be confused.
+      expect(listAt(pixivArtworkUri('456')), isNull);
+    });
+  });
+
   group('the neighbourhood', () {
     GallerySession listOf(List<ImageSource> items) => GallerySession(
           sourceUri: pixivGalleryUri('/top'),

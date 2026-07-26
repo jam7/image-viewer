@@ -66,6 +66,19 @@ class PageResult {
   bool get hasMore => nextCursor != null;
 }
 
+/// What was asked for as one thing to look at turned out to be a list.
+///
+/// Only an address that arrived from outside can be wrong this way: the app's
+/// own addresses say which they are (ADR 010). Raised so the caller can go to
+/// the list instead of showing a failure — and raised only when the source
+/// actually said so, never on a read that merely failed.
+class NotAnItemException implements Exception {
+  final String path;
+  NotAnItemException(this.path);
+  @override
+  String toString() => 'NotAnItemException: $path is a list, not an item';
+}
+
 /// Thrown by [ImageSourceProvider.fetchThumbnail] when a thumbnail cannot be
 /// produced cheaply for this item (e.g. an uncached PDF, a ZIP with no images).
 class ThumbnailNotSupportedException implements Exception {

@@ -83,6 +83,18 @@ class ViewerGalleryBody extends StatelessWidget {
     );
   }
 
+  /// The address turned out to name a list. Swap this entry for the list, so
+  /// the reader lands where they were going instead of on a failure.
+  void _showAsList() {
+    final list = listAt(_session.sourceUri);
+    if (list == null) return;
+    tab.replaceCurrent(GallerySession.fromUri(
+      list,
+      provider: _session.provider,
+      cacheManager: cacheManager,
+    ));
+  }
+
   static String _searchPath(String tag) => pixivPathOf(pixivSearchUri(tag));
 
   void _openPixivPlace(String path, String title) => tab.navigate(
@@ -123,6 +135,7 @@ class ViewerGalleryBody extends StatelessWidget {
         index: here.index,
         onIndexChanged: (i) => _goToItem(here.items[i]),
         onClose: tab.back,
+        onNotAnItem: _showAsList,
         onShowAuthor: pixiv
             ? (userId, userName) =>
                   _openPixivPlace('/user/$userId', pixivAuthorTitle(userName))
