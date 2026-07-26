@@ -1,4 +1,5 @@
 import '../../models/image_source.dart';
+import '../../models/media_extensions.dart';
 import 'gallery_uri.dart';
 
 /// How each source writes a place down, and reads one back out for a human.
@@ -352,14 +353,17 @@ class _PixivDialect extends GalleryUriDialect {
 class _SmbDialect extends GalleryUriDialect {
   const _SmbDialect();
 
-  /// A path ending in a name with an extension is a file, and a file is
-  /// something to look at. A directory has no extension and is a list, which
-  /// has its own address already.
+  /// A path ending in a name this app knows how to open is a file. Anything
+  /// else is taken for a directory, which is a list and has its own address.
+  ///
+  /// The test is against the extensions the app can actually show, not merely
+  /// "has a dot": a folder called `vol.2` has a dot and is still a folder, and
+  /// mistaking one for a file puts the viewer where a listing should be.
   @override
   ImageSource? itemOf(Uri uri) {
     final path = smbPathOf(uri);
     final name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
-    if (!name.contains('.')) return null;
+    if (!viewableExtensions.contains(extensionOf(name))) return null;
     return ImageSource(
       id: 'smb:${uri.host}:$path',
       name: name,
@@ -376,6 +380,7 @@ class _SmbDialect extends GalleryUriDialect {
   Uri? placeOf(ImageSource item) {
     final meta = item.metadata;
     if (meta?['isDirectory'] == true || meta?['isVideo'] == true) return null;
+    if (!viewableExtensions.contains(extensionOf(item.name))) return null;
     final path = meta?['path'] as String?;
     if (path == null) return null;
     return smbGalleryUri(item.sourceKey!.split(':').last, path);

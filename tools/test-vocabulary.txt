@@ -49,6 +49,11 @@ file.png
 a.jpg
 inner.jpg
 作品集第2巻.pdf
+# An extension the app cannot open, for the test that says so.
+a.txt
+# A folder whose name has a dot in it -- the case that used to be read as a
+# file (gallery_uri_dialect.dart itemOf).
+vol2.5
 
 # Names whose shape is the subject of the test (natural sort, paging), where
 # the digits are the point and carry nothing else.

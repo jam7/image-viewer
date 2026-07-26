@@ -73,12 +73,21 @@ void main() {
       for (final uri in [
         pixivGalleryUri('/top'),
         pixivGalleryUri('/user/1700000000000'),
-        smbGalleryUri('1700000000000', 'books'), // a directory: no extension
+        smbGalleryUri('1700000000000', 'books'), // a directory
         homeGalleryUri(),
         favGalleryUri(),
       ]) {
         expect(itemOf(uri), isNull, reason: '$uri');
       }
+    });
+
+    test('a dot in a folder name does not make it a file', () {
+      // "Has a dot" was the first rule here, and it put the viewer where a
+      // listing belongs the moment a folder was named like this.
+      expect(itemOf(smbGalleryUri('1700000000000', 'vol2.5')), isNull);
+      expect(placeOf(smbFile('vol2.5', dir: true)), isNull);
+      // And an extension the app cannot open is not something to look at.
+      expect(itemOf(smbGalleryUri('1700000000000', r'books\a.txt')), isNull);
     });
 
     test('and the address goes back the way it came', () {

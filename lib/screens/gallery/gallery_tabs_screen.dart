@@ -58,6 +58,12 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// (`GalleryChrome` carries it there).
   final _chromeVisible = ValueNotifier(true);
 
+  /// The place the header was last shown for, so that arriving somewhere new
+  /// can bring it back. Folding is the business of whatever is being scrolled,
+  /// but unfolding cannot be: a viewer or the home page has no list to scroll,
+  /// and a header folded away by the grid you just left would stay away.
+  Uri? _shownFor;
+
   GalleryTabController get controller => widget.controller;
   GalleryTabOpener get opener => widget.opener;
   SmbConfigStore get smbConfigStore => widget.smbConfigStore;
@@ -111,11 +117,20 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// moment the Scaffold is built, so animating it would mean rebuilding the
   /// whole screen, body and all, on every frame of the fold.
   Widget _buildActive(BuildContext context, GalleryTab tab) {
+    _showChromeOnArrival(tab.current.sourceUri);
     return _scaffold(
       context,
       header: _buildHeader(context, tab),
       body: _bodyFor(context, tab),
     );
+  }
+
+  void _showChromeOnArrival(Uri place) {
+    if (_shownFor == place) return;
+    _shownFor = place;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _chromeVisible.value = true;
+    });
   }
 
   /// Which body shows this tab's place.

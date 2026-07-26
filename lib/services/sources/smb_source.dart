@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart';
 
+import '../../models/media_extensions.dart';
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
 import '../../utils/natural_sort.dart';
@@ -41,15 +42,6 @@ class SmbSource extends ImageSourceProvider {
   /// Using Future cache prevents duplicate _parseDirectory on concurrent calls.
   final Map<String, Future<ZipReader>> _zipReaderFutures = {};
 
-  static const _imageExtensions = {
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
-  };
-
-  static const _zipExtensions = {'.zip'};
-  static const _pdfExtensions = {'.pdf'};
-  static const _videoExtensions = {
-    '.mp4', '.mkv', '.avi', '.webm', '.flv', '.mov', '.wmv', '.mpg', '.mpeg', '.m4v', '.ts',
-  };
 
   /// Cached PDF file paths keyed by PDF source path.
   final Map<String, String> _pdfFilePathCache = {};
@@ -139,7 +131,7 @@ class SmbSource extends ImageSourceProvider {
             'path': file.path,
           },
         ));
-      } else if (_imageExtensions.contains(ext)) {
+      } else if (imageExtensions.contains(ext)) {
         sources.add(ImageSource(
           id: 'smb:${config.id}:${file.path}',
           name: name,
@@ -151,7 +143,7 @@ class SmbSource extends ImageSourceProvider {
             'path': file.path,
           },
         ));
-      } else if (_zipExtensions.contains(ext)) {
+      } else if (zipExtensions.contains(ext)) {
         sources.add(ImageSource(
           id: 'smb:${config.id}:${file.path}',
           name: name,
@@ -164,7 +156,7 @@ class SmbSource extends ImageSourceProvider {
             'path': file.path,
           },
         ));
-      } else if (_pdfExtensions.contains(ext)) {
+      } else if (pdfExtensions.contains(ext)) {
         sources.add(ImageSource(
           id: 'smb:${config.id}:${file.path}',
           name: name,
@@ -177,7 +169,7 @@ class SmbSource extends ImageSourceProvider {
             'path': file.path,
           },
         ));
-      } else if (_videoExtensions.contains(ext)) {
+      } else if (videoExtensions.contains(ext)) {
         sources.add(ImageSource(
           id: 'smb:${config.id}:${file.path}',
           name: name,
@@ -283,7 +275,7 @@ class SmbSource extends ImageSourceProvider {
     final lower = name.toLowerCase();
     // Skip macOS resource fork files
     if (lower.contains('__macosx') || lower.contains('/.')) return false;
-    return _imageExtensions.any((ext) => lower.endsWith(ext));
+    return imageExtensions.any((ext) => lower.endsWith(ext));
   }
 
   /// Capture a thumbnail frame for a video by streaming it through the local
