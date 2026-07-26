@@ -17,6 +17,7 @@ import 'gallery_uri_dialect.dart';
 import 'home_gallery_body.dart';
 import 'pixiv_gallery_body.dart';
 import 'smb_gallery_body.dart';
+import 'viewer_gallery_body.dart';
 import 'widgets/gallery_chrome.dart';
 import 'widgets/gallery_tab_strip.dart';
 import 'widgets/gallery_toolbar.dart';
@@ -110,53 +111,75 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// moment the Scaffold is built, so animating it would mean rebuilding the
   /// whole screen, body and all, on every frame of the fold.
   Widget _buildActive(BuildContext context, GalleryTab tab) {
-    // Keyed by tab so switching gives the new tab its own view state —
-    // scroll position, loading flags — instead of inheriting the old one's.
-    final key = ValueKey(tab.id);
     return _scaffold(
       context,
       header: _buildHeader(context, tab),
-      body: switch (tab.current.sourceUri.scheme) {
-        homeUriScheme => HomeGalleryBody(
-            key: key,
-            tab: tab,
-            smbConfigStore: smbConfigStore,
-            onOpenPlace: (uri, title, {bool inNewTab = false}) => inNewTab
-                ? _open(context, uri, title, activate: false)
-                : _goTo(context, tab, uri, title),
-            onOpenSettings: () => _openSettings(context),
-            // Home with nothing behind it is the floor: there is no tab to fall
-            // back to and no route underneath, so back belongs to the system.
-          ),
-        favUriScheme => FavoritesGalleryBody(
-            key: key,
-            tab: tab,
-            cacheManager: cacheManager,
-            favoritesStore: favoritesStore,
-            registry: registry,
-            onOpenPlace: (uri, title, {bool inNewTab = false}) => inNewTab
-                ? _open(context, uri, title, activate: false)
-                : _goTo(context, tab, uri, title),
-          ),
-        smbUriScheme => SmbGalleryBody(
-            key: key,
-            tab: tab,
-            onOpenInNewTab: _openInNewTab,
-            cacheManager: cacheManager,
-            favoritesStore: favoritesStore,
-            registry: registry,
-            proxyServer: proxyServer,
-          ),
-        _ => PixivGalleryBody(
-            key: key,
-            tab: tab,
-            onOpenInNewTab: _openInNewTab,
-            cacheManager: cacheManager,
-            favoritesStore: favoritesStore,
-            registry: registry,
-          ),
-      },
+      body: _bodyFor(context, tab),
     );
+  }
+
+  /// Which body shows this tab's place.
+  ///
+  /// An address that names an item rather than a list is the viewer's,
+  /// whatever source it came from (ADR 010); asking the dialect keeps this out
+  /// of the business of reading paths and extensions. Everything else goes by
+  /// scheme.
+  ///
+  /// Keyed by tab so switching gives the new tab its own view state — scroll
+  /// position, loading flags — instead of inheriting the old one's.
+  Widget _bodyFor(BuildContext context, GalleryTab tab) {
+    final key = ValueKey(tab.id);
+    final uri = tab.current.sourceUri;
+    if (itemOf(uri) != null) {
+      return ViewerGalleryBody(
+        key: key,
+        tab: tab,
+        cacheManager: cacheManager,
+        favoritesStore: favoritesStore,
+        registry: registry,
+        onOpenInNewTab: _openInNewTab,
+      );
+    }
+    return switch (uri.scheme) {
+      homeUriScheme => HomeGalleryBody(
+          key: key,
+          tab: tab,
+          smbConfigStore: smbConfigStore,
+          onOpenPlace: (uri, title, {bool inNewTab = false}) => inNewTab
+              ? _open(context, uri, title, activate: false)
+              : _goTo(context, tab, uri, title),
+          onOpenSettings: () => _openSettings(context),
+          // Home with nothing behind it is the floor: there is no tab to fall
+          // back to and no route underneath, so back belongs to the system.
+        ),
+      favUriScheme => FavoritesGalleryBody(
+          key: key,
+          tab: tab,
+          cacheManager: cacheManager,
+          favoritesStore: favoritesStore,
+          registry: registry,
+          onOpenPlace: (uri, title, {bool inNewTab = false}) => inNewTab
+              ? _open(context, uri, title, activate: false)
+              : _goTo(context, tab, uri, title),
+        ),
+      smbUriScheme => SmbGalleryBody(
+          key: key,
+          tab: tab,
+          onOpenInNewTab: _openInNewTab,
+          cacheManager: cacheManager,
+          favoritesStore: favoritesStore,
+          registry: registry,
+          proxyServer: proxyServer,
+        ),
+      _ => PixivGalleryBody(
+          key: key,
+          tab: tab,
+          onOpenInNewTab: _openInNewTab,
+          cacheManager: cacheManager,
+          favoritesStore: favoritesStore,
+          registry: registry,
+        ),
+    };
   }
 
   /// The page: header on top, body below, and the shared say-so about whether

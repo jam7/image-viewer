@@ -61,6 +61,11 @@ Uri homeGalleryUri() => Uri(scheme: homeUriScheme, host: pixivInstance);
 Uri pixivGalleryUri(String path) =>
     Uri.parse('$pixivUriScheme://$pixivInstance$path');
 
+/// Address of one Pixiv work — a place in its own right, not a list
+/// (ADR 010). The id is the work's own, which is stable; "the third work by
+/// this author" is not.
+Uri pixivArtworkUri(String illustId) => pixivGalleryUri('/artworks/$illustId');
+
 /// What a Pixiv search asks for when nothing says otherwise: exact tags,
 /// newest first.
 const pixivDefaultSearchMode = 's_tag_full'; // s_tag_full=完全一致 / s_tag=部分

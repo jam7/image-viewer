@@ -15,6 +15,7 @@ import 'gallery_uri.dart';
 /// still has a name. Anything that needs a lookup — an author's name, a
 /// server's nickname — belongs on `GallerySession.title`, which wins over
 /// [describe] wherever both exist (see [placeTitle]).
+
 /// Somewhere this source offers to go, for a menu: what to call it and where
 /// it is.
 typedef PlaceLink = ({String label, Uri uri});
@@ -41,6 +42,24 @@ abstract class GalleryUriDialect {
   /// the source knows where in its own data that name is, which is why this is
   /// here and not in the session.
   String? titleFrom(Uri uri, List<ImageSource> items) => null;
+
+  /// The item [uri] names, built without looking anything up — or null when
+  /// the address names a list rather than one of its members.
+  ///
+  /// This is what makes a viewer a place (ADR 010). Two things need it: the
+  /// host, to tell a work from a folder without inspecting paths itself, and
+  /// the viewer, which may be opened on an address pasted from somewhere else
+  /// and then has nowhere to get the item from. What comes back carries only
+  /// what the address said; everything else is fetched as usual.
+  ///
+  /// The id must be the same string the source's own listing produces, since
+  /// that is how the viewer finds itself in the list it was opened from.
+  ImageSource? itemOf(Uri uri) => null;
+
+  /// The address of [item], the other way round from [itemOf]. Null for an
+  /// item that is not somewhere the app can be (an SMB directory is a list,
+  /// and has its own address as such).
+  Uri? placeOf(ImageSource item) => null;
 
   /// Whether [uri] names somewhere this source can actually be.
   ///
@@ -133,6 +152,14 @@ String? searchHintFor(Uri uri) => _dialects[uri.scheme]?.searchHint;
 /// See [GalleryUriDialect.editable].
 String editableOf(Uri uri) => _dialects[uri.scheme]?.editable(uri) ?? '';
 
+/// See [GalleryUriDialect.itemOf].
+ImageSource? itemOf(Uri uri) => _dialects[uri.scheme]?.itemOf(uri);
+
+/// See [GalleryUriDialect.placeOf]. The source is read off the item, which
+/// carries the same `type:instance` key the dialects are registered under.
+Uri? placeOf(ImageSource item) =>
+    _dialects[item.sourceKey?.split(':').first]?.placeOf(item);
+
 /// See [GalleryUriDialect.sections].
 List<PlaceLink> sectionsOf(Uri uri) =>
     _dialects[uri.scheme]?.sections ?? const [];
@@ -186,7 +213,8 @@ class _PixivDialect extends GalleryUriDialect {
   const _PixivDialect();
 
   static final _user = RegExp(r'^/user/(\d+)$');
-  static final _page = RegExp(r'^/(top|bookmarks|user/\d+|search)$');
+  static final _artwork = RegExp(r'^/artworks/(\d+)$');
+  static final _page = RegExp(r'^/(top|bookmarks|user/\d+|artworks/\d+|search)$');
 
   /// The four pages this app knows how to be on.
   @override
@@ -201,8 +229,29 @@ class _PixivDialect extends GalleryUriDialect {
     return (uri.queryParameters['word'] ?? '').isNotEmpty;
   }
 
+  /// A work is named by the item, not the address: the address has only its
+  /// number, and the title arrives with the work. Until then, the number.
+  @override
+  ImageSource? itemOf(Uri uri) {
+    final id = _artwork.firstMatch(uri.path)?.group(1);
+    if (id == null) return null;
+    return ImageSource(
+      id: id,
+      name: '',
+      uri: '',
+      type: ImageSourceType.pixiv,
+      sourceKey: sourceKeyOf(uri),
+      metadata: {'illustId': int.parse(id)},
+    );
+  }
+
+  @override
+  Uri? placeOf(ImageSource item) => pixivArtworkUri(item.id);
+
   @override
   String describe(Uri uri) {
+    final artwork = _artwork.firstMatch(uri.path);
+    if (artwork != null) return '作品 ${artwork.group(1)}';
     if (uri.path.startsWith('/search')) return _describeSearch(uri);
     final user = _user.firstMatch(uri.path);
     if (user != null) return '${user.group(1)} の作品';
@@ -302,6 +351,35 @@ class _PixivDialect extends GalleryUriDialect {
 
 class _SmbDialect extends GalleryUriDialect {
   const _SmbDialect();
+
+  /// A path ending in a name with an extension is a file, and a file is
+  /// something to look at. A directory has no extension and is a list, which
+  /// has its own address already.
+  @override
+  ImageSource? itemOf(Uri uri) {
+    final path = smbPathOf(uri);
+    final name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
+    if (!name.contains('.')) return null;
+    return ImageSource(
+      id: 'smb:${uri.host}:$path',
+      name: name,
+      uri: path,
+      type: ImageSourceType.smb,
+      sourceKey: sourceKeyOf(uri),
+      metadata: {'isDirectory': false, 'path': path},
+    );
+  }
+
+  /// Null for anything that is not a single thing to look at: a directory is a
+  /// list, and a video is not in the viewer yet (ADR 010 段階 6).
+  @override
+  Uri? placeOf(ImageSource item) {
+    final meta = item.metadata;
+    if (meta?['isDirectory'] == true || meta?['isVideo'] == true) return null;
+    final path = meta?['path'] as String?;
+    if (path == null) return null;
+    return smbGalleryUri(item.sourceKey!.split(':').last, path);
+  }
 
   /// The whole path, not its tail. The server it is on is missing because the
   /// URI carries a config id rather than the nickname, and resolving that

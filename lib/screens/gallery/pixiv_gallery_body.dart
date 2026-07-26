@@ -5,14 +5,12 @@ import '../../models/image_source.dart';
 import 'gallery_session.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
-import 'gallery_uri_dialect.dart';
 import 'widgets/gallery_view.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../../widgets/thumbnail_result.dart';
-import '../viewer/viewer_screen.dart';
 
 final _log = Logger('Gallery');
 
@@ -47,94 +45,19 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   GallerySession get _session => _tab.current;
   PixivSource get _source => _session.provider as PixivSource;
 
-  /// Where the tab currently is, which is what the URI of its entry says.
-  String get _path => pixivPathOf(_session.sourceUri);
-
-  /// Build the session for the Pixiv page at [path]. Favorites are a finite
-  /// local list (seedItems); other pages page through the source via loadPage.
-  /// [authorName] is the one label the URI cannot carry.
-  GallerySession _sessionFor(String path, {String? authorName}) {
-    return GallerySession.fromUri(
-      pixivGalleryUri(path),
-      provider: _source,
-      cacheManager: widget.cacheManager,
-      title: _titleFor(path, authorName),
-    );
-  }
-
-  /// Go to [path] within this tab. Back returns to where we were.
-  void _navigate(String path, {String? authorName}) {
-    setState(() =>
-        _tab.navigate(_sessionFor(path, authorName: authorName)));
-  }
-
-  /// Open a place in a second tab while the viewer stays up. The reader asked
-  /// for "alongside", so they keep the page they are on.
-  void _openAuthorAlongside(int userId, String userName) => widget
-      .onOpenInNewTab(_sessionFor('/user/$userId', authorName: userName));
-
-  void _openTagSearchAlongside(String tag) =>
-      widget.onOpenInNewTab(_sessionFor(_searchPathFor(tag)));
-
-  /// A tag search as issued from where this tab is, so a search being refined
-  /// keeps its 完全一致 / 並び順. The Pixiv dialect always has an answer.
-  String _searchPathFor(String tag) =>
-      pixivPathOf(searchFrom(_session.sourceUri, tag)!);
-
-  /// Run [action] after this frame, if we are still here. Callers say why they
-  /// need to wait — a route transition to finish, a layout to settle.
-  void _nextFrame(VoidCallback action) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) action();
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _log.info('initState: path=$_path, tab=${_tab.id}');
-  }
-
-  void _openViewer(int index) async {
-    final items = _session.visibleItems;
-    _log.info('openViewer: index=$index, image=${items[index].name}');
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(
-        builder: (_) => ViewerScreen(
-          items: items,
-          initialIndex: index,
-          registry: widget.registry,
+  /// Opening a work is a move within this tab, not a new screen (ADR 010).
+  /// The viewer finds the list it sits in by looking one entry back — which is
+  /// this one — so nothing has to be handed over.
+  void _openViewer(int index) {
+    final item = _session.visibleItems[index];
+    _log.info('openViewer: index=$index, image=${item.name}');
+    setState(() => _tab.navigate(GallerySession.fromUri(
+          pixivArtworkUri(item.id),
+          provider: _source,
           cacheManager: widget.cacheManager,
-          favoritesStore: widget.favoritesStore,
-          onOpenAuthorInNewTab: _openAuthorAlongside,
-          onOpenTagSearchInNewTab: _openTagSearchAlongside,
-        ),
-      ),
-    );
-    _log.info('viewer returned: result=$result, mounted=$mounted');
-    if (!mounted) return;
-    if (result != null && result['action'] == 'showUser') {
-      final userId = result['userId'] as int;
-      final userName = result['userName'] as String;
-      _nextFrame(() => _navigate('/user/$userId', authorName: userName));
-    } else if (result != null && result['action'] == 'searchTag') {
-      final tag = result['tag'] as String;
-      _nextFrame(() => _navigate(_searchPathFor(tag)));
-    }
+          title: item.name,
+        )));
   }
-
-  /// The one label for the Pixiv page at [path] that its address cannot
-  /// supply: the author's name, when whoever sent us here already knew it.
-  ///
-  /// Everything else is left empty on purpose, so the URI dialect answers
-  /// instead (gallery_uri_dialect.dart) — including the author's name when it
-  /// was not known in advance, which the session takes out of the first page.
-  /// Passing it here still matters: it is the difference between the name
-  /// being there from the start and a number that changes once the page lands.
-  static String _titleFor(String path, String? authorName) =>
-      authorName != null && path.startsWith('/user/')
-          ? pixivAuthorTitle(authorName)
-          : '';
 
   @override
   Widget build(BuildContext context) {

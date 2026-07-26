@@ -4,6 +4,7 @@ import '../../models/image_source.dart';
 import 'gallery_session.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
+import 'gallery_uri_dialect.dart';
 import 'widgets/gallery_view.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
@@ -12,7 +13,6 @@ import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../../widgets/thumbnail_result.dart';
 import '../video/video_player_screen.dart';
-import '../viewer/viewer_screen.dart';
 
 /// SMB ディレクトリを見せるタブの中身。The tab and the app bar come from the
 /// host screen, which owns them across every source.
@@ -71,19 +71,17 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
         _session.resumeMissingThumbnails();
       });
     } else {
-      final viewerItems =
-          _session.thumbnailItems.where((i) => i.metadata?['isVideo'] != true).toList();
-      final index = viewerItems.indexWhere((i) => i.id == item.id);
-      if (index >= 0) {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => ViewerScreen(
-            items: viewerItems,
-            initialIndex: index,
-            registry: widget.registry,
-            cacheManager: widget.cacheManager,
-            favoritesStore: widget.favoritesStore,
-          ),
-        )).then((_) => _session.retryUnsupportedThumbnails());
+      // Looking at a file is a move within this tab, not a new screen
+      // (ADR 010). The viewer works out the neighbouring files by looking one
+      // entry back — which is this directory.
+      final place = placeOf(item);
+      if (place != null) {
+        setState(() => _tab.navigate(GallerySession.fromUri(
+              place,
+              provider: _source,
+              cacheManager: widget.cacheManager,
+              title: item.name,
+            )));
       }
     }
   }

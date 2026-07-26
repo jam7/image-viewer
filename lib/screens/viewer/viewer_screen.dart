@@ -21,7 +21,21 @@ final _log = Logger('Viewer');
 /// - ESC / マウスバック / 左端外スワイプ: 一覧に戻る
 class ViewerScreen extends StatefulWidget {
   final List<ImageSource> items; // 作品リスト
-  final int initialIndex; // 最初に表示する作品
+  /// Which of [items] is showing. Held by the caller rather than here, so that
+  /// a caller for whom this is a place in a tab can keep the address in step
+  /// with it (ADR 010). [onIndexChanged] is how this screen asks to move.
+  final int index;
+  final ValueChanged<int>? onIndexChanged;
+
+  /// Leave the viewer: a step back in the tab's history, onto the list this
+  /// was opened from.
+  final VoidCallback onClose;
+
+  /// Follow this work's author, or one of its tags, in place. Null where the
+  /// source has no such thing — only Pixiv works carry them.
+  final void Function(int userId, String userName)? onShowAuthor;
+  final ValueChanged<String>? onSearchTag;
+
   final SourceRegistry registry;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
@@ -38,7 +52,11 @@ class ViewerScreen extends StatefulWidget {
   const ViewerScreen({
     super.key,
     required this.items,
-    this.initialIndex = 0,
+    this.index = 0,
+    this.onIndexChanged,
+    required this.onClose,
+    this.onShowAuthor,
+    this.onSearchTag,
     required this.registry,
     required this.cacheManager,
     required this.favoritesStore,
@@ -51,8 +69,8 @@ class ViewerScreen extends StatefulWidget {
 }
 
 class _ViewerScreenState extends State<ViewerScreen> {
-  // 作品リスト内の位置
-  late int _itemIndex;
+  /// Which page of the current work is showing. The work itself is
+  /// [ViewerScreen.index], which the caller owns.
   // 現在の作品のページリスト
   List<ImageSource>? _pages;
   int _pageIndex = 0;
@@ -75,10 +93,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
   @override
   void initState() {
     super.initState();
-    _itemIndex = widget.initialIndex;
     // Defer to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _openItem(_itemIndex);
+      if (mounted) _openItem(widget.index);
     });
   }
 
@@ -287,7 +304,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   Widget _buildDownloadProgress() {
     final (received, total) = _downloadProgress!;
-    final item = widget.items[_itemIndex];
+    final item = widget.items[widget.index];
     final isPagesProgress = item.metadata?['isZip'] != true && item.metadata?['isPdf'] != true;
 
     final fraction = total > 0 ? received / total : null;
@@ -338,26 +355,36 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   // --- 作品送り（リスト内、左右） ---
 
-  void _nextItem() {
+  void _nextItem() => _goToItem(widget.index + 1);
+
+  void _prevItem() => _goToItem(widget.index - 1);
+
+  /// Move to another work in the list. The caller is told rather than a field
+  /// being bumped: for a tab this is a change of address, and the two would
+  /// drift apart if this screen kept its own idea of where it was.
+  void _goToItem(int index) {
     if (_isResolvingPages) return; // Prevent concurrent _openItem
-    if (_itemIndex + 1 >= widget.items.length) return;
-    _itemIndex++;
-    _openItem(_itemIndex);
+    if (index < 0 || index >= widget.items.length) return;
+    final move = widget.onIndexChanged;
+    if (move != null) {
+      move(index);
+      return;
+    }
+    _openItem(index);
   }
 
-  void _prevItem() {
-    if (_isResolvingPages) return; // Prevent concurrent _openItem
-    if (_itemIndex <= 0) return;
-    _itemIndex--;
-    _openItem(_itemIndex);
+  @override
+  void didUpdateWidget(ViewerScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.index != old.index) _openItem(widget.index);
   }
 
   // --- 入力ハンドリング ---
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons == kBackMouseButton) {
-      _log.info('pop via mouse back button');
-      Navigator.of(context).pop();
+      _log.info('leaving via mouse back button');
+      widget.onClose();
     }
   }
 
@@ -425,8 +452,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
-      _log.info('pop via ESC');
-      Navigator.of(context).pop();
+      _log.info('leaving via ESC');
+      widget.onClose();
       return KeyEventResult.handled;
     }
 
@@ -464,7 +491,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   /// Get the L3 download key for the current work (not page).
   String _workDownloadKey() {
-    final item = widget.items[_itemIndex];
+    final item = widget.items[widget.index];
     return 'full:${item.id}';
   }
 
@@ -484,7 +511,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   /// Remove the downloaded work and all of its downloaded pages from L3.
   Future<void> _removeDownload(String workKey) async {
-    final item = widget.items[_itemIndex];
+    final item = widget.items[widget.index];
     _log.info('Removing download: ${item.name} key=$workKey');
     final pages = _pages;
     if (pages != null) {
@@ -502,7 +529,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// Download the current work to L3 (single image, PDF, ZIP stream, or
   /// page-by-page depending on the work type).
   Future<void> _downloadWork(ImageSource currentImage, String workKey) async {
-    final item = widget.items[_itemIndex];
+    final item = widget.items[widget.index];
     _log.info('Downloading work: ${item.name} key=$workKey');
 
     final meta = {
@@ -660,7 +687,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       _announceNewTab(tag);
       return; // the reader keeps their page
     }
-    Navigator.of(context).pop({'action': 'searchTag', 'tag': tag});
+    widget.onSearchTag?.call(tag);
   }
 
   void _showAuthor(ImageSource image, {bool newTab = false}) {
@@ -673,12 +700,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       _announceNewTab(authorName);
       return;
     }
-    _log.info('pop with showUser: authorId=$authorId, name=$authorName');
-    Navigator.of(context).pop({
-      'action': 'showUser',
-      'userId': authorId,
-      'userName': authorName,
-    });
+    widget.onShowAuthor?.call(authorId, authorName);
   }
 
   /// Horizontal, scrollable row of tappable tag chips for the current work.
@@ -764,7 +786,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
               backgroundColor: Colors.transparent,
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: widget.onClose,
               ),
               title: const Text('エラー', style: TextStyle(color: Colors.white)),
             ),
@@ -779,7 +801,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final pages = _pages!;
     final currentImage = pages[_pageIndex];
     // Tags of the current work (Pixiv only; empty for other sources).
-    final tags = (widget.items[_itemIndex].metadata?['tags'] as List?)
+    final tags = (widget.items[widget.index].metadata?['tags'] as List?)
             ?.cast<String>() ??
         const <String>[];
     final data = _fullImages[currentImage.id];
@@ -875,7 +897,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                                   icon: const Icon(Icons.arrow_back,
                                       color: Colors.white),
                                   onPressed: () =>
-                                      Navigator.of(context).pop(),
+                                      widget.onClose(),
                                 ),
                                 Expanded(
                                   child: Text(
@@ -1074,7 +1096,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// repeated here.
   String _buildPositionText() {
     if (widget.items.length > 1) {
-      return '[${_itemIndex + 1}/${widget.items.length}]';
+      return '[${widget.index + 1}/${widget.items.length}]';
     }
     return '';
   }

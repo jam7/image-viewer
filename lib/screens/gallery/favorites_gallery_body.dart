@@ -5,10 +5,10 @@ import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/source_registry.dart';
 import '../../widgets/thumbnail_result.dart';
-import '../viewer/viewer_screen.dart';
 import 'gallery_session.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
+import 'gallery_uri_dialect.dart';
 import 'widgets/gallery_view.dart';
 
 /// 全ソース横断のお気に入りを見せるタブの中身。
@@ -57,6 +57,20 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
   /// re-read, not a different one, so it should not throw the reader back to
   /// the top. The anchor names an item, so it simply finds nothing to restore
   /// if that item is the one that was just un-starred.
+  @override
+  void initState() {
+    super.initState();
+    // Coming back from a work that may have been starred or unstarred there.
+    // The viewer is another entry in this tab now (ADR 010), so this body is
+    // rebuilt on the way back rather than resumed, and the list it holds was
+    // read before any of that happened.
+    if (_session.hasLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reload();
+      });
+    }
+  }
+
   void _reload() {
     final fresh = GallerySession.fromUri(
       _session.sourceUri,
@@ -67,56 +81,15 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
     setState(() => _tab.replaceCurrent(fresh));
   }
 
-  /// Search options are the Pixiv screen's own state, which this list has no
-  /// view of, so a tag opened from here uses the defaults.
-  Uri _tagSearch(String tag) =>
-      pixivGalleryUri('/search?word=${Uri.encodeComponent(tag)}'
-          '&s_mode=s_tag_full&order=date_d');
-
-  Future<void> _openViewer(int index) async {
-    final items = _session.loaded;
-    final result =
-        await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(
-      builder: (_) => ViewerScreen(
-        items: items,
-        initialIndex: index,
-        registry: widget.registry,
-        cacheManager: widget.cacheManager,
-        favoritesStore: widget.favoritesStore,
-        // Long-press: open alongside and let the reader keep their page.
-        onOpenAuthorInNewTab: (id, name) => widget
-            .onOpenPlace(pixivGalleryUri('/user/$id'), '$name の作品',
-                inNewTab: true),
-        onOpenTagSearchInNewTab: (tag) =>
-            widget.onOpenPlace(_tagSearch(tag), tag, inNewTab: true),
-      ),
-    ));
-    if (!mounted) return;
-
-    // Re-read before going anywhere: starring happens in the viewer, and this
-    // list is what a later back comes home to.
-    _reload();
-
-    // A tap hands the request back by closing. Following it is a navigation
-    // within this tab, the same as tapping a folder in the SMB list — which is
-    // the point of the list being a tab at all.
-    if (result != null && result['action'] == 'showUser') {
-      _afterViewer(() => widget.onOpenPlace(
-            pixivGalleryUri('/user/${result['userId']}'),
-            '${result['userName']} の作品',
-          ));
-    } else if (result != null && result['action'] == 'searchTag') {
-      final tag = result['tag'] as String;
-      _afterViewer(() => widget.onOpenPlace(_tagSearch(tag), tag));
-    }
-  }
-
-  /// Run [action] after the frame the viewer's pop is settling in, so the
-  /// navigation does not land in the middle of the route transition.
-  void _afterViewer(VoidCallback action) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) action();
-    });
+  /// Looking at a starred work is a move within this tab (ADR 010). The
+  /// destination belongs to whichever source the work came from, so it goes
+  /// through the host — this list holds items from everywhere, and its own
+  /// provider is not theirs.
+  void _openViewer(int index) {
+    final item = _session.visibleItems[index];
+    final place = placeOf(item);
+    if (place == null) return;
+    widget.onOpenPlace(place, item.name);
   }
 
   @override

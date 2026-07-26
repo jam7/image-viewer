@@ -16,10 +16,10 @@ import 'package:image_viewer/services/smb/smb_config_store.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
 import 'package:image_viewer/services/sources/source_registry.dart';
 
-/// Long-pressing an author or tag chip means "open it alongside". Closing the
-/// viewer to do so is the opposite of alongside, so this pins that the viewer
-/// stays up and hands the request over instead — and that a plain tap still
-/// leaves, which is what "go there" means.
+/// Long-pressing an author or tag chip means "open it alongside", and tapping
+/// one means "go there". Both are handed to the caller now that the viewer is
+/// a place in a tab (ADR 010): it no longer closes itself to report anything,
+/// and there is no route under it to pop.
 void main() {
   late CacheManager cacheManager;
   late FavoritesStore favoritesStore;
@@ -54,6 +54,8 @@ void main() {
     WidgetTester tester, {
     void Function(int, String)? onAuthor,
     void Function(String)? onTag,
+    void Function(int, String)? onShowAuthor,
+    VoidCallback? onClose,
   }) async {
     final navKey = GlobalKey<NavigatorState>();
     await tester.pumpWidget(MaterialApp(
@@ -68,6 +70,8 @@ void main() {
         favoritesStore: favoritesStore,
         onOpenAuthorInNewTab: onAuthor,
         onOpenTagSearchInNewTab: onTag,
+        onShowAuthor: onShowAuthor,
+        onClose: onClose ?? () {},
       ),
     ));
     await tester.pump();
@@ -95,60 +99,34 @@ void main() {
     expect(find.text('新しいタブで開きました: kazuki'), findsOneWidget);
   });
 
-  testWidgets('tapping the author still goes there', (tester) async {
-    var handedOver = false;
-    await pumpViewer(tester, onAuthor: (_, _) => handedOver = true);
+  testWidgets('tapping the author follows it, without leaving', (tester) async {
+    // "Go there" used to mean closing the viewer and handing a Map back for
+    // the caller to act on. The caller is the tab now, and following a link is
+    // something it does itself.
+    var followed = 0;
+    await pumpViewer(
+      tester,
+      onAuthor: (_, _) {},
+      onShowAuthor: (id, name) => followed++,
+    );
 
     await tester.tap(find.text('kazuki'));
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(handedOver, isFalse);
-    expect(find.text('GALLERY_MARKER'), findsOneWidget); // left the viewer
+    expect(followed, 1);
+    expect(find.text('GALLERY_MARKER'), findsNothing); // still here
   });
 
-  testWidgets('tapping the author reports it to whoever pushed the viewer',
+  testWidgets('a chip with nowhere to lead does nothing at all',
       (tester) async {
-    // The favorites list has to act on this: it pushes the viewer without the
-    // alongside callbacks, and used to drop the result on the floor, so an
-    // author chip did nothing at all.
-    final navKey = GlobalKey<NavigatorState>();
-    Map<String, dynamic>? handedBack;
-    await tester.pumpWidget(MaterialApp(
-      navigatorKey: navKey,
-      home: const Scaffold(body: Center(child: Text('GALLERY_MARKER'))),
-    ));
-    navKey.currentState!
-        .push<Map<String, dynamic>>(MaterialPageRoute(
-          builder: (_) => ViewerScreen(
-            items: [work],
-            registry: registry,
-            cacheManager: cacheManager,
-            favoritesStore: favoritesStore,
-          ),
-        ))
-        .then((r) => handedBack = r);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-
-    await tester.tap(find.text('kazuki'));
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(handedBack?['action'], 'showUser');
-    expect(handedBack?['userId'], 42);
-    expect(handedBack?['userName'], 'kazuki');
-  });
-
-  testWidgets('with nowhere to put a tab, a long-press falls back to leaving',
-      (tester) async {
-    await pumpViewer(tester); // no callbacks, as the favorites list pushes it
+    // Non-Pixiv content has no author or tag to follow, so the callbacks are
+    // null there. Nothing should happen — least of all leaving.
+    await pumpViewer(tester);
 
     await tester.longPress(find.text('kazuki'));
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.text('GALLERY_MARKER'), findsOneWidget);
+    expect(find.text('GALLERY_MARKER'), findsNothing);
   });
 }
 
