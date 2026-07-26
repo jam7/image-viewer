@@ -217,7 +217,10 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
             ),
           ),
         ),
-        if (hasPageCounts(_uri)) _buildPageCountFilter(),
+        // A filter narrows a list, and a work is not one. The source still
+        // has page counts either way, so the place is what decides.
+        if (hasPageCounts(_uri) && itemOf(_uri) == null)
+          _buildPageCountFilter(),
       ],
     );
   }

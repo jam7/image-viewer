@@ -57,6 +57,9 @@ class ViewerGalleryBody extends StatelessWidget {
   /// Open a place in a new tab. Tabs are owned above this widget, so it asks.
   final void Function(GallerySession session) onOpenInNewTab;
 
+  /// Room the host is drawing over the top of us.
+  final double topInset;
+
   const ViewerGalleryBody({
     super.key,
     required this.tab,
@@ -64,6 +67,7 @@ class ViewerGalleryBody extends StatelessWidget {
     required this.favoritesStore,
     required this.registry,
     required this.onOpenInNewTab,
+    this.topInset = 0,
   });
 
   GallerySession get _session => tab.current;
@@ -139,6 +143,7 @@ class ViewerGalleryBody extends StatelessWidget {
         index: here.index,
         onIndexChanged: (i) => _goToItem(here.items[i]),
         onClose: tab.back,
+        topInset: topInset,
         onNotAnItem: _showAsList,
         onOverlayChanged: (show) => chrome?.value = show,
         onShowAuthor: pixiv

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/models/image_source.dart';
+import 'package:image_viewer/screens/gallery/gallery_session.dart';
 import 'package:image_viewer/screens/gallery/gallery_tab.dart';
 import 'package:image_viewer/screens/gallery/gallery_tab_controller.dart';
 import 'package:image_viewer/screens/gallery/gallery_tab_opener.dart';
@@ -408,6 +409,24 @@ void main() {
 
     expect(controller.active!.current.minPageCount, 3);
     expect(inToolbar(find.text('3+')), findsOneWidget); // the badge
+    expect(inToolbar(find.byIcon(Icons.filter_list)), findsNothing);
+  });
+
+  testWidgets('the filter is for a list, so a work does not offer one',
+      (tester) async {
+    // The source still has page counts when one of its works is on screen;
+    // what changed is that there is no list here to narrow.
+    await pumpHost(tester);
+    // Driven directly: a work on screen is a viewer, and a viewer waiting for
+    // bytes that never come spins for ever, which pumpAndSettle cannot abide.
+    controller.active!.navigate(GallerySession.fromUri(
+      pixivArtworkUri('1700000000000'),
+      provider: _EmptySource(),
+      cacheManager: cache,
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
     expect(inToolbar(find.byIcon(Icons.filter_list)), findsNothing);
   });
 

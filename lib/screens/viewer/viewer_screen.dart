@@ -33,6 +33,9 @@ class ViewerScreen extends StatefulWidget {
   /// was opened from.
   final VoidCallback onClose;
 
+  /// Room to leave at the top for whatever the caller is drawing over us.
+  final double topInset;
+
   /// Whether the viewer's own overlay is showing. Reported because the header
   /// above and the system bars go with it: reading a picture means seeing the
   /// picture, and everything else steps out of the way together (ADR 010).
@@ -66,6 +69,7 @@ class ViewerScreen extends StatefulWidget {
     this.index = 0,
     this.onIndexChanged,
     required this.onClose,
+    this.topInset = 0,
     this.onOverlayChanged,
     this.onNotAnItem,
     this.onShowAuthor,
@@ -920,57 +924,33 @@ class _ViewerScreenState extends State<ViewerScreen> {
                     child: _buildPageSidebar(pages),
                   ),
                 if (_showOverlay) ...[
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.black54, Colors.transparent],
+                  // Only the tags up here now. Getting out, where this is and
+                  // what its address is are the toolbar's, which is showing
+                  // just above (ADR 010 決定 7) — keeping a second set of them
+                  // meant two of everything, and the two overlapped.
+                  if (tags.isNotEmpty)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.black54, Colors.transparent],
+                          ),
                         ),
-                      ),
-                      child: SafeArea(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.arrow_back,
-                                      color: Colors.white),
-                                  onPressed: () =>
-                                      widget.onClose(),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    currentImage.name,
-                                    style: const TextStyle(
-                                        color: Colors.white, fontSize: 14),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (cacheSource != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: Icon(
-                                      cacheSource == CacheSource.network
-                                          ? Icons.cloud_download
-                                          : Icons.storage,
-                                      color: Colors.white70,
-                                      size: 16,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            if (tags.isNotEmpty) _buildTagBar(tags),
-                          ],
+                        child: SafeArea(
+                          // Below whatever the host floats over us, so the two
+                          // do not land on top of each other.
+                          child: Padding(
+                            padding: EdgeInsets.only(top: widget.topInset),
+                            child: _buildTagBar(tags),
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   Positioned(
                     bottom: 0,
                     left: 0,
@@ -1045,6 +1025,17 @@ class _ViewerScreenState extends State<ViewerScreen> {
                               style: const TextStyle(
                                   color: Colors.white70, fontSize: 12),
                             ),
+                            if (cacheSource != null)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Icon(
+                                  cacheSource == CacheSource.network
+                                      ? Icons.cloud_download
+                                      : Icons.storage,
+                                  color: Colors.white70,
+                                  size: 16,
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -1139,10 +1130,19 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// Position within the work list. The page number within the work (e.g.
   /// "1/10") is already shown in the top bar via the work name, so it is not
   /// repeated here.
+  /// Where the reader is, in both senses: which page of this work, and which
+  /// work of the list. Both live down here with the rest of the state, since
+  /// neither is somewhere to go — the address names the work and stops there
+  /// (ADR 010 決定 4).
   String _buildPositionText() {
-    if (widget.items.length > 1) {
-      return '[${widget.index + 1}/${widget.items.length}]';
-    }
-    return '';
+    final pages = _pages;
+    final within =
+        pages != null && pages.length > 1
+            ? '[${_pageIndex + 1}/${pages.length}]'
+            : '';
+    final among = widget.items.length > 1
+        ? '[${widget.index + 1}/${widget.items.length}]'
+        : '';
+    return [within, among].where((s) => s.isNotEmpty).join(' ');
   }
 }

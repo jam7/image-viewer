@@ -8,6 +8,7 @@ import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../settings/settings_screen.dart';
 import 'favorites_gallery_body.dart';
+import 'gallery_constants.dart';
 import 'gallery_session.dart';
 import 'gallery_tab.dart';
 import 'gallery_tab_controller.dart';
@@ -140,6 +141,8 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
         favoritesStore: favoritesStore,
         registry: registry,
         onOpenInNewTab: _openInNewTab,
+        // Both header rows float above it, and the tags have to clear them.
+        topInset: galleryHeaderRowHeight * 2,
       );
     }
     return switch (uri.scheme) {
@@ -203,12 +206,25 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
     required Widget body,
     required bool overContent,
   }) {
+    final content = overContent
+        ? _headerOverContent(context, header, body)
+        : _headerAboveContent(header, body);
     return Scaffold(
       body: GalleryChrome(
         visible: _chrome.visible,
-        child: overContent
-            ? _headerOverContent(header, body)
-            : _headerAboveContent(header, body),
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _chrome.visible,
+          builder: (context, _, child) => SafeArea(
+            // The status bar keeps its room even over a picture: it is the
+            // system's, not ours to draw under. Only going full screen gives
+            // it back, and then it has to be given back — hiding the bar does
+            // not on its own stop the room being kept for it.
+            top: !_chrome.immersive,
+            bottom: false,
+            child: child!,
+          ),
+          child: content,
+        ),
       ),
     );
   }
@@ -225,9 +241,9 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
     );
   }
 
-  /// The picture fills the screen and keeps it. The header carries its own
-  /// room for the status bar, since nothing below it is reserving any.
-  Widget _headerOverContent(Widget header, Widget body) {
+  /// The picture fills what it is given and keeps it; the header comes and
+  /// goes on top, see-through, so what it covers is still there to be seen.
+  Widget _headerOverContent(BuildContext context, Widget header, Widget body) {
     return Stack(
       children: [
         Positioned.fill(child: body),
@@ -237,10 +253,32 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
           right: 0,
           child: GalleryChromeSlot(
             visible: _chrome.visible,
-            child: SafeArea(bottom: false, child: header),
+            child: _seeThrough(context, header),
           ),
         ),
       ],
+    );
+  }
+
+  /// The header, in the same colours at less than full strength.
+  ///
+  /// Done by handing it a paler palette rather than by fading the whole thing:
+  /// dimming the widget would take the labels and icons with it, and those are
+  /// what it is there for. The rows read these colours off the theme, so they
+  /// need to know nothing about floating.
+  Widget _seeThrough(BuildContext context, Widget header) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    Color pale(Color c) => c.withValues(alpha: 0.82);
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: scheme.copyWith(
+          surface: pale(scheme.surface),
+          surfaceContainer: pale(scheme.surfaceContainer),
+          surfaceContainerHighest: pale(scheme.surfaceContainerHighest),
+        ),
+      ),
+      child: header,
     );
   }
 
