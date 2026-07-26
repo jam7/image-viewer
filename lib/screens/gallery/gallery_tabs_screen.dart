@@ -17,6 +17,7 @@ import 'gallery_uri_dialect.dart';
 import 'home_gallery_body.dart';
 import 'pixiv_gallery_body.dart';
 import 'smb_gallery_body.dart';
+import 'widgets/gallery_chrome.dart';
 import 'widgets/gallery_tab_strip.dart';
 import 'widgets/gallery_toolbar.dart';
 
@@ -26,7 +27,7 @@ import 'widgets/gallery_toolbar.dart';
 /// Tabs cross sources, so the source-specific part cannot be the route — the
 /// body is chosen per tab from its URI scheme, and the provider it needs is
 /// already on the tab's session.
-class GalleryTabsScreen extends StatelessWidget {
+class GalleryTabsScreen extends StatefulWidget {
   final GalleryTabController controller;
   final GalleryTabOpener opener;
   final SmbConfigStore smbConfigStore;
@@ -47,14 +48,39 @@ class GalleryTabsScreen extends StatelessWidget {
   });
 
   @override
+  State<GalleryTabsScreen> createState() => _GalleryTabsScreenState();
+}
+
+class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
+  /// Whether the two header rows are showing. Owned here because they are, and
+  /// set from the list being scrolled, which is several widgets down
+  /// (`GalleryChrome` carries it there).
+  final _chromeVisible = ValueNotifier(true);
+
+  GalleryTabController get controller => widget.controller;
+  GalleryTabOpener get opener => widget.opener;
+  SmbConfigStore get smbConfigStore => widget.smbConfigStore;
+  SmbProxyServer get proxyServer => widget.proxyServer;
+  CacheManager get cacheManager => widget.cacheManager;
+  FavoritesStore get favoritesStore => widget.favoritesStore;
+  SourceRegistry get registry => widget.registry;
+
+  @override
+  void dispose() {
+    _chromeVisible.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
         final tab = controller.active;
         if (tab == null) {
-          return Scaffold(
-            appBar: GalleryTabStrip(
+          return _scaffold(
+            context,
+            header: GalleryTabStrip(
               controller: controller,
               newTabOptions: _newTabOptions(context),
             ),
@@ -72,15 +98,24 @@ class GalleryTabsScreen extends StatelessWidget {
     );
   }
 
-  /// The one app bar, shared by every tab. It sits here rather than inside the
-  /// body so it keeps its state — most visibly its own scroll position — while
-  /// the body underneath is rebuilt for each tab.
+  /// The whole screen: the shared header over whichever body the active tab
+  /// calls for.
+  ///
+  /// The header is built here rather than inside the body so it keeps its
+  /// state — most visibly the strip's own scroll position — while the body
+  /// underneath is rebuilt for each tab.
+  ///
+  /// It is a row of the page rather than `Scaffold.appBar` because it folds
+  /// away as the list is read (ADR 009): an app bar's height is fixed at the
+  /// moment the Scaffold is built, so animating it would mean rebuilding the
+  /// whole screen, body and all, on every frame of the fold.
   Widget _buildActive(BuildContext context, GalleryTab tab) {
     // Keyed by tab so switching gives the new tab its own view state —
     // scroll position, loading flags — instead of inheriting the old one's.
     final key = ValueKey(tab.id);
-    return Scaffold(
-      appBar: _buildHeader(context, tab),
+    return _scaffold(
+      context,
+      header: _buildHeader(context, tab),
       body: switch (tab.current.sourceUri.scheme) {
         homeUriScheme => HomeGalleryBody(
             key: key,
@@ -121,6 +156,29 @@ class GalleryTabsScreen extends StatelessWidget {
             registry: registry,
           ),
       },
+    );
+  }
+
+  /// The page: header on top, body below, and the shared say-so about whether
+  /// the header is showing carried down to whatever is doing the scrolling.
+  ///
+  /// The status bar is kept clear here, not inside the strip, so that folding
+  /// the header away does not send the grid up under the clock.
+  Widget _scaffold(BuildContext context,
+      {required Widget header, required Widget body}) {
+    return Scaffold(
+      body: GalleryChrome(
+        visible: _chromeVisible,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              GalleryChromeSlot(visible: _chromeVisible, child: header),
+              Expanded(child: body),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

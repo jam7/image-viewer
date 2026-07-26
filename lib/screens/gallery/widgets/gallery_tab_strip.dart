@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../gallery_constants.dart';
 import '../gallery_tab.dart';
 import '../gallery_tab_controller.dart';
 import '../gallery_uri.dart';
@@ -49,7 +50,7 @@ class GalleryTabStrip extends StatefulWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(galleryHeaderRowHeight);
 
   @override
   State<GalleryTabStrip> createState() => _GalleryTabStripState();
@@ -112,49 +113,46 @@ class _GalleryTabStripState extends State<GalleryTabStrip> {
     final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.surfaceContainer,
-      child: SafeArea(
-        bottom: false,
-        child: SizedBox(
-          height: kToolbarHeight,
-          child: Row(
-            children: [
-              Expanded(
-                child: ListView.separated(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  itemCount: controller.tabs.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 4),
-                  itemBuilder: (context, i) => _TabChip(
-                    tab: controller.tabs[i],
-                    selected: i == controller.activeIndex,
-                    onTap: () => controller.select(i),
-                    onClose: () => controller.close(i),
-                  ),
+      child: SizedBox(
+        height: galleryHeaderRowHeight,
+        child: Row(
+          children: [
+            Expanded(
+              child: ListView.separated(
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                itemCount: controller.tabs.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 4),
+                itemBuilder: (context, i) => _TabChip(
+                  tab: controller.tabs[i],
+                  selected: i == controller.activeIndex,
+                  onTap: () => controller.select(i),
+                  onClose: () => controller.close(i),
                 ),
               ),
-              if (newTabOptions.isNotEmpty)
-                PopupMenuButton<NewTabOption>(
-                  icon: const Icon(Icons.add),
-                  tooltip: '新しいタブ',
-                  onSelected: (o) => o.onSelected(),
-                  itemBuilder: (_) => [
-                    for (final option in newTabOptions)
-                      PopupMenuItem(
-                        value: option,
-                        child: Row(
-                          children: [
-                            Icon(option.icon, size: 20),
-                            const SizedBox(width: 12),
-                            Text(option.label),
-                          ],
-                        ),
+            ),
+            if (newTabOptions.isNotEmpty)
+              PopupMenuButton<NewTabOption>(
+                icon: const Icon(Icons.add),
+                tooltip: '新しいタブ',
+                onSelected: (o) => o.onSelected(),
+                itemBuilder: (_) => [
+                  for (final option in newTabOptions)
+                    PopupMenuItem(
+                      value: option,
+                      child: Row(
+                        children: [
+                          Icon(option.icon, size: 20),
+                          const SizedBox(width: 12),
+                          Text(option.label),
+                        ],
                       ),
-                  ],
-                ),
-              ...actions,
-            ],
-          ),
+                    ),
+                ],
+              ),
+            ...actions,
+          ],
         ),
       ),
     );
@@ -196,8 +194,11 @@ class _TabChip extends StatelessWidget {
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    _labelFor(session.sourceUri, session.title,
-                        withParent: selected),
+                    _labelFor(
+                      session.sourceUri,
+                      session.title,
+                      withParent: selected,
+                    ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                     style: TextStyle(
@@ -222,10 +223,10 @@ class _TabChip extends StatelessWidget {
   }
 
   static IconData _iconFor(Uri uri) => switch (uri.scheme) {
-        smbUriScheme => Icons.folder,
-        pixivUriScheme => Icons.palette,
-        _ => Icons.tab,
-      };
+    smbUriScheme => Icons.folder,
+    pixivUriScheme => Icons.palette,
+    _ => Icons.tab,
+  };
 
   /// The tail of the place. A directory's own name is often not enough to tell
   /// two tabs apart, so the one being shown gets its parent as well; the others

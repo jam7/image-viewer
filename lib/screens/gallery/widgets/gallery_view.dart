@@ -5,6 +5,7 @@ import '../../../models/image_source.dart';
 import '../system_back.dart';
 import '../gallery_session.dart';
 import '../gallery_tab.dart';
+import 'gallery_chrome.dart';
 import 'gallery_grid.dart';
 import 'gallery_keyboard_scrollable.dart';
 
@@ -48,8 +49,6 @@ class GalleryView extends StatefulWidget {
   /// Shown when the list is empty and nothing is loading.
   final String emptyMessage;
 
-  /// Optional row between the app bar and the grid (search / filter controls).
-
   /// Called when what should be on screen has changed under the caller's feet —
   /// a page was appended, or a back step moved the tab to another entry. The
   /// caller derives [items] and the [appBar] title from the tab, so it has to
@@ -76,6 +75,11 @@ class GalleryViewState extends State<GalleryView> {
   static const _loadMoreMargin = 200.0;
 
   final _scrollController = ScrollController();
+
+  /// Reading forward folds the header away (ADR 009). The rule is per view, so
+  /// each tab makes up its own mind and none of them fight over it.
+  final _chromeRule = ChromeScrollRule();
+  ValueNotifier<bool>? _chrome;
   final _focusNode = FocusNode();
   bool _isLoading = false;
   String? _error;
@@ -93,6 +97,7 @@ class GalleryViewState extends State<GalleryView> {
         'index=${widget.tab.index}/${widget.tab.history.length} '
         'at=${_shown.sourceUri}');
     _scrollController.addListener(_onScroll);
+    _startChromeRule();
     // Switching tabs builds a fresh view over a session that may already hold
     // its items; fetching again would append a duplicate page. Same rule as
     // [_onSessionChanged], which handles the moves within one view.
@@ -107,6 +112,31 @@ class GalleryViewState extends State<GalleryView> {
   /// whichever session is on screen, so it does not matter who created it.
   void _repaint() {
     if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _chrome = GalleryChrome.maybeOf(context);
+  }
+
+  /// Tell the fold rule where this list starts, once there is a viewport to
+  /// ask. Until it knows, the first movement would be spent finding out.
+  ///
+  /// There is usually no viewport on the frame a place opens — a list still
+  /// loading is a spinner, with nothing to scroll — so this waits for one.
+  /// Waiting costs nothing: a post-frame callback does not ask for a frame, so
+  /// on a place that never gets a grid this simply stops being asked.
+  void _startChromeRule() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_scrollController.hasClients) {
+        _startChromeRule();
+        return;
+      }
+      _chromeRule.start(_scrollController.position.pixels);
+      _chrome?.value = true;
+    });
   }
 
   @override
@@ -130,6 +160,8 @@ class GalleryViewState extends State<GalleryView> {
     _isLoading = false;
     _shown.attach();
     if (!_shown.hasLoaded) loadNextPage();
+    // A different place, at a different height: measure the fold from there.
+    _startChromeRule();
   }
 
   // These go through [_shown] rather than the tab: a closed tab has already
@@ -192,8 +224,10 @@ class GalleryViewState extends State<GalleryView> {
   }
 
   void _onScroll() {
-    if (_isLoading || !_shown.hasMore) return;
     final position = _scrollController.position;
+    final chrome = _chromeRule.update(position.pixels, atTop: position.pixels <= 0);
+    if (chrome != null) _chrome?.value = chrome;
+    if (_isLoading || !_shown.hasMore) return;
     if (position.pixels >= position.maxScrollExtent - _loadMoreMargin) {
       loadNextPage();
     }

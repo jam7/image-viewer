@@ -4,6 +4,14 @@ const galleryCrossAxisCount = 5;
 const gallerySpacing = 4.0;
 const galleryPadding = 4.0;
 
+/// Height of each of the two header rows — the tab strip and the toolbar
+/// (ADR 009). One number so they cannot drift apart: two rows of different
+/// heights read as two unrelated bars rather than one header.
+///
+/// Below the usual `kToolbarHeight` of 56 because there are two of them, over
+/// a grid that shows barely three rows of thumbnails on a tablet in landscape.
+const galleryHeaderRowHeight = 44.0;
+
 const galleryGridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
   crossAxisCount: galleryCrossAxisCount,
   crossAxisSpacing: gallerySpacing,

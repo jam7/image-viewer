@@ -15,6 +15,7 @@ import 'package:image_viewer/screens/gallery/gallery_tab_controller.dart';
 import 'package:image_viewer/screens/gallery/gallery_uri.dart';
 import 'package:image_viewer/screens/gallery/pixiv_gallery_body.dart';
 import 'package:image_viewer/screens/gallery/smb_gallery_body.dart';
+import 'package:image_viewer/screens/gallery/widgets/gallery_chrome.dart';
 import 'package:image_viewer/screens/gallery/widgets/gallery_view.dart';
 import 'package:image_viewer/services/cache/cache_manager.dart';
 import 'package:image_viewer/services/cache/disk_cache.dart';
@@ -576,6 +577,32 @@ void main() {
 
       expect(tester.widgetList(find.byType(Image)).length, 3);
       expect(body.tab.current.loaded.length, 6); // narrowed, not refetched
+    });
+
+    testWidgets('scrolling the grid folds the header away and back',
+        (tester) async {
+      // The wiring, not the rule: the view has to find the shared say-so
+      // through the tree and actually set it while the list moves.
+      final visible = ValueNotifier(true);
+      addTearDown(visible.dispose);
+      final items = pixivItems(60);
+      seedThumbnails(items);
+      await pumpHome(
+        tester,
+        GalleryChrome(
+          visible: visible,
+          child: build(_FakePixivSource(items)),
+        ),
+      );
+      expect(visible.value, isTrue);
+
+      await tester.drag(find.byType(GridView), const Offset(0, -300));
+      await tester.pump();
+      expect(visible.value, isFalse);
+
+      await tester.drag(find.byType(GridView), const Offset(0, 120));
+      await tester.pump();
+      expect(visible.value, isTrue);
     });
 
     testWidgets('empty result shows the not-found message', (tester) async {

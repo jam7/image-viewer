@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../gallery_constants.dart';
 import '../gallery_tab.dart';
 import '../gallery_uri_dialect.dart';
 
@@ -32,8 +33,6 @@ class ToolbarMenuItem {
 /// controller. [onNavigate] is only for the address field, whose destination is
 /// not in the history yet and may need the source resolving first.
 class GalleryToolbar extends StatefulWidget {
-  static const height = 44.0;
-
   final GalleryTab tab;
   final ValueChanged<Uri> onNavigate;
 
@@ -161,7 +160,7 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
     return Material(
       color: Theme.of(context).colorScheme.surface,
       child: SizedBox(
-        height: GalleryToolbar.height,
+        height: galleryHeaderRowHeight,
         child: Row(
           children: [
             IconButton(
@@ -335,7 +334,7 @@ class GalleryHeader extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Size get preferredSize =>
-      Size.fromHeight(strip.preferredSize.height + GalleryToolbar.height);
+      Size.fromHeight(strip.preferredSize.height + galleryHeaderRowHeight);
 
   @override
   Widget build(BuildContext context) =>
