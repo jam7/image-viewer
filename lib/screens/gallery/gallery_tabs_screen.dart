@@ -83,6 +83,7 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
               newTabOptions: _newTabOptions(context),
             ),
             body: const Center(child: Text('タブがありません')),
+            overContent: false,
           );
         }
         // Also follow the active tab's own moves: navigating happens inside the
@@ -108,11 +109,14 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// moment the Scaffold is built, so animating it would mean rebuilding the
   /// whole screen, body and all, on every frame of the fold.
   Widget _buildActive(BuildContext context, GalleryTab tab) {
-    _chrome.arriveAt(tab.current.sourceUri);
+    final uri = tab.current.sourceUri;
+    _chrome.arriveAt(uri);
     return _scaffold(
       context,
       header: _buildHeader(context, tab),
       body: _bodyFor(context, tab),
+      // A work is looked at, not read down: its header floats (see _scaffold).
+      overContent: itemOf(uri) != null,
     );
   }
 
@@ -185,29 +189,58 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   ///
   /// The status bar is kept clear here, not inside the strip, so that folding
   /// the header away does not send the grid up under the clock.
-  Widget _scaffold(BuildContext context,
-      {required Widget header, required Widget body}) {
+  /// The page: the header and the body, arranged one of two ways.
+  ///
+  /// Over a list the header takes a row of its own and the list gets what is
+  /// left. Over a picture it floats on top, because there the header comes and
+  /// goes constantly — and pushing the picture down by three rows of chrome
+  /// every time it appears makes tapping to see the controls feel like
+  /// leaving. Floating is what the viewer already does with its own controls,
+  /// so the two now behave alike.
+  Widget _scaffold(
+    BuildContext context, {
+    required Widget header,
+    required Widget body,
+    required bool overContent,
+  }) {
     return Scaffold(
       body: GalleryChrome(
         visible: _chrome.visible,
-        child: ValueListenableBuilder<bool>(
-          valueListenable: _chrome.visible,
-          builder: (context, _, child) => SafeArea(
-            // Hiding the bars is not enough on its own: the room kept for them
-            // is ours to give back, and a picture that stops short of the top
-            // of the screen is not full screen.
-            top: !_chrome.immersive,
-            bottom: false,
-            child: child!,
-          ),
-          child: Column(
-            children: [
-              GalleryChromeSlot(visible: _chrome.visible, child: header),
-              Expanded(child: body),
-            ],
+        child: overContent
+            ? _headerOverContent(header, body)
+            : _headerAboveContent(header, body),
+      ),
+    );
+  }
+
+  Widget _headerAboveContent(Widget header, Widget body) {
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          GalleryChromeSlot(visible: _chrome.visible, child: header),
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
+
+  /// The picture fills the screen and keeps it. The header carries its own
+  /// room for the status bar, since nothing below it is reserving any.
+  Widget _headerOverContent(Widget header, Widget body) {
+    return Stack(
+      children: [
+        Positioned.fill(child: body),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: GalleryChromeSlot(
+            visible: _chrome.visible,
+            child: SafeArea(bottom: false, child: header),
           ),
         ),
-      ),
+      ],
     );
   }
 
