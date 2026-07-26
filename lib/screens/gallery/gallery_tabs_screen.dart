@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/smb/smb_config_store.dart';
-import '../../services/platform/host_activity.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../settings/settings_screen.dart';
@@ -54,22 +53,7 @@ class GalleryTabsScreen extends StatefulWidget {
 }
 
 class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
-  /// Whether the two header rows are showing. Owned here because they are, and
-  /// set from the list being scrolled, which is several widgets down
-  /// (`GalleryChrome` carries it there).
-  final _chromeVisible = ValueNotifier(true);
-
-  /// The place the header was last shown for, so that arriving somewhere new
-  /// can bring it back. Folding is the business of whatever is being scrolled,
-  /// but unfolding cannot be: a viewer or the home page has no list to scroll,
-  /// and a header folded away by the grid you just left would stay away.
-  Uri? _shownFor;
-
-  @override
-  void initState() {
-    super.initState();
-    _chromeVisible.addListener(_applySystemBars);
-  }
+  final _chrome = GalleryChromeController();
 
   GalleryTabController get controller => widget.controller;
   GalleryTabOpener get opener => widget.opener;
@@ -81,33 +65,8 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
 
   @override
   void dispose() {
-    _chromeVisible.removeListener(_applySystemBars);
-    _chromeVisible.dispose();
+    _chrome.dispose();
     super.dispose();
-  }
-
-  /// The status and navigation bars go with the app's own header, but only
-  /// where hiding them is the point.
-  ///
-  /// A grid folds its header away for room and keeps the bars; a work fills
-  /// the screen. Deciding it here, from the place the tab is on, is what keeps
-  /// the bars from being left hidden after moving somewhere they belong — the
-  /// viewer is an entry in a tab now, not a screen with an exit to undo it on
-  /// (ADR 010 決定 7).
-  /// Whether the bars should be out of the way: a work is showing and the
-  /// header is already away. A grid folds its header for room and keeps them.
-  bool get _immersive =>
-      _shownFor != null && itemOf(_shownFor!) != null && !_chromeVisible.value;
-
-  void _applySystemBars() {
-    final immersive = _immersive;
-    // Both, because neither covers everything: SystemChrome is the right call
-    // and is a no-op on Android 15 (see HostActivity.setImmersive), while the
-    // channel exists only there.
-    SystemChrome.setEnabledSystemUIMode(
-      immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
-    );
-    const HostActivity().setImmersive(immersive);
   }
 
   @override
@@ -149,29 +108,12 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// moment the Scaffold is built, so animating it would mean rebuilding the
   /// whole screen, body and all, on every frame of the fold.
   Widget _buildActive(BuildContext context, GalleryTab tab) {
-    _showChromeOnArrival(tab.current.sourceUri);
+    _chrome.arriveAt(tab.current.sourceUri);
     return _scaffold(
       context,
       header: _buildHeader(context, tab),
       body: _bodyFor(context, tab),
     );
-  }
-
-  void _showChromeOnArrival(Uri place) {
-    if (_shownFor == place) return;
-    // Reading on through a folder is one activity, not a series of arrivals:
-    // moving from one work to the next keeps whatever the reader chose, so a
-    // picture put full screen stays that way for the one after it.
-    final stillReading = _shownFor != null &&
-        itemOf(_shownFor!) != null &&
-        itemOf(place) != null;
-    _shownFor = place;
-    if (stillReading) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _chromeVisible.value = true;
-      _applySystemBars(); // no change to listen for when it was already true
-    });
   }
 
   /// Which body shows this tab's place.
@@ -247,20 +189,20 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
       {required Widget header, required Widget body}) {
     return Scaffold(
       body: GalleryChrome(
-        visible: _chromeVisible,
+        visible: _chrome.visible,
         child: ValueListenableBuilder<bool>(
-          valueListenable: _chromeVisible,
+          valueListenable: _chrome.visible,
           builder: (context, _, child) => SafeArea(
             // Hiding the bars is not enough on its own: the room kept for them
             // is ours to give back, and a picture that stops short of the top
             // of the screen is not full screen.
-            top: !_immersive,
+            top: !_chrome.immersive,
             bottom: false,
             child: child!,
           ),
           child: Column(
             children: [
-              GalleryChromeSlot(visible: _chromeVisible, child: header),
+              GalleryChromeSlot(visible: _chrome.visible, child: header),
               Expanded(child: body),
             ],
           ),

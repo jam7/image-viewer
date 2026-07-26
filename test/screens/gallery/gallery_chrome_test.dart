@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:image_viewer/screens/gallery/gallery_uri.dart';
 import 'package:image_viewer/screens/gallery/widgets/gallery_chrome.dart';
 
 /// When the two header rows fold away (ADR 009, 2C-5). The rule is separate
@@ -56,6 +57,66 @@ void main() {
 
     expect(scrollTo(410), isNull); // 20 forward of the turn: not yet
     expect(scrollTo(430), isFalse);
+  });
+
+  group('what the header does on arriving somewhere', () {
+    // These were only ever checked by hand on a device, because the rules
+    // lived on the screen. They decide when the system bars come off, which
+    // is the one thing that stays wrong if it is ever wrong.
+    late GalleryChromeController chrome;
+
+    setUp(() => chrome = GalleryChromeController());
+    tearDown(() => chrome.dispose());
+
+    /// `arriveAt` is called from a build, so it defers its change to the next
+    /// frame — which means there has to be one.
+    Future<void> arriveAt(WidgetTester tester, Uri place) async {
+      chrome.arriveAt(place);
+      await tester.pump();
+    }
+
+    final list = pixivGalleryUri('/user/1700000000000');
+    final work = pixivArtworkUri('456');
+    final another = pixivArtworkUri('789');
+
+    testWidgets('a folded header comes back on arriving at a list',
+        (tester) async {
+      // Nothing on a list scrolls it back on its own if the list is short, and
+      // a viewer has no list at all — so arriving has to do it.
+      await tester.pumpWidget(const SizedBox());
+      await arriveAt(tester, work);
+      chrome.visible.value = false;
+
+      await arriveAt(tester, list);
+
+      expect(chrome.visible.value, isTrue);
+    });
+
+    testWidgets('but reading on to the next work keeps it away',
+        (tester) async {
+      // A folder read full screen is one activity, not an arrival per picture.
+      await tester.pumpWidget(const SizedBox());
+      await arriveAt(tester, work);
+      chrome.visible.value = false;
+
+      await arriveAt(tester, another);
+
+      expect(chrome.visible.value, isFalse);
+    });
+
+    testWidgets('the bars only come off over a work', (tester) async {
+      await tester.pumpWidget(const SizedBox());
+      await arriveAt(tester, list);
+
+      // A grid folds its header for room; taking the status bar with it would
+      // be a different thing entirely.
+      chrome.visible.value = false;
+      expect(chrome.immersive, isFalse);
+
+      await arriveAt(tester, work);
+      chrome.visible.value = false;
+      expect(chrome.immersive, isTrue);
+    });
   });
 
   testWidgets('the rows give their height back when they go', (tester) async {

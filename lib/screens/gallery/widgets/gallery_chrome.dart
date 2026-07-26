@@ -1,4 +1,8 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+
+import '../../../services/platform/host_activity.dart';
+import '../gallery_uri_dialect.dart';
 
 /// Whether the two header rows are showing (ADR 009), shared down the tree.
 ///
@@ -79,6 +83,72 @@ class ChromeScrollRule {
     if (_visible == to) return null;
     _visible = to;
     return to;
+  }
+}
+
+/// Whether the header and the system bars are showing, and the rules for it.
+///
+/// Held together because they move together and for the same reasons, and
+/// apart from the screen because none of it is about laying anything out: the
+/// rules here decide, the widgets follow.
+class GalleryChromeController {
+  final visible = ValueNotifier(true);
+
+  /// Where the header was last shown for, so arriving somewhere new can bring
+  /// it back. Folding belongs to whatever is being scrolled; unfolding cannot,
+  /// since a place with no list to scroll would inherit a folded header and
+  /// never get it back.
+  Uri? _place;
+  bool _disposed = false;
+
+  GalleryChromeController() {
+    visible.addListener(_applySystemBars);
+  }
+
+  void dispose() {
+    _disposed = true;
+    visible.removeListener(_applySystemBars);
+    visible.dispose();
+  }
+
+  /// Whether the bars should be out of the way: a work is showing and the
+  /// header is already away. A grid folds its header for room and keeps them.
+  bool get immersive =>
+      _place != null && itemOf(_place!) != null && !visible.value;
+
+  /// The tab is showing [place] now.
+  ///
+  /// Reading on through a folder is one activity, not a series of arrivals:
+  /// moving from one work to the next keeps whatever the reader chose, so a
+  /// picture put full screen stays that way for the one after it. Arriving
+  /// anywhere else brings everything back.
+  void arriveAt(Uri place) {
+    if (_place == place) return;
+    final stillReading =
+        _place != null && itemOf(_place!) != null && itemOf(place) != null;
+    _place = place;
+    if (stillReading) return;
+    // Deferred because this is called from a build, and a listener cannot be
+    // told to rebuild during one. The frame is asked for rather than assumed:
+    // a post-frame callback does not schedule one, so arriving somewhere that
+    // draws nothing new would otherwise never bring the header back.
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        if (_disposed) return; // the screen may have gone in between
+        visible.value = true;
+        _applySystemBars(); // nothing to listen for when it was already true
+      })
+      ..scheduleFrame();
+  }
+
+  /// Both calls are made, because neither covers everything: `SystemChrome` is
+  /// the right one and does nothing on Android 15 (see
+  /// `HostActivity.setImmersive`), while the channel exists only there.
+  void _applySystemBars() {
+    SystemChrome.setEnabledSystemUIMode(
+      immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
+    const HostActivity().setImmersive(immersive);
   }
 }
 
