@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
+import 'package:media_kit/media_kit.dart';
 
 import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
@@ -13,6 +14,10 @@ import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/image_source_provider.dart';
 import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
+import '../../services/video/smb_proxy_server.dart';
+import '../../widgets/thumbnail_result.dart';
+import 'viewer_video_controls.dart';
+import 'viewer_video_page.dart';
 
 final _log = Logger('Viewer');
 
@@ -51,6 +56,7 @@ class ViewerScreen extends StatefulWidget {
   final ValueChanged<String>? onSearchTag;
 
   final SourceRegistry registry;
+  final SmbProxyServer proxyServer;
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
 
@@ -75,6 +81,7 @@ class ViewerScreen extends StatefulWidget {
     this.onShowAuthor,
     this.onSearchTag,
     required this.registry,
+    required this.proxyServer,
     required this.cacheManager,
     required this.favoritesStore,
     this.onOpenAuthorInNewTab,
@@ -102,6 +109,19 @@ class _ViewerScreenState extends State<ViewerScreen> {
   final Map<String, bool> _loadingStates = {};
   final Map<String, (int received, int total)> _loadProgress = {};
   bool _showOverlay = true;
+
+  /// The player of the video on screen, if that is what is on screen. Handed
+  /// up so its controls can go in this overlay rather than in one of its own.
+  Player? _video;
+
+  /// Whether the video on screen is playing, kept across the swap so the next
+  /// one can carry on: the next thing does what the last thing was doing.
+  bool _videoWasPlaying = false;
+
+  /// Whether a video arriving now should start. Opening one deliberately — a
+  /// tap in the list, an address pasted — means play it; swiping past one
+  /// means play it only if what we swiped away from was playing.
+  bool _autoplayNext = true;
 
   /// Hides the overlay when nothing has happened for a while. Reading is long
   /// stretches of looking with no input at all, and the chrome has no business
@@ -154,20 +174,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   /// 作品を開く: resolvePages でページ展開してプリロード開始。
   Future<void> _openItem(int itemIndex) async {
-    _log.info('openItem: index=$itemIndex/${widget.items.length}, name=${widget.items[itemIndex].name}');
-    setState(() {
-      _isResolvingPages = true;
-      _error = null;
-      _pages = null; // Prevent _goToPage from using stale pages during resolve
-      _pageIndex = 0;
-      _scale = 1.0;
-      _offset = Offset.zero;
-      // Release previous work's image data to prevent memory accumulation
-      _fullImages.clear();
-      _cacheSources.clear();
-      _loadingStates.clear();
-      _loadProgress.clear();
-    });
+    _log.info(
+      'openItem: index=$itemIndex/${widget.items.length}, name=${widget.items[itemIndex].name}',
+    );
+    setState(_forgetPreviousItem);
 
     try {
       final item = widget.items[itemIndex];
@@ -218,7 +228,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final pages = _pages;
     if (pages == null) return;
     // PDF rendering is slow (~500ms/page, serial), so reduce lookahead
-    final isPdf = pages.isNotEmpty && pages.first.metadata?['isPdfPage'] == true;
+    final isPdf =
+        pages.isNotEmpty && pages.first.metadata?['isPdfPage'] == true;
     final ahead = isPdf ? 2 : 4;
     // Load current page first, then ahead, then behind
     _loadFullImage(pages[index]);
@@ -233,13 +244,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
   }
 
   Future<void> _loadFullImage(ImageSource image) async {
-    if (_fullImages.containsKey(image.id) ||
-        _loadingStates[image.id] == true) {
-      return;
-    }
-
-    // Skip download for unsupported formats (e.g. ZIP inside ZIP)
-    if (image.metadata?['unsupported'] == true) return;
+    if (!_worthLoading(image)) return;
 
     _loadingStates[image.id] = true;
     final key = 'full:${image.id}';
@@ -248,7 +253,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
     try {
       final cached = await widget.cacheManager.get(key);
       if (cached != null) {
-        _log.info('Cache hit: ${image.name} (${cached.data.length} bytes, ${cached.source})');
+        _log.info(
+          'Cache hit: ${image.name} (${cached.data.length} bytes, ${cached.source})',
+        );
         if (mounted) {
           setState(() {
             _fullImages[image.id] = Uint8List.fromList(cached.data);
@@ -262,11 +269,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
         if (provider == null) return;
         final result = await widget.cacheManager.fetchAndCache(
           key,
-          () => provider.fetchFullImage(image, onProgress: (received, total) {
-            if (mounted) {
-              setState(() => _loadProgress[image.id] = (received, total));
-            }
-          }),
+          () => provider.fetchFullImage(
+            image,
+            onProgress: (received, total) {
+              if (mounted) {
+                setState(() => _loadProgress[image.id] = (received, total));
+              }
+            },
+          ),
         );
         if (mounted) {
           setState(() {
@@ -334,6 +344,41 @@ class _ViewerScreenState extends State<ViewerScreen> {
     if (show) _idle = Timer(_idleBeforeHiding, () => _setOverlay(false));
   }
 
+  /// Nothing of the last item survives into this one: not its pages, not how
+  /// far it was zoomed, and above all not its bytes, which is what would
+  /// otherwise pile up one work at a time.
+  void _forgetPreviousItem() {
+    _isResolvingPages = true;
+    _error = null;
+    _pages = null; // Prevent _goToPage from using stale pages during resolve
+    _pageIndex = 0;
+    _scale = 1.0;
+    _offset = Offset.zero;
+    _fullImages.clear();
+    _cacheSources.clear();
+    _loadingStates.clear();
+    _loadProgress.clear();
+  }
+
+  static bool _isVideo(ImageSource item) => item.metadata?['isVideo'] == true;
+
+  /// Whether this one's bytes are worth fetching at all.
+  bool _worthLoading(ImageSource image) {
+    if (_fullImages.containsKey(image.id)) return false;
+    if (_loadingStates[image.id] == true) return false;
+    // Unsupported formats (a ZIP inside a ZIP) have nothing to show.
+    if (image.metadata?['unsupported'] == true) return false;
+    // A video is streamed through the proxy a piece at a time. Fetching it
+    // here would pull the whole file into memory and the cache to show one.
+    return !_isVideo(image);
+  }
+
+  /// The still already made for the grid, if it is still in memory.
+  ThumbnailResult? _posterFor(ImageSource item) {
+    final data = _fullImages[item.id];
+    return data == null ? null : ThumbnailData(data);
+  }
+
   Widget _buildLoadingIndicator(String imageId) {
     final progress = _loadProgress[imageId];
     if (progress == null) {
@@ -354,7 +399,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
   Widget _buildDownloadProgress() {
     final (received, total) = _downloadProgress!;
     final item = widget.items[widget.index];
-    final isPagesProgress = item.metadata?['isZip'] != true && item.metadata?['isPdf'] != true;
+    final isPagesProgress =
+        item.metadata?['isZip'] != true && item.metadata?['isPdf'] != true;
 
     final fraction = total > 0 ? received / total : null;
     final progressText = isPagesProgress
@@ -425,7 +471,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
   @override
   void didUpdateWidget(ViewerScreen old) {
     super.didUpdateWidget(old);
-    if (widget.index != old.index) _openItem(widget.index);
+    if (widget.index == old.index) return;
+    // Arrived by moving along the list, rather than by opening this place.
+    _autoplayNext = _videoWasPlaying;
+    _openItem(widget.index);
   }
 
   // --- 入力ハンドリング ---
@@ -439,10 +488,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is PointerScrollEvent) {
-      if (HardwareKeyboard.instance.logicalKeysPressed
-              .contains(LogicalKeyboardKey.controlLeft) ||
-          HardwareKeyboard.instance.logicalKeysPressed
-              .contains(LogicalKeyboardKey.controlRight)) {
+      if (HardwareKeyboard.instance.logicalKeysPressed.contains(
+            LogicalKeyboardKey.controlLeft,
+          ) ||
+          HardwareKeyboard.instance.logicalKeysPressed.contains(
+            LogicalKeyboardKey.controlRight,
+          )) {
         setState(() {
           final delta = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
           _scale = (_scale * delta).clamp(0.5, 8.0);
@@ -527,7 +578,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
       final illustId = image.metadata?['illustId'] as int?;
       if (illustId != null) {
         try {
-          final provider = await widget.registry.resolve(image.sourceKey!, context);
+          final provider = await widget.registry.resolve(
+            image.sourceKey!,
+            context,
+          );
           if (provider is PixivSource) {
             await provider.client.bookmarkAdd(illustId);
           }
@@ -591,8 +645,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
     // Single image (no pages or 1 page = the item itself)
     final pages = _pages;
     if (pages == null ||
-        (pages.length == 1 && pages.first.metadata?['isPdfPage'] != true &&
-         pages.first.metadata?['isZipEntry'] != true)) {
+        (pages.length == 1 &&
+            pages.first.metadata?['isPdfPage'] != true &&
+            pages.first.metadata?['isZipEntry'] != true)) {
       final data = _fullImages[currentImage.id];
       if (data == null) {
         _log.warning('Download skipped: image not loaded yet (${item.name})');
@@ -626,8 +681,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
       } else if (item.metadata?['isZip'] == true) {
         // ZIP: stream directly to L3 file (avoid loading entire ZIP into memory)
         _log.info('Downloading ZIP from source: ${item.name}');
-        final (:stream, :fileSize, :close) = await provider.openReadStream(item);
-        final saved = await widget.cacheManager.l3.putFromStream(workKey, stream, meta,
+        final (:stream, :fileSize, :close) = await provider.openReadStream(
+          item,
+        );
+        final saved = await widget.cacheManager.l3.putFromStream(
+          workKey,
+          stream,
+          meta,
           total: fileSize,
           onProgress: (received, total) {
             if (mounted) {
@@ -638,7 +698,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
         );
         await close();
         if (saved) {
-          _log.info('Downloaded ZIP: ${item.name} (${(fileSize / 1024).toStringAsFixed(0)} KB)');
+          _log.info(
+            'Downloaded ZIP: ${item.name} (${(fileSize / 1024).toStringAsFixed(0)} KB)',
+          );
         } else {
           _log.info('Download cancelled: ${item.name}');
         }
@@ -658,7 +720,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
         for (var i = 0; i < pages.length; i++) {
           if (!mounted || !_isDownloading) {
             // Cancel: remove pages saved so far
-            _log.info('Download cancelled at page ${i + 1}/$totalPages: ${item.name}');
+            _log.info(
+              'Download cancelled at page ${i + 1}/$totalPages: ${item.name}',
+            );
             for (final k in savedPageKeys) {
               await widget.cacheManager.l3.remove(k);
             }
@@ -668,15 +732,20 @@ class _ViewerScreenState extends State<ViewerScreen> {
           final pageKey = 'full:${page.id}';
           // Skip if already in L3
           if (!widget.cacheManager.l3.isDownloaded(pageKey)) {
-            final pageData = _fullImages[page.id] ??
+            final pageData =
+                _fullImages[page.id] ??
                 (await widget.cacheManager.get(pageKey))?.data as Uint8List? ??
                 await provider.fetchFullImage(page);
-            await widget.cacheManager.l3.put(pageKey, Uint8List.fromList(pageData), {
-              'name': page.name,
-              'uri': page.uri,
-              'workKey': workKey,
-              ...?page.metadata,
-            });
+            await widget.cacheManager.l3.put(
+              pageKey,
+              Uint8List.fromList(pageData),
+              {
+                'name': page.name,
+                'uri': page.uri,
+                'workKey': workKey,
+                ...?page.metadata,
+              },
+            );
             savedPageKeys.add(pageKey);
           } else {
             savedPageKeys.add(pageKey); // track for cleanup on cancel
@@ -698,7 +767,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
       if (workData != null && mounted) {
         await widget.cacheManager.l3.put(workKey, workData, meta);
-        _log.info('Downloaded work: ${item.name} (${(workData.length / 1024).toStringAsFixed(0)} KB)');
+        _log.info(
+          'Downloaded work: ${item.name} (${(workData.length / 1024).toStringAsFixed(0)} KB)',
+        );
       }
     } catch (e, st) {
       _log.warning('Download work failed', e, st);
@@ -721,11 +792,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// Say that a tab appeared. The strip is behind the viewer, so the chip
   /// showing up — the feedback everywhere else — cannot be seen from here.
   void _announceNewTab(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('新しいタブで開きました: $label'),
-      duration: const Duration(seconds: 2),
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('新しいタブで開きました: $label'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   /// [newTab] carries a long-press: open it alongside and stay here.
@@ -766,14 +839,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
           return GestureDetector(
             onLongPress: () => _searchTag(tag, newTab: true),
             child: ActionChip(
-            label: Text(tag),
-            onPressed: () => _searchTag(tag),
-            backgroundColor: Colors.white.withValues(alpha: 0.85),
-            labelStyle: const TextStyle(color: Colors.black87, fontSize: 12),
-            side: BorderSide.none,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-          ),
+              label: Text(tag),
+              onPressed: () => _searchTag(tag),
+              backgroundColor: Colors.white.withValues(alpha: 0.85),
+              labelStyle: const TextStyle(color: Colors.black87, fontSize: 12),
+              side: BorderSide.none,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
           );
         },
       ),
@@ -802,7 +875,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
         focusNode: _focusNode,
         autofocus: true,
         onKeyEvent: (node, event) {
-          if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape) {
             setState(() => _isDownloading = false);
             return KeyEventResult.handled;
           }
@@ -850,7 +924,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final pages = _pages!;
     final currentImage = pages[_pageIndex];
     // Tags of the current work (Pixiv only; empty for other sources).
-    final tags = (widget.items[widget.index].metadata?['tags'] as List?)
+    final tags =
+        (widget.items[widget.index].metadata?['tags'] as List?)
             ?.cast<String>() ??
         const <String>[];
     final data = _fullImages[currentImage.id];
@@ -888,11 +963,26 @@ class _ViewerScreenState extends State<ViewerScreen> {
             body: Stack(
               children: [
                 Center(
-                  child: currentImage.metadata?['unsupported'] == true
+                  child: _isVideo(currentImage)
+                      ? ViewerVideoPage(
+                          key: ValueKey(currentImage.id),
+                          item: currentImage,
+                          registry: widget.registry,
+                          proxyServer: widget.proxyServer,
+                          poster: _posterFor(currentImage),
+                          autoplay: _autoplayNext,
+                          onPlayingChanged: (p) => _videoWasPlaying = p,
+                          onPlayer: (p) => setState(() => _video = p),
+                        )
+                      : currentImage.metadata?['unsupported'] == true
                       ? Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.block, color: Colors.white38, size: 64),
+                            const Icon(
+                              Icons.block,
+                              color: Colors.white38,
+                              size: 64,
+                            ),
                             const SizedBox(height: 16),
                             Text(
                               currentImage.name.split(') ').last,
@@ -901,19 +991,28 @@ class _ViewerScreenState extends State<ViewerScreen> {
                             const SizedBox(height: 8),
                             const Text(
                               'Unsupported format',
-                              style: TextStyle(color: Colors.white38, fontSize: 12),
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         )
                       : data != null
-                          ? Transform(
-                              alignment: Alignment.center,
-                              transform: Matrix4.identity()
-                                ..translate(_offset.dx, _offset.dy) // ignore: deprecated_member_use
-                                ..scale(_scale), // ignore: deprecated_member_use
-                              child: Image.memory(data, fit: BoxFit.contain),
-                            )
-                          : _buildLoadingIndicator(currentImage.id),
+                      ? Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            // ignore: deprecated_member_use
+                            // ignore: deprecated_member_use
+                            // ignore: deprecated_member_use
+                            ..translate(
+                              _offset.dx,
+                              _offset.dy,
+                            ) // ignore: deprecated_member_use
+                            ..scale(_scale), // ignore: deprecated_member_use
+                          child: Image.memory(data, fit: BoxFit.contain),
+                        )
+                      : _buildLoadingIndicator(currentImage.id),
                 ),
                 // Page sidebar (right edge)
                 if (pages.length > 1)
@@ -951,99 +1050,110 @@ class _ViewerScreenState extends State<ViewerScreen> {
                         ),
                       ),
                     ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [Colors.black54, Colors.transparent],
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: SafeArea(
-                        top: false,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: GestureDetector(
-                                  onLongPress: () =>
-                                      _showAuthor(currentImage, newTab: true),
-                                  child: ActionChip(
-                                    avatar: const Icon(Icons.person,
-                                        size: 16, color: Colors.black54),
-                                    label: Text(
-                                      currentImage.metadata?['author']
-                                              as String? ??
-                                          '',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    onPressed: () => _showAuthor(currentImage),
-                                    backgroundColor:
-                                        Colors.white.withValues(alpha: 0.85),
-                                    labelStyle: const TextStyle(
-                                        color: Colors.black87, fontSize: 12),
-                                    side: BorderSide.none,
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                isFav
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
-                                color:
-                                    isFav ? Colors.redAccent : Colors.white,
-                              ),
-                              onPressed: () =>
-                                  _toggleFavorite(currentImage),
-                              tooltip: 'お気に入り',
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                isDl
-                                    ? Icons.download_done
-                                    : Icons.download,
-                                color:
-                                    isDl ? Colors.greenAccent : Colors.white,
-                              ),
-                              onPressed: () =>
-                                  _toggleDownload(currentImage),
-                              tooltip: 'ダウンロード',
-                            ),
-                            Text(
-                              _buildPositionText(),
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12),
-                            ),
-                            if (cacheSource != null)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Icon(
-                                  cacheSource == CacheSource.network
-                                      ? Icons.cloud_download
-                                      : Icons.storage,
-                                  color: Colors.white70,
-                                  size: 16,
-                                ),
-                              ),
-                          ],
+                  _buildBottomBar(currentImage, isFav, isDl, cacheSource),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Everything about the item that is not the item: what it is called, what
+  /// can be done to it, where the reader is in it. Video controls join the
+  /// same bar rather than bringing their own (ADR 010 決定 8).
+  Widget _buildBottomBar(
+    ImageSource currentImage,
+    bool isFav,
+    bool isDl,
+    CacheSource? cacheSource,
+  ) {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [Colors.black54, Colors.transparent],
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_video != null) ViewerVideoControls(player: _video!),
+              Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: GestureDetector(
+                        onLongPress: () =>
+                            _showAuthor(currentImage, newTab: true),
+                        child: ActionChip(
+                          avatar: const Icon(
+                            Icons.person,
+                            size: 16,
+                            color: Colors.black54,
+                          ),
+                          label: Text(
+                            currentImage.metadata?['author'] as String? ?? '',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onPressed: () => _showAuthor(currentImage),
+                          backgroundColor: Colors.white.withValues(alpha: 0.85),
+                          labelStyle: const TextStyle(
+                            color: Colors.black87,
+                            fontSize: 12,
+                          ),
+                          side: BorderSide.none,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
                         ),
                       ),
                     ),
                   ),
+                  IconButton(
+                    icon: Icon(
+                      isFav ? Icons.favorite : Icons.favorite_border,
+                      color: isFav ? Colors.redAccent : Colors.white,
+                    ),
+                    onPressed: () => _toggleFavorite(currentImage),
+                    tooltip: 'お気に入り',
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      isDl ? Icons.download_done : Icons.download,
+                      color: isDl ? Colors.greenAccent : Colors.white,
+                    ),
+                    onPressed: () => _toggleDownload(currentImage),
+                    tooltip: 'ダウンロード',
+                  ),
+                  Text(
+                    _buildPositionText(),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  if (cacheSource != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Icon(
+                        cacheSource == CacheSource.network
+                            ? Icons.cloud_download
+                            : Icons.storage,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
+                    ),
                 ],
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1114,7 +1224,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
                         ),
                         child: Text(
                           '${_pageIndex + 1}',
-                          style: const TextStyle(color: Colors.white, fontSize: 10),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
                         ),
                       ),
                     ),
@@ -1136,10 +1249,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
   /// (ADR 010 決定 4).
   String _buildPositionText() {
     final pages = _pages;
-    final within =
-        pages != null && pages.length > 1
-            ? '[${_pageIndex + 1}/${pages.length}]'
-            : '';
+    final within = pages != null && pages.length > 1
+        ? '[${_pageIndex + 1}/${pages.length}]'
+        : '';
     final among = widget.items.length > 1
         ? '[${widget.index + 1}/${widget.items.length}]'
         : '';

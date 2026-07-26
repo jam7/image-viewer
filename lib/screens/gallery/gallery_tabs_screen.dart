@@ -140,6 +140,7 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
         cacheManager: cacheManager,
         favoritesStore: favoritesStore,
         registry: registry,
+        proxyServer: proxyServer,
         onOpenInNewTab: _openInNewTab,
         // Both header rows float above it, and the tags have to clear them.
         topInset: galleryHeaderRowHeight * 2,

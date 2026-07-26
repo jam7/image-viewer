@@ -98,11 +98,15 @@ void main() {
           smbFileUri('1700000000000', r'books\vol2\a.jpg'));
     });
 
-    test('nothing to look at has no address of this kind', () {
-      // A directory is a list and has its own address; a video is not in the
-      // viewer yet (ADR 010 段階 6).
+    test('a directory is a list, and has no address of this kind', () {
       expect(placeOf(smbFile('books', dir: true)), isNull);
-      expect(placeOf(smbFile(r'books\movie.mp4', video: true)), isNull);
+    });
+
+    test('a video is one of the things to look at', () {
+      // Which is what lets a folder of films and pictures be swiped through
+      // as one list (ADR 010 段階 6).
+      expect(placeOf(smbFile(r'books\movie.mp4', video: true)),
+          smbFileUri('1700000000000', r'books\movie.mp4'));
     });
   });
 
@@ -178,8 +182,9 @@ void main() {
       expect(here.items.single.id, '999');
     });
 
-    test('leaves out what cannot be looked at', () async {
-      // Swiping onto a directory would be a move to nowhere.
+    test('leaves out what cannot be looked at, and keeps what can', () async {
+      // Swiping onto a directory would be a move to nowhere; swiping onto a
+      // video is the point of the videos being here at all.
       final items = [
         smbFile('books', dir: true),
         smbFile(r'books\a.jpg'),
@@ -190,7 +195,7 @@ void main() {
 
       final here = neighbourhood(tab, itemOf(tab.current.sourceUri)!);
 
-      expect(here.items.map((i) => i.name), ['a.jpg', 'pic.jpg']);
+      expect(here.items.map((i) => i.name), ['a.jpg', 'movie.mp4', 'pic.jpg']);
       expect(here.index, 0);
     });
 

@@ -4,6 +4,7 @@ import '../../models/image_source.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/source_registry.dart';
+import '../../services/video/smb_proxy_server.dart';
 import '../viewer/viewer_screen.dart';
 import 'gallery_session.dart';
 import 'gallery_tab.dart';
@@ -53,6 +54,7 @@ class ViewerGalleryBody extends StatelessWidget {
   final CacheManager cacheManager;
   final FavoritesStore favoritesStore;
   final SourceRegistry registry;
+  final SmbProxyServer proxyServer;
 
   /// Open a place in a new tab. Tabs are owned above this widget, so it asks.
   final void Function(GallerySession session) onOpenInNewTab;
@@ -66,6 +68,7 @@ class ViewerGalleryBody extends StatelessWidget {
     required this.cacheManager,
     required this.favoritesStore,
     required this.registry,
+    required this.proxyServer,
     required this.onOpenInNewTab,
     this.topInset = 0,
   });
@@ -163,6 +166,7 @@ class ViewerGalleryBody extends StatelessWidget {
             ? (tag) => _openPixivPlaceAlongside(_searchPath(tag), '')
             : null,
         registry: registry,
+        proxyServer: proxyServer,
         cacheManager: cacheManager,
         favoritesStore: favoritesStore,
       ),

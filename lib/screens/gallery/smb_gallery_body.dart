@@ -12,7 +12,6 @@ import '../../services/sources/smb_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../../widgets/thumbnail_result.dart';
-import '../video/video_player_screen.dart';
 
 /// SMB ディレクトリを見せるタブの中身。The tab and the app bar come from the
 /// host screen, which owns them across every source.
@@ -58,18 +57,6 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
     if (item.metadata?['isDirectory'] == true) {
       // Descending is a navigation within this tab, not a new screen (ADR 008).
       setState(() => _tab.navigate(_sessionFor(_pathOf(item))));
-    } else if (item.metadata?['isVideo'] == true) {
-      _session.thumbnails.cancel();
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => VideoPlayerScreen(
-          item: item,
-          source: _source,
-          proxyServer: widget.proxyServer,
-        ),
-      )).then((_) {
-        _session.retryUnsupportedThumbnails();
-        _session.resumeMissingThumbnails();
-      });
     } else {
       // Looking at a file is a move within this tab, not a new screen
       // (ADR 010). The viewer works out the neighbouring files by looking one

@@ -15,6 +15,7 @@ import 'package:image_viewer/services/favorites/favorites_store.dart';
 import 'package:image_viewer/services/smb/smb_config_store.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
 import 'package:image_viewer/services/sources/source_registry.dart';
+import 'package:image_viewer/services/video/smb_proxy_server.dart';
 
 /// Long-pressing an author or tag chip means "open it alongside", and tapping
 /// one means "go there". Both are handed to the caller now that the viewer is
@@ -67,6 +68,7 @@ void main() {
       builder: (_) => ViewerScreen(
         items: [work],
         registry: registry,
+        proxyServer: SmbProxyServer(),
         cacheManager: cacheManager,
         favoritesStore: favoritesStore,
         onOpenAuthorInNewTab: onAuthor,

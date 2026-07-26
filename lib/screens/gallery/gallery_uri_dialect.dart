@@ -392,12 +392,13 @@ class _SmbDialect extends GalleryUriDialect {
   @override
   Uri? asList(Uri uri) => smbGalleryUri(uri.host, smbPathOf(uri));
 
-  /// Null for anything that is not a single thing to look at: a directory is a
-  /// list, and a video is not in the viewer yet (ADR 010 段階 6).
+  /// Null for a directory, which is a list and has an address as one already.
+  /// Videos are here with everything else: they are pages of the viewer now,
+  /// so a folder of films and pictures is swiped through as one (ADR 010 段階 6).
   @override
   Uri? placeOf(ImageSource item) {
     final meta = item.metadata;
-    if (meta?['isDirectory'] == true || meta?['isVideo'] == true) return null;
+    if (meta?['isDirectory'] == true) return null;
     if (!viewableExtensions.contains(extensionOf(item.name))) return null;
     final path = meta?['path'] as String?;
     if (path == null) return null;
