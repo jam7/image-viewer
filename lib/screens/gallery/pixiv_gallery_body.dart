@@ -41,14 +41,6 @@ class PixivGalleryBody extends StatefulWidget {
 }
 
 class _PixivGalleryBodyState extends State<PixivGalleryBody> {
-  /// Lets the filter ask the view to top up when it narrows the list, and the
-  /// back affordances route through the view's history-aware handler.
-  final _viewKey = GlobalKey<GalleryViewState>();
-
-  /// The narrowing already reflected on screen, so a change made in the
-  /// toolbar can be noticed here — the widget itself carries no filter.
-  int _shownMinPageCount = 0;
-
   // Sections, searches and author pages are entries in the tab's history
   // rather than separate screens (ADR 008).
   GalleryTab get _tab => widget.tab;
@@ -57,19 +49,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
 
   /// Where the tab currently is, which is what the URI of its entry says.
   String get _path => pixivPathOf(_session.sourceUri);
-
-  /// Items shown in the grid: loaded items minus the page-count filter, which
-  /// belongs to the place being looked at rather than to this widget (the
-  /// button that sets it is in the toolbar, a screen apart from here).
-  List<ImageSource> get _visibleItems {
-    final min = _session.minPageCount;
-    if (min <= 0) return _session.loaded;
-    // "N+" means N or more. It used to mean more than N, which read the same
-    // in a text box but not on a button labelled 3+.
-    return _session.loaded
-        .where((img) => (img.metadata?['pageCount'] as int? ?? 1) >= min)
-        .toList();
-  }
 
   /// Build the session for the Pixiv page at [path]. Favorites are a finite
   /// local list (seedItems); other pages page through the source via loadPage.
@@ -113,23 +92,11 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   @override
   void initState() {
     super.initState();
-    _shownMinPageCount = _session.minPageCount;
     _log.info('initState: path=$_path, tab=${_tab.id}');
   }
 
-  /// The toolbar narrowed (or widened) the list. Rebuilding shows the right
-  /// items, but a narrowed grid can end up shorter than the viewport, and then
-  /// nothing is left to ask for the next page — so top it up.
-  @override
-  void didUpdateWidget(PixivGalleryBody old) {
-    super.didUpdateWidget(old);
-    if (_shownMinPageCount == _session.minPageCount) return;
-    _shownMinPageCount = _session.minPageCount;
-    _nextFrame(() => _viewKey.currentState?.fillViewport());
-  }
-
   void _openViewer(int index) async {
-    final items = _visibleItems;
+    final items = _session.visibleItems;
     _log.info('openViewer: index=$index, image=${items[index].name}');
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
@@ -172,9 +139,7 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   @override
   Widget build(BuildContext context) {
     return GalleryView(
-      key: _viewKey,
       tab: _tab,
-      items: _visibleItems,
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,
       onItemsChanged: () => setState(() {}),

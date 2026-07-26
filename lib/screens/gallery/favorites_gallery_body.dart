@@ -123,7 +123,6 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
   Widget build(BuildContext context) {
     return GalleryView(
       tab: _tab,
-      items: _session.loaded,
       emptyMessage: 'お気に入りがありません',
       tileBuilder: _buildTile,
       onItemsChanged: () => setState(() {}),

@@ -68,7 +68,31 @@ class GallerySession {
   set minPageCount(int value) {
     if (value == _minPageCount) return;
     _minPageCount = value;
+    _visible = null;
     onEntryChanged?.call();
+  }
+
+  List<ImageSource>? _visible;
+
+  /// What is actually on screen: [loaded] minus the display-only filters.
+  ///
+  /// Here rather than on whichever widget draws it, because more than one
+  /// thing walks this list — the grid, and the viewer looking for the works
+  /// either side of the one it is showing (ADR 010). A filter known only to
+  /// the grid would let the viewer swipe into works the grid is hiding.
+  ///
+  /// Held rather than recomputed: this is read on every build, and rebuilding
+  /// a copy of a list thousands long while the reader is scrolling is a cost
+  /// with nothing to show for it. Dropped whenever the list or the filter
+  /// changes, which is the only way it can go stale.
+  List<ImageSource> get visibleItems => _visible ??= _applyFilters();
+
+  List<ImageSource> _applyFilters() {
+    if (_minPageCount <= 0) return loaded;
+    // "N+" means N or more.
+    return loaded
+        .where((i) => (i.metadata?['pageCount'] as int? ?? 1) >= _minPageCount)
+        .toList();
   }
 
   /// Called when a thumbnail result arrives and the view should repaint.
@@ -281,6 +305,7 @@ class GallerySession {
       _cursor = page.nextCursor;
       _firstPageLoaded = true;
       loaded.addAll(page.items);
+      _visible = null;
       if (firstPage) _learnTitle(page.items);
 
       final eligible = page.items.where(_thumbnailFilter).toList();

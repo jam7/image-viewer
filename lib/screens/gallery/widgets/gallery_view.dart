@@ -18,10 +18,12 @@ final _log = Logger('GalleryView');
 ///
 /// This is the content of a tab, not the frame around it: the app bar belongs
 /// to the host, which keeps one across every tab. What differs per source is
-/// injected: [tileBuilder] for the tiles, and [items] rather than the
-/// session's own list, since what is shown may be narrowed (the Pixiv page-
-/// count filter). Nothing is injected above the grid any more — every control
-/// that used to sit there is in the toolbar now (ADR 009).
+/// injected: [tileBuilder] for the tiles, and nothing else. What to show is
+/// the session's own `visibleItems` — the list after any display-only filter —
+/// since the viewer walks the same list looking for neighbours (ADR 010), and
+/// a narrowing only the grid knew about would not hold there. Nothing is
+/// injected above the grid either: every control that used to sit there is in
+/// the toolbar now (ADR 009).
 ///
 /// Scrolling drives one path (ADR 007 決定 3): approaching the end asks the
 /// session for another page, and painting a tile past the dispatched range asks
@@ -39,10 +41,6 @@ class GalleryView extends StatefulWidget {
   /// The tab being shown. Its current entry is the place on screen.
   final GalleryTab tab;
 
-  /// Items to show, in display order — the session's loaded list after any
-  /// display-only filter the caller applies.
-  final List<ImageSource> items;
-
   final Widget Function(BuildContext context, ImageSource item, int index)
       tileBuilder;
 
@@ -58,7 +56,6 @@ class GalleryView extends StatefulWidget {
   const GalleryView({
     super.key,
     required this.tab,
-    required this.items,
     required this.tileBuilder,
     required this.emptyMessage,
     this.onItemsChanged,
@@ -87,6 +84,10 @@ class GalleryViewState extends State<GalleryView> {
   /// The entry currently on screen. Compared against the tab's current entry to
   /// notice a navigation, which the tab performs without telling us.
   late GallerySession _shown;
+
+  /// How many items were on screen last build, to notice a narrowing that
+  /// happened somewhere else — the page-count filter lives on the toolbar.
+  int _shownCount = 0;
 
   @override
   void initState() {
@@ -142,7 +143,15 @@ class GalleryViewState extends State<GalleryView> {
   @override
   void didUpdateWidget(GalleryView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_shown != widget.tab.current) _onSessionChanged();
+    if (_shown != widget.tab.current) {
+      _onSessionChanged();
+      return;
+    }
+    // Same place, fewer items: the toolbar narrowed the list. A grid that ends
+    // up shorter than the viewport has nothing left to ask for the next page.
+    if (_shownCount == _shown.visibleItems.length) return;
+    _shownCount = _shown.visibleItems.length;
+    fillViewport();
   }
 
   /// The tab moved to a different entry: navigated, went back, or reloaded in
@@ -158,6 +167,7 @@ class GalleryViewState extends State<GalleryView> {
     // leaving it set would block the new entry from ever loading, and leave a
     // spinner up over content that is already here.
     _isLoading = false;
+    _shownCount = _shown.visibleItems.length;
     _shown.attach();
     if (!_shown.hasLoaded) loadNextPage();
     // A different place, at a different height: measure the fold from there.
@@ -290,7 +300,7 @@ class GalleryViewState extends State<GalleryView> {
             Expanded(
               child: GalleryGrid(
                 scrollController: _scrollController,
-                items: widget.items,
+                items: _shown.visibleItems,
                 isLoading: _isLoading,
                 showTrailingLoader: _isLoading,
                 emptyMessage: widget.emptyMessage,
@@ -307,7 +317,7 @@ class GalleryViewState extends State<GalleryView> {
   }
 
   Widget _buildTile(BuildContext context, int index) {
-    final item = widget.items[index];
+    final item = _shown.visibleItems[index];
     // Painting a tile past what the loader has dispatched means the view has
     // scrolled ahead of the thumbnails; ask for the next batch.
     if (_shown.needsBatchFor(item)) {

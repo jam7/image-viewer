@@ -39,27 +39,28 @@ void main() {
   });
 
   GallerySession sessionAt(Uri uri) => GallerySession.fromUri(
-        uri,
-        provider: _FakeSource(),
-        cacheManager: cache,
-        title: uri.toString(),
-      );
+    uri,
+    provider: _FakeSource(),
+    cacheManager: cache,
+    title: uri.toString(),
+  );
 
   /// Two body widgets of different types over one tab, as the host does when
   /// the scheme of the tab's current entry changes.
   Widget host(GalleryTab tab) => MaterialApp(
-        home: AnimatedBuilder(
-          animation: tab.revision,
-          builder: (context, _) => Scaffold(
-            body: tab.current.sourceUri.scheme == favUriScheme
-                ? _BodyA(tab: tab)
-                : _BodyB(tab: tab),
-          ),
-        ),
-      );
+    home: AnimatedBuilder(
+      animation: tab.revision,
+      builder: (context, _) => Scaffold(
+        body: tab.current.sourceUri.scheme == favUriScheme
+            ? _BodyA(tab: tab)
+            : _BodyB(tab: tab),
+      ),
+    ),
+  );
 
-  testWidgets('the session reports to the view that is showing it',
-      (tester) async {
+  testWidgets('the session reports to the view that is showing it', (
+    tester,
+  ) async {
     final favorites = sessionAt(favGalleryUri());
     final tab = GalleryTab(favorites);
     await tester.pumpWidget(host(tab));
@@ -81,8 +82,9 @@ void main() {
     expect(tab.current, favorites);
   });
 
-  testWidgets('the list stays in the tab history, so back returns to it',
-      (tester) async {
+  testWidgets('the list stays in the tab history, so back returns to it', (
+    tester,
+  ) async {
     final favorites = sessionAt(favGalleryUri());
     final tab = GalleryTab(favorites);
     await tester.pumpWidget(host(tab));
@@ -105,11 +107,11 @@ class _BodyA extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GalleryView(
-        tab: tab,
-        items: tab.current.loaded,
-        emptyMessage: 'A',
-        tileBuilder: (_, item, _) => Text(item.name),
-      );
+    tab: tab,
+
+    emptyMessage: 'A',
+    tileBuilder: (_, item, _) => Text(item.name),
+  );
 }
 
 class _BodyB extends StatelessWidget {
@@ -118,24 +120,24 @@ class _BodyB extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GalleryView(
-        tab: tab,
-        items: tab.current.loaded,
-        emptyMessage: 'B',
-        tileBuilder: (_, item, _) => Text(item.name),
-      );
+    tab: tab,
+
+    emptyMessage: 'B',
+    tileBuilder: (_, item, _) => Text(item.name),
+  );
 }
 
 class _FakeSource extends SmbSource {
   _FakeSource()
-      : super(
-          config: const ServerConfig(
-            id: 'srv',
-            name: 'srv',
-            type: ImageSourceType.smb,
-            host: 'localhost',
-          ),
-          password: '',
-        );
+    : super(
+        config: const ServerConfig(
+          id: 'srv',
+          name: 'srv',
+          type: ImageSourceType.smb,
+          host: 'localhost',
+        ),
+        password: '',
+      );
 
   @override
   Future<PageResult> loadPage({String? path, Object? cursor}) async =>

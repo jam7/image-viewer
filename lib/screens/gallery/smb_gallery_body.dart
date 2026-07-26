@@ -101,7 +101,6 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
   Widget build(BuildContext context) {
     return GalleryView(
       tab: _tab,
-      items: _session.loaded,
       emptyMessage: 'ファイルが見つかりませんでした',
       tileBuilder: _buildTile,
       onItemsChanged: () => setState(() {}),

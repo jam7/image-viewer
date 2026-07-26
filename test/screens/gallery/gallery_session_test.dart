@@ -270,6 +270,73 @@ void main() {
     expect(t.hasThumbnailResults, isFalse);
   });
 
+  /// What is on screen belongs to the place, not to the widget drawing it:
+  /// the viewer walks the same list looking for neighbours (ADR 010).
+  group('visibleItems', () {
+    ImageSource work(String id, int pages) => ImageSource(
+          id: id,
+          name: id,
+          uri: id,
+          type: ImageSourceType.pixiv,
+          metadata: {'pageCount': pages},
+        );
+
+    Future<GallerySession> pixivPage(List<ImageSource> items) async {
+      final t = GallerySession(
+        sourceUri: pixivGalleryUri('/top'),
+        provider: _FakePagedSource([items]),
+        cacheManager: cache,
+      );
+      await t.loadNextPage();
+      return t;
+    }
+
+    test('unfiltered, it is the loaded list itself', () async {
+      final t = await pixivPage([work('a', 1), work('b', 3)]);
+      expect(t.visibleItems, same(t.loaded));
+    });
+
+    test('"N+" keeps the works with N pages and more', () async {
+      final t = await pixivPage([work('a', 1), work('b', 3), work('c', 5)]);
+
+      t.minPageCount = 3;
+
+      expect(t.visibleItems.map((i) => i.id), ['b', 'c']);
+      expect(t.loaded.length, 3); // narrowed, not thrown away
+    });
+
+    test('and widening again brings them back', () async {
+      final t = await pixivPage([work('a', 1), work('b', 3)]);
+      t.minPageCount = 3;
+      expect(t.visibleItems.length, 1);
+
+      t.minPageCount = 0;
+
+      expect(t.visibleItems.length, 2);
+    });
+
+    test('a page that arrives while narrowed is filtered too', () async {
+      // The list is held between builds rather than rebuilt, so the moment it
+      // stops being true has to be the moment it is dropped.
+      final source = _FakePagedSource([
+        [work('a', 1), work('b', 3)],
+        [work('c', 1), work('d', 5)],
+      ]);
+      final t = GallerySession(
+        sourceUri: pixivGalleryUri('/top'),
+        provider: source,
+        cacheManager: cache,
+      );
+      await t.loadNextPage();
+      t.minPageCount = 3;
+      expect(t.visibleItems.map((i) => i.id), ['b']);
+
+      await t.loadNextPage();
+
+      expect(t.visibleItems.map((i) => i.id), ['b', 'd']);
+    });
+  });
+
   /// A place opened by typing its address, or restored from disk, arrives with
   /// no name — nobody was there to supply one. The contents carry it.
   group('learning a title from the first page', () {
