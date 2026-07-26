@@ -68,6 +68,14 @@ share
 ~^smb:test:.*$
 ~^smb://<[a-zA-Z]+>/.*$
 
+# The app's own URI schemes. A full address splits into segments, and the
+# scheme is the first of them -- allowing it does not weaken anything, since
+# every segment after it still has to be a name from this file.
+smb:
+pixiv:
+fav:
+home:
+
 # -- ids --------------------------------------------------------------------
 # One invented SMB config id. Real ones are 13-digit creation timestamps, so
 # the shape has to stay while the value must not be a real one.
