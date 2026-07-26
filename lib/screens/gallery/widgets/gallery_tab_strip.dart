@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../gallery_constants.dart';
+import '../gallery_session.dart';
 import '../gallery_tab.dart';
 import '../gallery_tab_controller.dart';
 import '../gallery_uri.dart';
@@ -58,6 +59,15 @@ class GalleryTabStrip extends StatefulWidget implements PreferredSizeWidget {
 
 /// Widest a chip gets; also how far past the reported end a reveal aims.
 const _chipMaxWidth = 160.0;
+
+/// Shorter than the row it sits in, and sitting on the bottom of it.
+///
+/// Both header rows are the same height, but a chip that fills its row is a
+/// solid block where the row below has a 32-high pill floating in it, and the
+/// two read as different heights even though they measure the same. Leaving a
+/// margin above evens out how much of each row is painted; keeping the chip on
+/// the floor is what makes it look attached to what is underneath.
+const _chipHeight = 34.0;
 
 class _GalleryTabStripState extends State<GalleryTabStrip> {
   final _scrollController = ScrollController();
@@ -176,6 +186,21 @@ class _TabChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final session = tab.current;
+    // A Column rather than an Align: the strip is horizontal, so an item's
+    // width is unbounded and only its height is fixed.
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        SizedBox(height: _chipHeight, child: _chip(context, scheme, session)),
+      ],
+    );
+  }
+
+  Widget _chip(
+    BuildContext context,
+    ColorScheme scheme,
+    GallerySession session,
+  ) {
     return Tooltip(
       message: placeTitle(session.sourceUri, session.title),
       child: Material(

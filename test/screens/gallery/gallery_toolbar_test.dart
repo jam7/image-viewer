@@ -11,6 +11,7 @@ import 'package:image_viewer/screens/gallery/gallery_tab_opener.dart';
 import 'package:image_viewer/screens/gallery/gallery_tabs_screen.dart';
 import 'package:image_viewer/screens/gallery/gallery_uri.dart';
 import 'package:image_viewer/screens/gallery/home_gallery_body.dart';
+import 'package:image_viewer/screens/gallery/widgets/gallery_tab_strip.dart';
 import 'package:image_viewer/screens/gallery/widgets/gallery_toolbar.dart';
 import 'package:image_viewer/services/cache/cache_manager.dart';
 import 'package:image_viewer/services/cache/disk_cache.dart';
@@ -425,6 +426,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(inToolbar(find.text('5+')), findsOneWidget);
+  });
+
+  testWidgets('the two header rows read as one header', (tester) async {
+    // Same height was not enough: a chip that filled its row looked taller
+    // than the row below, where a 32-high pill floats with margin around it.
+    // What has to match is how much of each row is painted.
+    await pumpHost(tester);
+
+    final strip = tester.getSize(find.byType(GalleryTabStrip)).height;
+    final toolbar = tester.getSize(find.byType(GalleryToolbar)).height;
+    expect(strip, toolbar);
+
+    final chip = tester.getSize(find.byType(Tooltip).first).height;
+    final window = tester.getSize(inToolbar(find.byType(Container)).first).height;
+    expect(chip, lessThan(strip)); // room above it, like the pill below
+    expect((chip - window).abs(), lessThanOrEqualTo(4));
   });
 
   testWidgets('the menu reloads the place without leaving it', (tester) async {
