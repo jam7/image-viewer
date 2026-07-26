@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/smb/smb_config_store.dart';
+import '../../services/platform/host_activity.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../settings/settings_screen.dart';
@@ -93,13 +94,20 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// the bars from being left hidden after moving somewhere they belong — the
   /// viewer is an entry in a tab now, not a screen with an exit to undo it on
   /// (ADR 010 決定 7).
+  /// Whether the bars should be out of the way: a work is showing and the
+  /// header is already away. A grid folds its header for room and keeps them.
+  bool get _immersive =>
+      _shownFor != null && itemOf(_shownFor!) != null && !_chromeVisible.value;
+
   void _applySystemBars() {
-    final immersive = _shownFor != null &&
-        itemOf(_shownFor!) != null &&
-        !_chromeVisible.value;
+    final immersive = _immersive;
+    // Both, because neither covers everything: SystemChrome is the right call
+    // and is a no-op on Android 15 (see HostActivity.setImmersive), while the
+    // channel exists only there.
     SystemChrome.setEnabledSystemUIMode(
       immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
+    const HostActivity().setImmersive(immersive);
   }
 
   @override
@@ -151,7 +159,14 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
 
   void _showChromeOnArrival(Uri place) {
     if (_shownFor == place) return;
+    // Reading on through a folder is one activity, not a series of arrivals:
+    // moving from one work to the next keeps whatever the reader chose, so a
+    // picture put full screen stays that way for the one after it.
+    final stillReading = _shownFor != null &&
+        itemOf(_shownFor!) != null &&
+        itemOf(place) != null;
     _shownFor = place;
+    if (stillReading) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _chromeVisible.value = true;
@@ -233,8 +248,16 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
     return Scaffold(
       body: GalleryChrome(
         visible: _chromeVisible,
-        child: SafeArea(
-          bottom: false,
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _chromeVisible,
+          builder: (context, _, child) => SafeArea(
+            // Hiding the bars is not enough on its own: the room kept for them
+            // is ours to give back, and a picture that stops short of the top
+            // of the screen is not full screen.
+            top: !_immersive,
+            bottom: false,
+            child: child!,
+          ),
           child: Column(
             children: [
               GalleryChromeSlot(visible: _chromeVisible, child: header),

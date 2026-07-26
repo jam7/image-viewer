@@ -28,6 +28,28 @@ class HostActivity {
   ///
   /// Android only. Nowhere else has a system back gesture that reaches here, so
   /// elsewhere this is simply not asked for.
+  /// Hide or show the status and navigation bars.
+  ///
+  /// Flutter has `SystemChrome.setEnabledSystemUIMode` for this and it does
+  /// nothing here: its Android side still sets `View.setSystemUiVisibility`
+  /// with the `SYSTEM_UI_FLAG_*` constants, which stopped having any effect at
+  /// API 35, and this app targets 36. The call was being made every time and
+  /// the bars stayed put.
+  ///
+  /// Android only, for that reason — elsewhere `SystemChrome` works and is
+  /// what the caller should use.
+  Future<void> setImmersive(bool immersive) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _channel.invokeMethod<void>(
+        'setImmersive',
+        {'immersive': immersive},
+      );
+    } on MissingPluginException catch (e) {
+      _log.info('setImmersive unavailable on this host', e);
+    }
+  }
+
   Future<void> moveToBackground() async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
