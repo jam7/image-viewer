@@ -119,3 +119,50 @@ class ViewerVideoControls extends StatelessWidget {
     return '${d.inHours}:${two(minutes)}:$seconds';
   }
 }
+
+/// The same bar for a video that is not open: where it was left, and the one
+/// button that opens it there.
+///
+/// It exists so that coming back to a tab shows the place rather than the
+/// picture. Drawing the frame itself would mean connecting to the share and
+/// decoding on arrival — every time a tab is glanced at, for a video that may
+/// never be started again.
+class ViewerVideoRestingBar extends StatelessWidget {
+  final Duration at;
+  final Duration total;
+  final VoidCallback onPlay;
+
+  const ViewerVideoRestingBar({
+    super.key,
+    required this.at,
+    required this.total,
+    required this.onPlay,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final position = at > total ? total : at;
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.play_arrow, color: Colors.white),
+          onPressed: onPlay,
+          tooltip: '再生',
+        ),
+        Expanded(
+          child: Slider(
+            value: position.inMilliseconds.toDouble(),
+            max: total.inMilliseconds.toDouble(),
+            // Dragging would have to open the video to seek in it, which is
+            // what the play button is for. It shows; it does not steer.
+            onChanged: null,
+          ),
+        ),
+        Text(
+          ViewerVideoControls._clock(position),
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}

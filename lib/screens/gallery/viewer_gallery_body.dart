@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/image_source.dart';
+import '../../models/viewer_mark.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/source_registry.dart';
@@ -103,6 +104,16 @@ class ViewerGalleryBody extends StatelessWidget {
     ));
   }
 
+  /// Keep where the reader got to, so this place opens there next time.
+  ///
+  /// Dropped when it is about something else: leaving by swiping replaces the
+  /// session under us, and the mark the departing screen hands back is then
+  /// about the work we have just left rather than the one now here.
+  void _keepMark(ViewerMark mark) {
+    if (itemOf(_session.sourceUri)?.id != mark.itemId) return;
+    _session.mark = mark;
+  }
+
   static String _searchPath(String tag) => pixivPathOf(pixivSearchUri(tag));
 
   void _openPixivPlace(String path, String title) => tab.navigate(
@@ -148,6 +159,8 @@ class ViewerGalleryBody extends StatelessWidget {
         onClose: tab.back,
         topInset: topInset,
         onNotAnItem: _showAsList,
+        mark: _session.mark,
+        onMark: _keepMark,
         onOverlayChanged: (show) => chrome?.value = show,
         onShowAuthor: pixiv
             ? (userId, userName) =>

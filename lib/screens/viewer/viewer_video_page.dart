@@ -23,17 +23,26 @@ class ViewerVideoPage extends StatefulWidget {
   final SourceRegistry registry;
   final SmbProxyServer proxyServer;
 
-  /// A still of the video, shown until it is asked to play.
+  /// A still of the video, shown until it is asked to play. Null leaves it
+  /// black, which is what a video being resumed comes back to.
   final ThumbnailResult? poster;
 
-  /// Whether to start playing on arrival — see the rule in [ViewerScreen].
-  final bool autoplay;
+  /// Where in the video to open, for one being taken up again.
+  final Duration startAt;
+
+  /// Whether this should be playing — see the rule in [ViewerScreen]. Turning
+  /// true later is how the play button in that overlay reaches down here.
+  final bool play;
 
   /// Reports whether it is playing, so the next video can carry on from here.
   final ValueChanged<bool> onPlayingChanged;
 
   /// Hands the player up so the viewer can put the controls in its own
   /// overlay, beside everything else about the item. Null on the way out.
+  ///
+  /// Only once it has something to play. A player with no media answers every
+  /// question with zero, and controls built on those answers say a video is at
+  /// 0:00 of nothing — over a video the reader stopped eleven seconds in.
   final ValueChanged<Player?> onPlayer;
 
   const ViewerVideoPage({
@@ -42,7 +51,8 @@ class ViewerVideoPage extends StatefulWidget {
     required this.registry,
     required this.proxyServer,
     required this.poster,
-    required this.autoplay,
+    this.startAt = Duration.zero,
+    required this.play,
     required this.onPlayingChanged,
     required this.onPlayer,
   });
@@ -65,8 +75,15 @@ class _ViewerVideoPageState extends State<ViewerVideoPage> {
     _player.stream.playing.listen((playing) {
       if (mounted) widget.onPlayingChanged(playing);
     });
-    widget.onPlayer(_player);
-    if (widget.autoplay) _open(play: true);
+    if (widget.play) _open(play: true);
+  }
+
+  @override
+  void didUpdateWidget(ViewerVideoPage old) {
+    super.didUpdateWidget(old);
+    // The play button for a resting video is in the viewer's overlay, above
+    // this page. Pressing it arrives as this flag turning true.
+    if (widget.play && !old.play) _open(play: true);
   }
 
   @override
@@ -96,8 +113,15 @@ class _ViewerVideoPageState extends State<ViewerVideoPage> {
       final url =
           await widget.proxyServer.registerSession(provider, widget.item.uri);
       _token = url.split('/').last;
-      await _player.open(Media(url), play: play);
-      if (mounted) setState(() {});
+      // Opening at the mark rather than seeking after it: a seek would play
+      // the opening seconds first, sound and all, on the way past.
+      await _player.open(
+        Media(url, start: widget.startAt > Duration.zero ? widget.startAt : null),
+        play: play,
+      );
+      if (!mounted) return;
+      widget.onPlayer(_player);
+      setState(() {});
     } catch (e, st) {
       _log.warning('playback failed: ${widget.item.name}', e, st);
       if (mounted) setState(() => _error = e.toString());

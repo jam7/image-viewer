@@ -8,6 +8,7 @@ import 'package:logging/logging.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../../models/image_source.dart';
+import '../../models/viewer_mark.dart';
 import '../../services/cache/cache_manager.dart';
 import '../../services/cache/cache_metadata.dart';
 import '../../services/favorites/favorites_store.dart';
@@ -50,6 +51,12 @@ class ViewerScreen extends StatefulWidget {
   /// [NotAnItemException]. Null leaves the failure on screen.
   final VoidCallback? onNotAnItem;
 
+  /// How far into this work the reader had got last time, and where to put
+  /// that back when they leave. Null for a caller with nowhere to keep it,
+  /// which then starts every visit at the first page.
+  final ViewerMark? mark;
+  final ValueChanged<ViewerMark>? onMark;
+
   /// Follow this work's author, or one of its tags, in place. Null where the
   /// source has no such thing — only Pixiv works carry them.
   final void Function(int userId, String userName)? onShowAuthor;
@@ -78,6 +85,8 @@ class ViewerScreen extends StatefulWidget {
     this.topInset = 0,
     this.onOverlayChanged,
     this.onNotAnItem,
+    this.mark,
+    this.onMark,
     this.onShowAuthor,
     this.onSearchTag,
     required this.registry,
@@ -127,8 +136,22 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   /// Whether a video arriving now should start. Opening one deliberately — a
   /// tap in the list, an address pasted — means play it; swiping past one
-  /// means play it only if what we swiped away from was playing.
+  /// means play it only if what we swiped away from was playing; and coming
+  /// back to a tab means it should not, which is what the mark says.
   bool _autoplayNext = true;
+
+  /// Set by pressing play on a video that arrived stopped. Held here rather
+  /// than in the page below because the button is up here, in the overlay,
+  /// beside the bar showing where the video was left.
+  bool _playAsked = false;
+
+  /// Where the video on screen has got to, followed while it plays so that
+  /// leaving does not have to catch it. Starts at whatever the mark said, so
+  /// that arriving and leaving again without pressing play keeps the place.
+  Duration _videoAt = Duration.zero;
+  Duration _videoTotal = Duration.zero;
+  StreamSubscription<Duration>? _videoWatch;
+  StreamSubscription<Duration>? _videoTotalWatch;
 
   /// Hides the overlay when nothing has happened for a while. Reading is long
   /// stretches of looking with no input at all, and the chrome has no business
@@ -174,9 +197,61 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   @override
   void dispose() {
+    _reportMark();
     _idle?.cancel();
+    _videoWatch?.cancel();
+    _videoTotalWatch?.cancel();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  /// Hand back where the reader got to, for the next time this place is shown.
+  ///
+  /// Always as stopped: this runs when the viewer goes away, and on a tab
+  /// switch that is a place which may not be returned to for hours. Swiping
+  /// along the list does not come through here — the screen stays, and its own
+  /// rule carries the playing on to the next video.
+  void _reportMark() {
+    final onMark = widget.onMark;
+    if (onMark == null || _pages == null) return;
+    if (widget.index >= widget.items.length) return;
+    onMark(ViewerMark(
+      widget.items[widget.index].id,
+      page: _pageIndex,
+      at: _videoAt,
+      total: _videoTotal,
+      paused: true,
+    ));
+  }
+
+  /// Whether a video is sitting where it was left, waiting to be started
+  /// again. True only before anything is opened: once there is a player, the
+  /// position it reports is the truth.
+  bool get _resting => _video == null && _videoTotal > Duration.zero;
+
+  /// The row under a video: its controls while it is open, and where it was
+  /// left while it is not. Null when what is on screen is not a video.
+  Widget? _videoBar() {
+    if (_video != null) return ViewerVideoControls(player: _video!);
+    if (!_resting) return null;
+    return ViewerVideoRestingBar(
+      at: _videoAt,
+      total: _videoTotal,
+      onPlay: () => setState(() => _playAsked = true),
+    );
+  }
+
+  /// Follow the video on screen while it plays.
+  ///
+  /// media_kit reports the position on a stream, and the page holding the
+  /// player is disposed before this screen is — so asking at the end would be
+  /// asking something that has already gone. The last value seen is the answer.
+  void _attachVideo(Player? player) {
+    _videoWatch?.cancel();
+    _videoTotalWatch?.cancel();
+    _videoWatch = player?.stream.position.listen((at) => _videoAt = at);
+    _videoTotalWatch = player?.stream.duration.listen((d) => _videoTotal = d);
+    setState(() => _video = player);
   }
 
   /// 作品を開く: resolvePages でページ展開してプリロード開始。
@@ -200,20 +275,16 @@ class _ViewerScreenState extends State<ViewerScreen> {
         pages = [item];
       }
 
-      if (mounted) {
-        if (pages.isEmpty) {
-          setState(() {
-            _error = 'No viewable images in ${item.name}';
-            _isResolvingPages = false;
-          });
-        } else {
-          setState(() {
-            _pages = pages;
-            _isResolvingPages = false;
-          });
-          _preloadAround(0);
-        }
+      if (!mounted) return;
+      if (pages.isEmpty) {
+        setState(() {
+          _error = 'No viewable images in ${item.name}';
+          _isResolvingPages = false;
+        });
+        return;
       }
+      setState(() => _arriveAt(item, pages));
+      _preloadAround(_pageIndex);
     } on NotAnItemException catch (e) {
       // The address named a list after all, which only an address from outside
       // can get wrong. Showing "cannot read this" would be true and useless;
@@ -229,6 +300,22 @@ class _ViewerScreenState extends State<ViewerScreen> {
         });
       }
     }
+  }
+
+  /// Show [pages], picking up where the mark left off: the page that was being
+  /// read, and for a video the second it was stopped at.
+  ///
+  /// A mark left by another work is ignored — the place may have moved on
+  /// between the last screen writing one and this one opening.
+  void _arriveAt(ImageSource item, List<ImageSource> pages) {
+    _pages = pages;
+    _isResolvingPages = false;
+    final mark = widget.mark?.forItem(item.id);
+    if (mark == null) return;
+    _pageIndex = mark.page.clamp(0, pages.length - 1);
+    _autoplayNext = !mark.paused;
+    _videoAt = mark.at;
+    _videoTotal = mark.total;
   }
 
   void _preloadAround(int index) {
@@ -367,6 +454,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
     _loadingStates.clear();
     _loadProgress.clear();
     _loadFailures.clear();
+    // Nor how far into the last video we were, nor a press of play meant for
+    // it. _autoplayNext is the exception: what the last one was doing is
+    // exactly what the next one is asked to carry on.
+    _playAsked = false;
+    _videoAt = Duration.zero;
+    _videoTotal = Duration.zero;
   }
 
   static bool _isVideo(ImageSource item) => item.metadata?['isVideo'] == true;
@@ -1014,10 +1107,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
                           item: currentImage,
                           registry: widget.registry,
                           proxyServer: widget.proxyServer,
-                          poster: _posterFor(currentImage),
-                          autoplay: _autoplayNext,
+                          // A video left part-way through comes back to black
+                          // and its bar, not to its own opening frame: the
+                          // still would say the wrong thing about where it is.
+                          poster: _resting ? null : _posterFor(currentImage),
+                          startAt: _videoAt,
+                          play: _autoplayNext || _playAsked,
                           onPlayingChanged: (p) => _videoWasPlaying = p,
-                          onPlayer: (p) => setState(() => _video = p),
+                          onPlayer: _attachVideo,
                         )
                       : currentImage.metadata?['unsupported'] == true
                       ? Column(
@@ -1133,7 +1230,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_video != null) ViewerVideoControls(player: _video!),
+              ?_videoBar(),
               Row(
                 children: [
                   Expanded(

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
+import '../../models/viewer_mark.dart';
 import '../../services/cache/cache_manager.dart';
 import 'gallery_uri.dart';
 import 'gallery_uri_dialect.dart';
@@ -113,6 +114,11 @@ class GallerySession {
   /// survives a rotation. Written by the grid as the user scrolls; read back
   /// when a view starts showing this session again.
   ScrollAnchor? anchor;
+
+  /// The same thing for a place that is one work rather than a list: which
+  /// page of it, and how far into a video. Written when the viewer goes away,
+  /// which on a tab switch is every time the reader looks at something else.
+  ViewerMark? mark;
 
   /// Items fed to [thumbnails] = [loaded] minus filtered-out items (e.g.
   /// directories). Same order the loader batches over, so callers can map an
