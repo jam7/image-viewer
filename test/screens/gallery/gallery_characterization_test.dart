@@ -553,6 +553,31 @@ void main() {
     // The section menu used to live in this body's own header. It is the
     // toolbar's hamburger now (2C-3), and is characterized there instead.
 
+    testWidgets('"N+" hides the works with fewer than N pages', (tester) async {
+      // The fixture alternates 1-page and 3-page works. 3+ keeps exactly the
+      // 3-page ones: the boundary is *at least* N, which is how a button
+      // labelled 3+ reads. It used to mean more than N, which a text box
+      // reading ">N" got away with.
+      final items = pixivItems(6);
+      seedThumbnails(items);
+      final body = build(_FakePixivSource(items));
+      await pumpHome(tester, body);
+      expect(tester.widgetList(find.byType(Image)).length, 6);
+
+      // As the toolbar does it: set it on the place, then rebuild the body.
+      body.tab.current.minPageCount = 3;
+      await pumpHome(tester, PixivGalleryBody(
+        tab: body.tab,
+        onOpenInNewTab: body.onOpenInNewTab,
+        cacheManager: cacheManager,
+        favoritesStore: favoritesStore,
+        registry: registry,
+      ));
+
+      expect(tester.widgetList(find.byType(Image)).length, 3);
+      expect(body.tab.current.loaded.length, 6); // narrowed, not refetched
+    });
+
     testWidgets('empty result shows the not-found message', (tester) async {
       await pumpHome(tester, build(_FakePixivSource(const [])));
       expect(find.text('画像が見つかりませんでした'), findsOneWidget);

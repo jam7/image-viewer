@@ -41,11 +41,13 @@ class PixivGalleryBody extends StatefulWidget {
 }
 
 class _PixivGalleryBodyState extends State<PixivGalleryBody> {
-  final _filterController = TextEditingController();
   /// Lets the filter ask the view to top up when it narrows the list, and the
   /// back affordances route through the view's history-aware handler.
   final _viewKey = GlobalKey<GalleryViewState>();
-  int _minPageCount = 0;
+
+  /// The narrowing already reflected on screen, so a change made in the
+  /// toolbar can be noticed here — the widget itself carries no filter.
+  int _shownMinPageCount = 0;
 
   // Sections, searches and author pages are entries in the tab's history
   // rather than separate screens (ADR 008).
@@ -56,22 +58,17 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   /// Where the tab currently is, which is what the URI of its entry says.
   String get _path => pixivPathOf(_session.sourceUri);
 
-  /// Items shown in the grid: loaded items minus the page-count (`>N`) filter.
-  List<ImageSource> get _visibleItems => _filterImages(_session.loaded);
-
-  void _applyFilter() {
-    final text = _filterController.text.trim();
-    // Accept both ">10" and plain "10"
-    final match = RegExp(r'>?(\d+)').firstMatch(text);
-    _minPageCount = match != null ? int.parse(match.group(1)!) : 0;
-  }
-
-  List<ImageSource> _filterImages(List<ImageSource> images) {
-    if (_minPageCount <= 0) return images;
-    return images.where((img) {
-      final pageCount = img.metadata?['pageCount'] as int? ?? 1;
-      return pageCount > _minPageCount;
-    }).toList();
+  /// Items shown in the grid: loaded items minus the page-count filter, which
+  /// belongs to the place being looked at rather than to this widget (the
+  /// button that sets it is in the toolbar, a screen apart from here).
+  List<ImageSource> get _visibleItems {
+    final min = _session.minPageCount;
+    if (min <= 0) return _session.loaded;
+    // "N+" means N or more. It used to mean more than N, which read the same
+    // in a text box but not on a button labelled 3+.
+    return _session.loaded
+        .where((img) => (img.metadata?['pageCount'] as int? ?? 1) >= min)
+        .toList();
   }
 
   /// Build the session for the Pixiv page at [path]. Favorites are a finite
@@ -105,9 +102,9 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   String _searchPathFor(String tag) =>
       pixivPathOf(searchFrom(_session.sourceUri, tag)!);
 
-  /// Run [action] once the viewer's pop has settled; navigating mid-pop fights
-  /// the route transition.
-  void _afterViewer(VoidCallback action) {
+  /// Run [action] after this frame, if we are still here. Callers say why they
+  /// need to wait — a route transition to finish, a layout to settle.
+  void _nextFrame(VoidCallback action) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) action();
     });
@@ -116,13 +113,19 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   @override
   void initState() {
     super.initState();
+    _shownMinPageCount = _session.minPageCount;
     _log.info('initState: path=$_path, tab=${_tab.id}');
   }
 
+  /// The toolbar narrowed (or widened) the list. Rebuilding shows the right
+  /// items, but a narrowed grid can end up shorter than the viewport, and then
+  /// nothing is left to ask for the next page — so top it up.
   @override
-  void dispose() {
-    _filterController.dispose();
-    super.dispose();
+  void didUpdateWidget(PixivGalleryBody old) {
+    super.didUpdateWidget(old);
+    if (_shownMinPageCount == _session.minPageCount) return;
+    _shownMinPageCount = _session.minPageCount;
+    _nextFrame(() => _viewKey.currentState?.fillViewport());
   }
 
   void _openViewer(int index) async {
@@ -146,10 +149,10 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     if (result != null && result['action'] == 'showUser') {
       final userId = result['userId'] as int;
       final userName = result['userName'] as String;
-      _afterViewer(() => _navigate('/user/$userId', authorName: userName));
+      _nextFrame(() => _navigate('/user/$userId', authorName: userName));
     } else if (result != null && result['action'] == 'searchTag') {
       final tag = result['tag'] as String;
-      _afterViewer(() => _navigate(_searchPathFor(tag)));
+      _nextFrame(() => _navigate(_searchPathFor(tag)));
     }
   }
 
@@ -166,39 +169,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
           ? pixivAuthorTitle(authorName)
           : '';
 
-  /// Re-apply the page-count (`>N`) filter to the already-loaded items. It is a
-  /// display-only filter, so no refetch — but load more if the view got short.
-  void _onFilterChanged() {
-    setState(_applyFilter);
-    _viewKey.currentState?.fillViewport();
-  }
-
-  /// All that is left of this body's own header: the page-count filter, still
-  /// waiting for the button-and-badge it becomes in 2C-4. Search, its options
-  /// and the section menu all moved up into the toolbar (ADR 009), where they
-  /// work the same way for every source.
-  Widget _buildFilterBar() {
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 60,
-            child: TextField(
-              controller: _filterController,
-              decoration: const InputDecoration(
-                hintText: '>N',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 8),
-              ),
-              onSubmitted: (_) => _onFilterChanged(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return GalleryView(
@@ -207,7 +177,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       items: _visibleItems,
       emptyMessage: '画像が見つかりませんでした',
       tileBuilder: _buildTile,
-      header: _buildFilterBar(),
       onItemsChanged: () => setState(() {}),
     );
   }

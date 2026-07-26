@@ -48,9 +48,28 @@ class GallerySession {
   String _title;
   String get title => _title;
 
-  /// Called when [title] becomes known after the fact. Whatever shows the tab's
-  /// name is not the one loading the page, and has no other way to hear of it.
-  void Function()? onTitleChanged;
+  /// Called when something the tab's chrome shows about this place changes —
+  /// its [title] arriving late, its [minPageCount] being narrowed. Whatever
+  /// draws that is neither the loader nor the toolbar, and has no other way to
+  /// hear of it.
+  void Function()? onEntryChanged;
+
+  int _minPageCount = 0;
+
+  /// Show only items with at least this many pages; 0 for all of them.
+  ///
+  /// Kept per place, next to [anchor], because it is how *this* list is being
+  /// looked at: going back should find the list the way it was left. It stays
+  /// out of [sourceUri] because it filters what is already loaded — putting it
+  /// in the address would make every change a different place, and so a
+  /// refetch of a list we already have.
+  int get minPageCount => _minPageCount;
+
+  set minPageCount(int value) {
+    if (value == _minPageCount) return;
+    _minPageCount = value;
+    onEntryChanged?.call();
+  }
 
   /// Called when a thumbnail result arrives and the view should repaint.
   ///
@@ -289,12 +308,12 @@ class GallerySession {
     final learned = titleFromItems(sourceUri, items);
     if (learned == null) return;
     _title = learned;
-    onTitleChanged?.call();
+    onEntryChanged?.call();
   }
 
   Future<void> dispose() {
     _attachGeneration++;
-    onTitleChanged = null; // a page still in flight must not report back
+    onEntryChanged = null; // a page still in flight must not report back
     return thumbnails.dispose();
   }
 

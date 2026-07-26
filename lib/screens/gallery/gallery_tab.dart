@@ -30,10 +30,10 @@ class GalleryTab {
     _adopt(initial);
   }
 
-  /// Sessions report a late-discovered title back to the tab, which is the only
-  /// thing the header is watching.
+  /// Sessions report what the chrome shows — a title that arrived late, a
+  /// filter that narrowed — back to the tab, which is all the header watches.
   GallerySession _adopt(GallerySession session) {
-    session.onTitleChanged = _bump;
+    session.onEntryChanged = _bump;
     return session;
   }
 

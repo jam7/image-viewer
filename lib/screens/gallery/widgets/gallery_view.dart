@@ -17,10 +17,10 @@ final _log = Logger('GalleryView');
 ///
 /// This is the content of a tab, not the frame around it: the app bar belongs
 /// to the host, which keeps one across every tab. What differs per source is
-/// injected — the optional [header] row above the grid, and [tileBuilder] for
-/// the tiles. Which items to show is the caller's too — the Pixiv screen
-/// filters by page count — so [items] is passed in rather than read off the
-/// session.
+/// injected: [tileBuilder] for the tiles, and [items] rather than the
+/// session's own list, since what is shown may be narrowed (the Pixiv page-
+/// count filter). Nothing is injected above the grid any more — every control
+/// that used to sit there is in the toolbar now (ADR 009).
 ///
 /// Scrolling drives one path (ADR 007 決定 3): approaching the end asks the
 /// session for another page, and painting a tile past the dispatched range asks
@@ -49,7 +49,6 @@ class GalleryView extends StatefulWidget {
   final String emptyMessage;
 
   /// Optional row between the app bar and the grid (search / filter controls).
-  final Widget? header;
 
   /// Called when what should be on screen has changed under the caller's feet —
   /// a page was appended, or a back step moved the tab to another entry. The
@@ -63,7 +62,6 @@ class GalleryView extends StatefulWidget {
     required this.items,
     required this.tileBuilder,
     required this.emptyMessage,
-    this.header,
     this.onItemsChanged,
   });
 
@@ -250,7 +248,6 @@ class GalleryViewState extends State<GalleryView> {
         onPop: goBack,
         child: Column(
           children: [
-            if (widget.header != null) widget.header!,
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.all(8),

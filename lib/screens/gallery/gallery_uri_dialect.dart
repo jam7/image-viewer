@@ -58,6 +58,11 @@ abstract class GalleryUriDialect {
   /// anywhere in it. Empty for a source that is a single place.
   List<PlaceLink> get sections => const [];
 
+  /// Whether an item from this source is a work of several pages, so that
+  /// "at least N pages" means anything. A fact about the source's data, not a
+  /// preference: SMB lists files, and a file has no page count.
+  bool get hasPageCounts => false;
+
   /// What tapping the address window should put in front of the reader, ready
   /// to be changed — and empty when there is nothing worth reopening.
   ///
@@ -131,6 +136,9 @@ String editableOf(Uri uri) => _dialects[uri.scheme]?.editable(uri) ?? '';
 /// See [GalleryUriDialect.sections].
 List<PlaceLink> sectionsOf(Uri uri) =>
     _dialects[uri.scheme]?.sections ?? const [];
+
+/// See [GalleryUriDialect.hasPageCounts].
+bool hasPageCounts(Uri uri) => _dialects[uri.scheme]?.hasPageCounts ?? false;
 
 /// See [GalleryUriDialect.searchOptions].
 List<SearchOption> searchOptionsFor(Uri uri) =>
@@ -231,6 +239,9 @@ class _PixivDialect extends GalleryUriDialect {
         (label: 'トップ', uri: pixivGalleryUri('/top')),
         (label: 'ブックマーク', uri: pixivGalleryUri('/bookmarks')),
       ];
+
+  @override
+  bool get hasPageCounts => true;
 
   /// On a search, the word — that is what the reader wrote and what they come
   /// back to change. Refining `books` to `books series` should not mean

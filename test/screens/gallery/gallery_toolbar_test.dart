@@ -391,6 +391,42 @@ void main() {
     expect(inToolbar(find.text('完全')), findsNothing);
   });
 
+  testWidgets('the page-count filter says so while it is hiding things',
+      (tester) async {
+    // Forgetting a filter is on and taking a short list for the whole list is
+    // the accident this invites, so the number is on the face of the button.
+    await pumpHost(tester);
+    expect(inToolbar(find.byIcon(Icons.filter_list)), findsNothing); // home
+    await goSomewhere(tester); // to Pixiv, whose works have page counts
+    expect(inToolbar(find.byIcon(Icons.filter_list)), findsOneWidget);
+
+    await tester.tap(inToolbar(find.byIcon(Icons.filter_list)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3+').last);
+    await tester.pumpAndSettle();
+
+    expect(controller.active!.current.minPageCount, 3);
+    expect(inToolbar(find.text('3+')), findsOneWidget); // the badge
+    expect(inToolbar(find.byIcon(Icons.filter_list)), findsNothing);
+  });
+
+  testWidgets('narrowing is per place, so going back finds the list as left',
+      (tester) async {
+    await pumpHost(tester);
+    await goSomewhere(tester);
+    controller.active!.current.minPageCount = 5;
+    await tester.pumpAndSettle();
+
+    await tester.tap(back());
+    await tester.pumpAndSettle();
+    expect(inToolbar(find.text('5+')), findsNothing); // home has no such thing
+
+    await tester.tap(forward());
+    await tester.pumpAndSettle();
+
+    expect(inToolbar(find.text('5+')), findsOneWidget);
+  });
+
   testWidgets('the menu reloads the place without leaving it', (tester) async {
     await pumpHost(tester);
     await goSomewhere(tester);

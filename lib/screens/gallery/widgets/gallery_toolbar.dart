@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import '../gallery_tab.dart';
 import '../gallery_uri_dialect.dart';
 
+/// What the page-count filter offers, in pages. 0 is "all of them".
+const _pageCountChoices = [0, 3, 5, 10, 20];
+
 /// One entry in the toolbar's menu.
 class ToolbarMenuItem {
   final String label;
@@ -185,7 +188,7 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   }
 
   Widget _buildAddressField(BuildContext context) {
-    final field = Container(
+    return Container(
       height: 32,
       alignment: Alignment.centerLeft,
       padding: EdgeInsets.symmetric(horizontal: _editing ? 4 : 12),
@@ -195,20 +198,30 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
       ),
       child: _editing ? _buildEditor() : _buildLabel(),
     );
-    if (_editing) return field;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _beginEditing,
-      child: field,
-    );
   }
 
-  Widget _buildLabel() => Text(
-        placeTitle(_uri, widget.tab.current.title),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-        style: const TextStyle(fontSize: 13),
-      );
+  /// The resting window: where we are, and — where the notion means anything —
+  /// how much of the list is being hidden. The filter is a sibling of the
+  /// label, not inside it, so tapping it does not also start an edit.
+  Widget _buildLabel() {
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _beginEditing,
+            child: Text(
+              placeTitle(_uri, widget.tab.current.title),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+        ),
+        if (hasPageCounts(_uri)) _buildPageCountFilter(),
+      ],
+    );
+  }
 
   Widget _buildEditor() {
     return CallbackShortcuts(
@@ -236,6 +249,33 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
           for (final option in searchOptionsFor(_pendingSearch))
             _buildOption(option),
         ],
+      ),
+    );
+  }
+
+  /// Off, it is an icon. On, it is the number itself — because the accident
+  /// this filter invites is forgetting it is there and taking a short list for
+  /// the whole list. What is hiding items should say so while it hides them.
+  Widget _buildPageCountFilter() {
+    final min = widget.tab.current.minPageCount;
+    return PopupMenuButton<int>(
+      tooltip: 'ページ数で絞る',
+      onSelected: (value) => widget.tab.current.minPageCount = value,
+      itemBuilder: (_) => [
+        for (final choice in _pageCountChoices)
+          CheckedPopupMenuItem(
+            value: choice,
+            checked: choice == min,
+            child: Text(choice == 0 ? 'すべて' : '$choice+'),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: min == 0
+            ? const Icon(Icons.filter_list, size: 18)
+            : Text('$min+',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600)),
       ),
     );
   }
