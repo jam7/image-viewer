@@ -96,6 +96,24 @@ void main() {
       expect(itemOf(smbFileUri('1700000000000', r'books\a.txt')), isNull);
     });
 
+    test('and it says what kind of thing, as the listing would', () {
+      // The viewer asks the metadata what to open with. Arriving from a list
+      // it is handed the listed item, which carries the answer; an address
+      // pasted from somewhere else has no list behind it, and a video taken
+      // for a picture is fetched whole into memory before anything else can
+      // go wrong with it.
+      final movie = itemOf(smbFileUri('1700000000000', r'books\movie.mp4'));
+      expect(movie?.metadata?['isVideo'], isTrue);
+      final book = itemOf(smbFileUri('1700000000000', r'books\book.zip'));
+      expect(book?.metadata?['isZip'], isTrue);
+      final pdf = itemOf(smbFileUri('1700000000000', r'books\book.pdf'));
+      expect(pdf?.metadata?['isPdf'], isTrue);
+      // A picture is the plain case and says nothing beyond being a file.
+      final picture = itemOf(smbFileUri('1700000000000', r'books\a.jpg'));
+      expect(picture?.metadata?['isDirectory'], isFalse);
+      expect(picture?.metadata?.containsKey('isVideo'), isFalse);
+    });
+
     test('and the address goes back the way it came', () {
       expect(placeOf(pixivWork('456')), pixivArtworkUri('456'));
       expect(placeOf(smbFile(r'books\vol2\a.jpg')),

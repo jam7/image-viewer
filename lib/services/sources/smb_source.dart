@@ -112,79 +112,19 @@ class SmbSource extends ImageSourceProvider {
     _log.info('Listing: $dirPath');
     final files = await tree.listDirectory(dirPath).timeout(_ioTimeout);
 
-    final sources = <ImageSource>[];
-    for (final file in files) {
-      final name = file.name;
-      final ext = name.contains('.')
-          ? '.${name.split('.').last.toLowerCase()}'
-          : '';
-
-      final sourceKey = smbSourceKey(config.id);
-      if (file.isDirectory) {
-        sources.add(ImageSource(
-          id: smbItemId(config.id, file.path),
-          name: name,
-          uri: file.path,
-          type: ImageSourceType.smb,
-          sourceKey: sourceKey,
-          metadata: {
-            'isDirectory': true,
-            'path': file.path,
-          },
-        ));
-      } else if (imageExtensions.contains(ext)) {
-        sources.add(ImageSource(
-          id: smbItemId(config.id, file.path),
-          name: name,
-          uri: file.path,
-          type: ImageSourceType.smb,
-          sourceKey: sourceKey,
-          metadata: {
-            'isDirectory': false,
-            'path': file.path,
-          },
-        ));
-      } else if (zipExtensions.contains(ext)) {
-        sources.add(ImageSource(
-          id: smbItemId(config.id, file.path),
-          name: name,
-          uri: file.path,
-          type: ImageSourceType.smb,
-          sourceKey: sourceKey,
-          metadata: {
-            'isDirectory': false,
-            'isZip': true,
-            'path': file.path,
-          },
-        ));
-      } else if (pdfExtensions.contains(ext)) {
-        sources.add(ImageSource(
-          id: smbItemId(config.id, file.path),
-          name: name,
-          uri: file.path,
-          type: ImageSourceType.smb,
-          sourceKey: sourceKey,
-          metadata: {
-            'isDirectory': false,
-            'isPdf': true,
-            'path': file.path,
-          },
-        ));
-      } else if (videoExtensions.contains(ext)) {
-        sources.add(ImageSource(
-          id: smbItemId(config.id, file.path),
-          name: name,
-          uri: file.path,
-          type: ImageSourceType.smb,
-          sourceKey: sourceKey,
-          metadata: {
-            'isDirectory': false,
-            'isVideo': true,
-            'path': file.path,
-          },
-        ));
-      }
-    }
+    // A folder is always listed; a file only if something here can open it.
+    // What kind of file it is, the item works out from its own name.
+    final sources = [
+      for (final file in files)
+        if (file.isDirectory ||
+            viewableExtensions.contains(extensionOf(file.name)))
+          smbItem(
+            configId: config.id,
+            path: file.path,
+            name: file.name,
+            isDirectory: file.isDirectory,
+          ),
+    ];
 
     // ディレクトリを先、ファイルは自然順ソート
     sources.sort((a, b) {

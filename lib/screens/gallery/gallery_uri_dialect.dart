@@ -380,13 +380,11 @@ class _SmbDialect extends GalleryUriDialect {
     final path = smbPathOf(uri);
     final name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
     if (!viewableExtensions.contains(extensionOf(name))) return null;
-    return ImageSource(
-      id: smbItemId(uri.host, path),
+    return smbItem(
+      configId: uri.host,
+      path: path,
       name: name,
-      uri: path,
-      type: ImageSourceType.smb,
-      sourceKey: sourceKeyOf(uri),
-      metadata: {'isDirectory': false, 'path': path},
+      isDirectory: false,
     );
   }
 
