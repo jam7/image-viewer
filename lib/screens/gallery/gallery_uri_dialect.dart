@@ -353,14 +353,22 @@ class _PixivDialect extends GalleryUriDialect {
 class _SmbDialect extends GalleryUriDialect {
   const _SmbDialect();
 
-  /// A path ending in a name this app knows how to open is a file. Anything
-  /// else is taken for a directory, which is a list and has its own address.
+  /// What the address says it is, in three tries.
   ///
-  /// The test is against the extensions the app can actually show, not merely
-  /// "has a dot": a folder called `vol.2` has a dot and is still a folder, and
-  /// mistaking one for a file puts the viewer where a listing should be.
+  /// A trailing `/` means a directory, and every address this app builds has
+  /// one where it belongs — so anything the app itself navigates to is decided
+  /// here and never guessed. An address from outside may have lost it, and
+  /// then the extension is the best that can be done: a name this app knows
+  /// how to open is taken for a file, and anything else for a directory.
+  ///
+  /// Guessing from the name alone was the first rule here and it was wrong:
+  /// a folder can be called `test.jpg`, and one so named opened the viewer
+  /// over what should have been its own listing.
   @override
   ImageSource? itemOf(Uri uri) {
+    if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.isEmpty) {
+      return null; // trailing slash: a directory said so itself
+    }
     final path = smbPathOf(uri);
     final name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
     if (!viewableExtensions.contains(extensionOf(name))) return null;
@@ -383,7 +391,7 @@ class _SmbDialect extends GalleryUriDialect {
     if (!viewableExtensions.contains(extensionOf(item.name))) return null;
     final path = meta?['path'] as String?;
     if (path == null) return null;
-    return smbGalleryUri(item.sourceKey!.split(':').last, path);
+    return smbFileUri(item.sourceKey!.split(':').last, path);
   }
 
   /// The whole path, not its tail. The server it is on is missing because the

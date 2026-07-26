@@ -11,7 +11,7 @@ void main() {
     const configId = '1700000000000';
 
     void roundTrips(String path, String expected, {String? asUri}) {
-      final uri = smbGalleryUri(configId, path);
+      final uri = smbFileUri(configId, path);
       if (asUri != null) expect(uri.toString(), asUri);
       // Via a string, as a link or a restored tab would arrive.
       expect(smbPathOf(Uri.parse(uri.toString())), expected);
@@ -20,8 +20,20 @@ void main() {
 
     test('share root', () => roundTrips('/', '/', asUri: 'smb://$configId'));
 
-    test('single directory',
-        () => roundTrips('books', 'books', asUri: 'smb://$configId/books'));
+    test('a name', () => roundTrips('books', 'books',
+        asUri: 'smb://$configId/books'));
+
+    test('a directory says so with a trailing slash', () {
+      // The name cannot say it — a folder may be called test.jpg — so the
+      // address does. Everything the app navigates to is built here, which is
+      // why nothing it opens itself has to be guessed at (ADR 010).
+      expect(smbGalleryUri(configId, 'books').toString(),
+          'smb://$configId/books/');
+      expect(smbFileUri(configId, r'books\a.jpg').toString(),
+          'smb://$configId/books/a.jpg');
+      // The slash is not part of the path either way round.
+      expect(smbPathOf(smbGalleryUri(configId, 'books')), 'books');
+    });
 
     test('nested directories', () => roundTrips(r'deep\a\b\c', r'deep\a\b\c'));
 

@@ -44,7 +44,21 @@ const homeUriScheme = 'home';
 const pixivInstance = 'default';
 
 /// Address of the SMB directory [path] on the server registered as [configId].
+///
+/// Ends in a `/`, which is what says it is a directory. The name cannot: a
+/// folder may be called `test.jpg`, and reading the extension put the viewer
+/// where a listing belonged. Whoever builds the address knows which it is —
+/// the listing said so — and the address should carry that rather than leave
+/// it to be guessed later (ADR 010).
 Uri smbGalleryUri(String configId, String path) => Uri(
+      scheme: smbUriScheme,
+      host: configId,
+      // The empty last segment is the trailing slash.
+      pathSegments: [..._smbSegments(path), ''],
+    );
+
+/// Address of the SMB file [path] — one thing to look at, so no trailing `/`.
+Uri smbFileUri(String configId, String path) => Uri(
       scheme: smbUriScheme,
       host: configId,
       pathSegments: _smbSegments(path),

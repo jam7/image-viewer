@@ -81,6 +81,10 @@ pixiv:
 fav:
 home:
 
+# A Dart variable holding the id above, as it appears inside an interpolated
+# string literal in a test. A name in the source, not data about anything.
+$configId
+
 # -- ids --------------------------------------------------------------------
 # One invented SMB config id. Real ones are 13-digit creation timestamps, so
 # the shape has to stay while the value must not be a real one.

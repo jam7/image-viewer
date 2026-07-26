@@ -65,7 +65,7 @@ void main() {
     test('an SMB file too, id and all', () {
       // The id has to match what listImages builds, since that is how the
       // viewer finds itself in the list it was opened from.
-      final uri = smbGalleryUri('1700000000000', r'books\vol2\a.jpg');
+      final uri = smbFileUri('1700000000000', r'books\vol2\a.jpg');
       expect(itemOf(uri)!.id, smbFile(r'books\vol2\a.jpg').id);
     });
 
@@ -85,15 +85,17 @@ void main() {
       // "Has a dot" was the first rule here, and it put the viewer where a
       // listing belongs the moment a folder was named like this.
       expect(itemOf(smbGalleryUri('1700000000000', 'vol2.5')), isNull);
+      // Even one the app can open: the trailing slash settles it outright.
+      expect(itemOf(smbGalleryUri('1700000000000', 'test.jpg')), isNull);
       expect(placeOf(smbFile('vol2.5', dir: true)), isNull);
       // And an extension the app cannot open is not something to look at.
-      expect(itemOf(smbGalleryUri('1700000000000', r'books\a.txt')), isNull);
+      expect(itemOf(smbFileUri('1700000000000', r'books\a.txt')), isNull);
     });
 
     test('and the address goes back the way it came', () {
       expect(placeOf(pixivWork('456')), pixivArtworkUri('456'));
       expect(placeOf(smbFile(r'books\vol2\a.jpg')),
-          smbGalleryUri('1700000000000', r'books\vol2\a.jpg'));
+          smbFileUri('1700000000000', r'books\vol2\a.jpg'));
     });
 
     test('nothing to look at has no address of this kind', () {
