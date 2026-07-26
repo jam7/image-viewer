@@ -164,18 +164,30 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('tapping the window offers the address, selected whole',
+  testWidgets('tapping the window offers an empty field, not the address',
       (tester) async {
-    // The address is the thing worth taking elsewhere, and handing it over
-    // selected is the whole of "copy this place" — no feature of ours needed.
+    // Nobody edits an address by hand — places are followed or pasted — and
+    // the address is in the menu for taking elsewhere. Showing it here would
+    // only be something to delete first.
     await pumpHost(tester);
     expect(inToolbar(find.text('ホーム')), findsOneWidget);
 
     final field = await startTyping(tester, 'ホーム');
 
-    expect(field.controller!.text, '${homeGalleryUri()}');
-    expect(field.controller!.selection,
-        TextSelection(baseOffset: 0, extentOffset: field.controller!.text.length));
+    expect(field.controller!.text, isEmpty);
+    expect(field.decoration!.hintText, isNotNull);
+  });
+
+  testWidgets('and an empty field submitted asks for nothing', (tester) async {
+    await pumpHost(tester);
+    await startTyping(tester, 'ホーム');
+
+    await tester.testTextInput.receiveAction(TextInputAction.go);
+    await tester.pumpAndSettle();
+
+    expect(controller.active!.current.sourceUri, homeGalleryUri());
+    expect(controller.active!.history.length, 1);
+    expect(inToolbar(find.byType(TextField)), findsNothing); // done editing
   });
 
   testWidgets('an address goes there, in this tab', (tester) async {
@@ -301,13 +313,16 @@ void main() {
 
     await tester.tap(inToolbar(find.text('完全')));
     await tester.pumpAndSettle();
-    // Nothing typed, so submitting is "go where the field says" — unchanged.
-    await tester.testTextInput.receiveAction(TextInputAction.go);
-    await tester.pumpAndSettle();
+    await submit(tester, 'books');
 
-    final uri = controller.active!.current.sourceUri;
-    expect(uri.hasQuery, isFalse);
-    expect(uri.path, '/user/1700000000000');
+    // The option went to the search, and the page it was pressed on is still
+    // the plain address it always was.
+    final searched = controller.active!.current.sourceUri;
+    expect(searched.path, '/search');
+    expect(searched.queryParameters['s_mode'], 's_tag');
+    final author = controller.active!.history[1].sourceUri;
+    expect(author.path, '/user/1700000000000');
+    expect(author.hasQuery, isFalse);
   });
 
   testWidgets('a search offers its word, not its query string', (tester) async {

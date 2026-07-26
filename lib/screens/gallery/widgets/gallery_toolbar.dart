@@ -139,8 +139,15 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   /// What was typed decides what happens: an address goes there, anything else
   /// is a search of the source we are on. A source with no search drops it,
   /// which the hint text warned about before a key was pressed.
+  ///
+  /// Nothing typed means nothing asked for. The field starts empty on most
+  /// places now, so this is the ordinary way an edit ends — and a search for
+  /// no word is not a place at all.
   void _submit(String text) {
-    final place = parsePlace(text) ?? searchFrom(_pendingSearch, text.trim());
+    final asked = text.trim();
+    final place = asked.isEmpty
+        ? null
+        : parsePlace(asked) ?? searchFrom(_pendingSearch, asked);
     _endEditing();
     if (place != null) widget.onNavigate(place);
   }

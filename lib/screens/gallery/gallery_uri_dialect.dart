@@ -58,14 +58,18 @@ abstract class GalleryUriDialect {
   /// anywhere in it. Empty for a source that is a single place.
   List<PlaceLink> get sections => const [];
 
-  /// What tapping the address window should put in front of the reader —
-  /// the thing they are most likely to have opened it to change.
+  /// What tapping the address window should put in front of the reader, ready
+  /// to be changed — and empty when there is nothing worth reopening.
   ///
-  /// Usually that is the address itself. A source whose place is mostly one
-  /// piece of text the reader wrote (a search word) should hand back that
-  /// instead: the address is still reachable from the menu, and it is not
-  /// what anyone wants to edit by hand.
-  String editable(Uri uri) => prettyAddress(uri);
+  /// Empty is the usual answer. A place is normally reached by following
+  /// something or pasting it, never by editing an address by hand, and the
+  /// address is copyable from the menu for taking elsewhere. Showing it here
+  /// would only be something to delete first — percent-encoded, at that.
+  ///
+  /// A source hands something back when the place is largely one piece of text
+  /// the reader wrote themselves: a search word, which is exactly what they
+  /// have come back to change.
+  String editable(Uri uri) => '';
 
   /// What the address field invites when this source can be searched, e.g.
   /// 'タグ検索'. Null means it cannot, and [search] then returns null too.
@@ -122,22 +126,7 @@ Uri? searchFrom(Uri from, String query) =>
 String? searchHintFor(Uri uri) => _dialects[uri.scheme]?.searchHint;
 
 /// See [GalleryUriDialect.editable].
-String editableOf(Uri uri) =>
-    _dialects[uri.scheme]?.editable(uri) ?? prettyAddress(uri);
-
-/// The friendliest spelling of [uri] that still reads back as the very same
-/// place.
-///
-/// Percent-encoding is unreadable and unfixable by hand — nobody can edit
-/// `%E3%81%82` into what they meant. Decoding is not always reversible
-/// though, since a name may contain a space or a `#` that the encoding was
-/// there to protect. So the decoded form is offered only when parsing it
-/// returns exactly what we started with; otherwise the raw address stands,
-/// ugly and correct.
-String prettyAddress(Uri uri) {
-  final decoded = Uri.decodeFull('$uri');
-  return '${parsePlace(decoded)}' == '$uri' ? decoded : '$uri';
-}
+String editableOf(Uri uri) => _dialects[uri.scheme]?.editable(uri) ?? '';
 
 /// See [GalleryUriDialect.sections].
 List<PlaceLink> sectionsOf(Uri uri) =>
@@ -247,9 +236,8 @@ class _PixivDialect extends GalleryUriDialect {
   /// back to change. Refining `books` to `books series` should not mean
   /// picking it out of a query string.
   @override
-  String editable(Uri uri) => uri.path == '/search'
-      ? uri.queryParameters['word'] ?? ''
-      : super.editable(uri);
+  String editable(Uri uri) =>
+      uri.path == '/search' ? uri.queryParameters['word'] ?? '' : '';
 
   @override
   String? get searchHint => 'タグ検索 または URI';
