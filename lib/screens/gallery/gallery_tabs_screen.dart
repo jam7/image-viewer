@@ -64,6 +64,12 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// and a header folded away by the grid you just left would stay away.
   Uri? _shownFor;
 
+  @override
+  void initState() {
+    super.initState();
+    _chromeVisible.addListener(_applySystemBars);
+  }
+
   GalleryTabController get controller => widget.controller;
   GalleryTabOpener get opener => widget.opener;
   SmbConfigStore get smbConfigStore => widget.smbConfigStore;
@@ -74,8 +80,26 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
 
   @override
   void dispose() {
+    _chromeVisible.removeListener(_applySystemBars);
     _chromeVisible.dispose();
     super.dispose();
+  }
+
+  /// The status and navigation bars go with the app's own header, but only
+  /// where hiding them is the point.
+  ///
+  /// A grid folds its header away for room and keeps the bars; a work fills
+  /// the screen. Deciding it here, from the place the tab is on, is what keeps
+  /// the bars from being left hidden after moving somewhere they belong — the
+  /// viewer is an entry in a tab now, not a screen with an exit to undo it on
+  /// (ADR 010 決定 7).
+  void _applySystemBars() {
+    final immersive = _shownFor != null &&
+        itemOf(_shownFor!) != null &&
+        !_chromeVisible.value;
+    SystemChrome.setEnabledSystemUIMode(
+      immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
   }
 
   @override
@@ -129,7 +153,9 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
     if (_shownFor == place) return;
     _shownFor = place;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _chromeVisible.value = true;
+      if (!mounted) return;
+      _chromeVisible.value = true;
+      _applySystemBars(); // no change to listen for when it was already true
     });
   }
 

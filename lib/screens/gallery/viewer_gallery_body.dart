@@ -10,6 +10,7 @@ import 'gallery_tab.dart';
 import 'gallery_uri.dart';
 import 'gallery_uri_dialect.dart';
 import 'system_back.dart';
+import 'widgets/gallery_chrome.dart';
 
 /// The list [item] sits in as seen from [tab], and where in it — or the item
 /// on its own when the tab cannot say.
@@ -117,6 +118,9 @@ class ViewerGalleryBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The header above belongs to the host, and follows the viewer's own
+    // overlay: reading a picture means seeing the picture.
+    final chrome = GalleryChrome.maybeOf(context);
     // Only ever built for an address that names an item — that is how the host
     // picked this body over a grid.
     final item = itemOf(_session.sourceUri)!;
@@ -136,6 +140,7 @@ class ViewerGalleryBody extends StatelessWidget {
         onIndexChanged: (i) => _goToItem(here.items[i]),
         onClose: tab.back,
         onNotAnItem: _showAsList,
+        onOverlayChanged: (show) => chrome?.value = show,
         onShowAuthor: pixiv
             ? (userId, userName) =>
                   _openPixivPlace('/user/$userId', pixivAuthorTitle(userName))

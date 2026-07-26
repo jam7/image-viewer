@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
@@ -32,6 +33,11 @@ class ViewerScreen extends StatefulWidget {
   /// was opened from.
   final VoidCallback onClose;
 
+  /// Whether the viewer's own overlay is showing. Reported because the header
+  /// above and the system bars go with it: reading a picture means seeing the
+  /// picture, and everything else steps out of the way together (ADR 010).
+  final ValueChanged<bool>? onOverlayChanged;
+
   /// What was opened is a list rather than one thing to look at — see
   /// [NotAnItemException]. Null leaves the failure on screen.
   final VoidCallback? onNotAnItem;
@@ -60,6 +66,7 @@ class ViewerScreen extends StatefulWidget {
     this.index = 0,
     this.onIndexChanged,
     required this.onClose,
+    this.onOverlayChanged,
     this.onNotAnItem,
     this.onShowAuthor,
     this.onSearchTag,
@@ -91,6 +98,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
   final Map<String, bool> _loadingStates = {};
   final Map<String, (int received, int total)> _loadProgress = {};
   bool _showOverlay = true;
+
+  /// Hides the overlay when nothing has happened for a while. Reading is long
+  /// stretches of looking with no input at all, and the chrome has no business
+  /// sitting there through it.
+  static const _idleBeforeHiding = Duration(seconds: 3);
+  Timer? _idle;
   bool _sidebarActive = false;
   bool _isDownloading = false;
   (int received, int total)? _downloadProgress;
@@ -101,7 +114,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
     super.initState();
     // Defer to avoid setState during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _openItem(widget.index);
+      if (!mounted) return;
+      _openItem(widget.index);
+      _setOverlay(true); // and start the countdown
     });
   }
 
@@ -128,6 +143,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   @override
   void dispose() {
+    _idle?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -301,6 +317,17 @@ class _ViewerScreenState extends State<ViewerScreen> {
         ],
       ],
     );
+  }
+
+  /// Show or hide everything that is not the picture. Restarts the idle
+  /// countdown, so showing it is always followed by hiding it again.
+  void _setOverlay(bool show) {
+    if (_showOverlay != show) {
+      setState(() => _showOverlay = show);
+      widget.onOverlayChanged?.call(show);
+    }
+    _idle?.cancel();
+    if (show) _idle = Timer(_idleBeforeHiding, () => _setOverlay(false));
   }
 
   Widget _buildLoadingIndicator(String imageId) {
@@ -832,7 +859,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       autofocus: true,
       onKeyEvent: _onKeyEvent,
       child: GestureDetector(
-        onTap: () => setState(() => _showOverlay = !_showOverlay),
+        onTap: () => _setOverlay(!_showOverlay),
         onVerticalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0;
           if (velocity < -300) {

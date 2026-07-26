@@ -56,6 +56,7 @@ void main() {
     void Function(String)? onTag,
     void Function(int, String)? onShowAuthor,
     VoidCallback? onClose,
+    void Function(bool)? onOverlayChanged,
   }) async {
     final navKey = GlobalKey<NavigatorState>();
     await tester.pumpWidget(MaterialApp(
@@ -71,6 +72,7 @@ void main() {
         onOpenAuthorInNewTab: onAuthor,
         onOpenTagSearchInNewTab: onTag,
         onShowAuthor: onShowAuthor,
+        onOverlayChanged: onOverlayChanged,
         onClose: onClose ?? () {},
       ),
     ));
@@ -115,6 +117,27 @@ void main() {
 
     expect(followed, 1);
     expect(find.text('GALLERY_MARKER'), findsNothing); // still here
+  });
+
+  testWidgets('everything steps aside after a while, and a tap brings it back',
+      (tester) async {
+    // Reading is long stretches with no input, and the chrome has no business
+    // sitting there through it. The header above goes with it, which is why
+    // this is reported rather than kept to the viewer (ADR 010 決定 7).
+    final shown = <bool>[];
+    await pumpViewer(tester, onOverlayChanged: shown.add);
+    expect(shown, [], reason: 'starts shown, so nothing to report yet');
+
+    await tester.pump(const Duration(seconds: 4));
+    expect(shown, [false]);
+
+    await tester.tap(find.byType(GestureDetector).first);
+    await tester.pump();
+    expect(shown, [false, true]);
+
+    // And hides itself again without being asked twice.
+    await tester.pump(const Duration(seconds: 4));
+    expect(shown, [false, true, false]);
   });
 
   testWidgets('a chip with nowhere to lead does nothing at all',
