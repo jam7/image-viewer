@@ -10,6 +10,7 @@ import 'dart:ui' as ui;
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../models/media_extensions.dart';
+import '../../models/smb_identity.dart';
 import '../../models/image_source.dart';
 import '../../models/server_config.dart';
 import '../../utils/natural_sort.dart';
@@ -118,14 +119,14 @@ class SmbSource extends ImageSourceProvider {
           ? '.${name.split('.').last.toLowerCase()}'
           : '';
 
-      final smbSourceKey = 'smb:${config.id}';
+      final sourceKey = smbSourceKey(config.id);
       if (file.isDirectory) {
         sources.add(ImageSource(
-          id: 'smb:${config.id}:${file.path}',
+          id: smbItemId(config.id, file.path),
           name: name,
           uri: file.path,
           type: ImageSourceType.smb,
-          sourceKey: smbSourceKey,
+          sourceKey: sourceKey,
           metadata: {
             'isDirectory': true,
             'path': file.path,
@@ -133,11 +134,11 @@ class SmbSource extends ImageSourceProvider {
         ));
       } else if (imageExtensions.contains(ext)) {
         sources.add(ImageSource(
-          id: 'smb:${config.id}:${file.path}',
+          id: smbItemId(config.id, file.path),
           name: name,
           uri: file.path,
           type: ImageSourceType.smb,
-          sourceKey: smbSourceKey,
+          sourceKey: sourceKey,
           metadata: {
             'isDirectory': false,
             'path': file.path,
@@ -145,11 +146,11 @@ class SmbSource extends ImageSourceProvider {
         ));
       } else if (zipExtensions.contains(ext)) {
         sources.add(ImageSource(
-          id: 'smb:${config.id}:${file.path}',
+          id: smbItemId(config.id, file.path),
           name: name,
           uri: file.path,
           type: ImageSourceType.smb,
-          sourceKey: smbSourceKey,
+          sourceKey: sourceKey,
           metadata: {
             'isDirectory': false,
             'isZip': true,
@@ -158,11 +159,11 @@ class SmbSource extends ImageSourceProvider {
         ));
       } else if (pdfExtensions.contains(ext)) {
         sources.add(ImageSource(
-          id: 'smb:${config.id}:${file.path}',
+          id: smbItemId(config.id, file.path),
           name: name,
           uri: file.path,
           type: ImageSourceType.smb,
-          sourceKey: smbSourceKey,
+          sourceKey: sourceKey,
           metadata: {
             'isDirectory': false,
             'isPdf': true,
@@ -171,11 +172,11 @@ class SmbSource extends ImageSourceProvider {
         ));
       } else if (videoExtensions.contains(ext)) {
         sources.add(ImageSource(
-          id: 'smb:${config.id}:${file.path}',
+          id: smbItemId(config.id, file.path),
           name: name,
           uri: file.path,
           type: ImageSourceType.smb,
-          sourceKey: smbSourceKey,
+          sourceKey: sourceKey,
           metadata: {
             'isDirectory': false,
             'isVideo': true,
@@ -233,7 +234,7 @@ class SmbSource extends ImageSourceProvider {
     if (source.metadata?['isZip'] != true) return [source];
 
     final zipPath = source.uri;
-    final smbSourceKey = 'smb:${config.id}';
+    final sourceKey = smbSourceKey(config.id);
     _log.info('resolvePages: reading ZIP directory $zipPath');
 
     final zipReader = await _getZipReader(zipPath);
@@ -251,7 +252,7 @@ class SmbSource extends ImageSourceProvider {
     final pages = <ImageSource>[];
     for (var i = 0; i < fileEntries.length; i++) {
       final entry = fileEntries[i];
-      final pageId = 'smb:${config.id}:$zipPath#${entry.name}';
+      final pageId = smbItemId(config.id, '$zipPath#${entry.name}');
       final isSupported = _isImageName(entry.name);
 
       pages.add(ImageSource(
@@ -259,7 +260,7 @@ class SmbSource extends ImageSourceProvider {
         name: '${source.name} (${i + 1}/${fileEntries.length}) ${entry.name}',
         uri: '$zipPath#${entry.name}',
         type: ImageSourceType.smb,
-        sourceKey: smbSourceKey,
+        sourceKey: sourceKey,
         metadata: {
           'isDirectory': false,
           'isZipEntry': true,
@@ -505,7 +506,7 @@ class SmbSource extends ImageSourceProvider {
   /// Resolve PDF pages: download full PDF, count pages, return page list.
   Future<List<ImageSource>> _resolvePdfPages(ImageSource source) async {
     final pdfPath = source.uri;
-    final smbSourceKey = 'smb:${config.id}';
+    final sourceKey = smbSourceKey(config.id);
 
     // Get PDF file path from cache, or download to L2
     final pdfCacheKey = 'full:${source.id}';
@@ -519,11 +520,11 @@ class SmbSource extends ImageSourceProvider {
     final pages = <ImageSource>[];
     for (var i = 0; i < pageCount; i++) {
       pages.add(ImageSource(
-        id: 'smb:${config.id}:$pdfPath#page$i',
+        id: smbItemId(config.id, '$pdfPath#page$i'),
         name: '${source.name} (${i + 1}/$pageCount)',
         uri: '$pdfPath#page$i',
         type: ImageSourceType.smb,
-        sourceKey: smbSourceKey,
+        sourceKey: sourceKey,
         metadata: {
           'isDirectory': false,
           'isPdfPage': true,

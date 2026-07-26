@@ -1,5 +1,6 @@
 import '../../models/image_source.dart';
 import '../../models/media_extensions.dart';
+import '../../models/smb_identity.dart';
 import 'gallery_uri.dart';
 
 /// How each source writes a place down, and reads one back out for a human.
@@ -380,7 +381,7 @@ class _SmbDialect extends GalleryUriDialect {
     final name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
     if (!viewableExtensions.contains(extensionOf(name))) return null;
     return ImageSource(
-      id: 'smb:${uri.host}:$path',
+      id: smbItemId(uri.host, path),
       name: name,
       uri: path,
       type: ImageSourceType.smb,

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/models/image_source.dart';
 import 'package:image_viewer/models/server_config.dart';
+import 'package:image_viewer/models/smb_identity.dart';
 import 'package:image_viewer/screens/gallery/gallery_session.dart';
 import 'package:image_viewer/screens/gallery/gallery_tab.dart';
 import 'package:image_viewer/screens/gallery/gallery_uri.dart';
@@ -47,7 +48,7 @@ void main() {
 
   ImageSource smbFile(String path, {bool dir = false, bool video = false}) =>
       ImageSource(
-        id: 'smb:1700000000000:$path',
+        id: smbItemId('1700000000000', path),
         name: path.split(r'\').last,
         uri: path,
         type: ImageSourceType.smb,
@@ -64,8 +65,11 @@ void main() {
 
     test('an SMB file too, id and all', () {
       // The id has to match what listImages builds, since that is how the
-      // viewer finds itself in the list it was opened from.
+      // viewer finds itself in the list it was opened from. Both spell it
+      // through smbItemId now, so this pins the spelling rather than the
+      // agreement between two copies of it.
       final uri = smbFileUri('1700000000000', r'books\vol2\a.jpg');
+      expect(itemOf(uri)!.id, smbItemId('1700000000000', r'books\vol2\a.jpg'));
       expect(itemOf(uri)!.id, smbFile(r'books\vol2\a.jpg').id);
     });
 
