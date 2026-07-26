@@ -272,8 +272,8 @@ void main() {
   });
 
   testWidgets('the search switches show while typing, and travel', (tester) async {
-    // The switch reads off the address and writes back to it, so pressing one
-    // then submitting re-runs the search the other way round.
+    // The switch belongs to the search about to be made, so pressing one then
+    // submitting searches the other way round.
     await pumpHost(tester);
     await goSomewhere(tester);
     await startTyping(tester, 'Pixiv');
@@ -287,6 +287,82 @@ void main() {
 
     expect(controller.active!.current.sourceUri.queryParameters['s_mode'],
         's_tag');
+  });
+
+  testWidgets('a switch cannot spoil the place it was pressed on',
+      (tester) async {
+    // It used to write the option onto the current address, which made an
+    // author page into `/user/<id>?s_mode=...` — an address Pixiv reads as an
+    // author called "<id>?s_mode=..." and throws on.
+    await pumpHost(tester);
+    await startTyping(tester, 'ホーム');
+    await submit(tester, '${pixivGalleryUri('/user/1700000000000')}');
+    await startTyping(tester, '1700000000000 の作品');
+
+    await tester.tap(inToolbar(find.text('完全')));
+    await tester.pumpAndSettle();
+    // Nothing typed, so submitting is "go where the field says" — unchanged.
+    await tester.testTextInput.receiveAction(TextInputAction.go);
+    await tester.pumpAndSettle();
+
+    final uri = controller.active!.current.sourceUri;
+    expect(uri.hasQuery, isFalse);
+    expect(uri.path, '/user/1700000000000');
+  });
+
+  testWidgets('a search offers its word, not its query string', (tester) async {
+    // Editing `books` into `books series` should not mean picking the word out
+    // of `?word=books&s_mode=...`, where a space is already `%20`.
+    await pumpHost(tester);
+    await goSomewhere(tester);
+    await startTyping(tester, 'Pixiv');
+    await submit(tester, 'books');
+
+    final field = await startTyping(tester, 'books');
+
+    expect(field.controller!.text, 'books');
+    expect(field.controller!.selection.textInside('books'), 'books');
+  });
+
+  testWidgets('the address is still reachable, as its own errand',
+      (tester) async {
+    // Watching the channel rather than reading the clipboard back: there is no
+    // clipboard behind it in a test, and the read never returns.
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    await pumpHost(tester);
+
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('アドレスをコピー'));
+    await tester.pumpAndSettle();
+
+    // Raw, not the friendlier spelling the window offers: this one has to read
+    // back as the same place wherever it is pasted.
+    expect(copied, ['${homeGalleryUri()}']);
+  });
+
+  testWidgets('the offered text is selected whole on every source',
+      (tester) async {
+    // Home worked from the start; a Pixiv tab has a focus-hungry grid under
+    // the toolbar, so it gets its own check.
+    await pumpHost(tester);
+    await goSomewhere(tester);
+
+    final field = await startTyping(tester, 'Pixiv');
+
+    expect(field.controller!.selection,
+        TextSelection(baseOffset: 0, extentOffset: field.controller!.text.length));
   });
 
   testWidgets('no switches where there is no search', (tester) async {

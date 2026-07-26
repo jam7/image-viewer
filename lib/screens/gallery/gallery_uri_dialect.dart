@@ -42,9 +42,30 @@ abstract class GalleryUriDialect {
   /// here and not in the session.
   String? titleFrom(Uri uri, List<ImageSource> items) => null;
 
+  /// Whether [uri] names somewhere this source can actually be.
+  ///
+  /// A URI can be perfectly well-formed and still be nowhere:
+  /// `pixiv://default/usr/12345` parses, and the provider would then try to
+  /// read `usr/12345` as a page and fail. Saying so here keeps that answer
+  /// where the rest of the source's URI rules are, rather than making every
+  /// provider defend itself against addresses that were never real.
+  ///
+  /// Default is yes — a source whose places are its own contents (SMB
+  /// directories) cannot say more than the syntax already did.
+  bool knows(Uri uri) => true;
+
   /// The source's own sections — the places it offers to jump to from
   /// anywhere in it. Empty for a source that is a single place.
   List<PlaceLink> get sections => const [];
+
+  /// What tapping the address window should put in front of the reader —
+  /// the thing they are most likely to have opened it to change.
+  ///
+  /// Usually that is the address itself. A source whose place is mostly one
+  /// piece of text the reader wrote (a search word) should hand back that
+  /// instead: the address is still reachable from the menu, and it is not
+  /// what anyone wants to edit by hand.
+  String editable(Uri uri) => prettyAddress(uri);
 
   /// What the address field invites when this source can be searched, e.g.
   /// 'タグ検索'. Null means it cannot, and [search] then returns null too.
@@ -77,10 +98,16 @@ const _dialects = <String, GalleryUriDialect>{
 /// Null is not an error: it is the address field's signal to search instead.
 /// Typing `smb://` and hitting enter halfway through searches rather than
 /// complaining, which is the safe way round (design.md 節 7).
+///
+/// "Not a place" covers the shape as well as the syntax: see
+/// [GalleryUriDialect.knows]. A misspelt page is searched for rather than
+/// navigated to, which is the same safe direction.
 Uri? parsePlace(String input) {
   final uri = Uri.tryParse(input.trim());
-  if (uri == null || !_dialects.containsKey(uri.scheme)) return null;
-  return uri.host.isEmpty ? null : uri;
+  if (uri == null || uri.host.isEmpty) return null;
+  final dialect = _dialects[uri.scheme];
+  if (dialect == null || !dialect.knows(uri)) return null;
+  return uri;
 }
 
 /// What [uri] alone can say it is. Falls back to the URI itself for a scheme
@@ -93,6 +120,24 @@ Uri? searchFrom(Uri from, String query) =>
 
 /// See [GalleryUriDialect.searchHint].
 String? searchHintFor(Uri uri) => _dialects[uri.scheme]?.searchHint;
+
+/// See [GalleryUriDialect.editable].
+String editableOf(Uri uri) =>
+    _dialects[uri.scheme]?.editable(uri) ?? prettyAddress(uri);
+
+/// The friendliest spelling of [uri] that still reads back as the very same
+/// place.
+///
+/// Percent-encoding is unreadable and unfixable by hand — nobody can edit
+/// `%E3%81%82` into what they meant. Decoding is not always reversible
+/// though, since a name may contain a space or a `#` that the encoding was
+/// there to protect. So the decoded form is offered only when parsing it
+/// returns exactly what we started with; otherwise the raw address stands,
+/// ugly and correct.
+String prettyAddress(Uri uri) {
+  final decoded = Uri.decodeFull('$uri');
+  return '${parsePlace(decoded)}' == '$uri' ? decoded : '$uri';
+}
 
 /// See [GalleryUriDialect.sections].
 List<PlaceLink> sectionsOf(Uri uri) =>
@@ -117,14 +162,23 @@ String pixivAuthorTitle(String name) => '$name の作品';
 String placeTitle(Uri uri, String known) =>
     known.isEmpty ? describePlace(uri) : known;
 
-class _HomeDialect extends GalleryUriDialect {
+/// A source that is exactly one place: it is somewhere or it is nothing, so
+/// anything hanging off the root is a typo rather than a page.
+abstract class _SinglePlaceDialect extends GalleryUriDialect {
+  const _SinglePlaceDialect();
+
+  @override
+  bool knows(Uri uri) => uri.pathSegments.every((s) => s.isEmpty);
+}
+
+class _HomeDialect extends _SinglePlaceDialect {
   const _HomeDialect();
 
   @override
   String describe(Uri uri) => 'ホーム';
 }
 
-class _FavoritesDialect extends GalleryUriDialect {
+class _FavoritesDialect extends _SinglePlaceDialect {
   const _FavoritesDialect();
 
   @override
@@ -135,6 +189,20 @@ class _PixivDialect extends GalleryUriDialect {
   const _PixivDialect();
 
   static final _user = RegExp(r'^/user/(\d+)$');
+  static final _page = RegExp(r'^/(top|bookmarks|user/\d+|search)$');
+
+  /// The four pages this app knows how to be on.
+  @override
+  bool knows(Uri uri) {
+    if (!_page.hasMatch(uri.path)) return false;
+    // Only a search carries a query. The provider is handed path and query
+    // together, so anywhere else it is read as part of the page's name and
+    // breaks it — `/user/12345?s_mode=s_tag` asks Pixiv for author
+    // "12345?s_mode=s_tag".
+    if (uri.path != '/search') return !uri.hasQuery;
+    // And a search with nothing to search for is half a URL, not a page.
+    return (uri.queryParameters['word'] ?? '').isNotEmpty;
+  }
 
   @override
   String describe(Uri uri) {
@@ -174,6 +242,14 @@ class _PixivDialect extends GalleryUriDialect {
         (label: 'トップ', uri: pixivGalleryUri('/top')),
         (label: 'ブックマーク', uri: pixivGalleryUri('/bookmarks')),
       ];
+
+  /// On a search, the word — that is what the reader wrote and what they come
+  /// back to change. Refining `books` to `books series` should not mean
+  /// picking it out of a query string.
+  @override
+  String editable(Uri uri) => uri.path == '/search'
+      ? uri.queryParameters['word'] ?? ''
+      : super.editable(uri);
 
   @override
   String? get searchHint => 'タグ検索 または URI';

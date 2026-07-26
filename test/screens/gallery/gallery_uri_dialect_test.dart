@@ -39,6 +39,26 @@ void main() {
         expect(parsePlace(input), isNull, reason: '"$input"');
       }
     });
+
+    test('a well-formed URI that is nowhere is not a place either', () {
+      // These parse. Following them would hand the provider an address it
+      // cannot read -- /usr/12345 used to reach PixivSource and throw.
+      for (final input in [
+        'pixiv://default/usr/12345', // misspelt page
+        'pixiv://default/user/abc', // an author is a number
+        'pixiv://default/search', // half a URL: nothing to search for
+        'pixiv://default/user/12345?s_mode=s_tag', // an option on a non-search
+        'home://default/books', // home has no pages under it
+        'fav://default/books',
+      ]) {
+        expect(parsePlace(input), isNull, reason: input);
+      }
+    });
+
+    test('a directory keeps its freedom: SMB paths are whatever they are', () {
+      // Unlike Pixiv, the places are the contents, so syntax is all there is.
+      expect(parsePlace('smb://1700000000000/books/series'), isNotNull);
+    });
   });
 
   group('describePlace', () {

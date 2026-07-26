@@ -54,10 +54,13 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   final _focus = FocusNode();
   bool _editing = false;
 
-  /// Where the edit started from, carrying any switches flipped since. A search
-  /// typed into the field is issued from here rather than from the tab, so the
-  /// options are the ones on screen.
-  late Uri _base;
+  /// The search this edit would issue, carrying any switches flipped since it
+  /// began — not the place the tab is on.
+  ///
+  /// Keeping them apart is what stops a switch corrupting where we are: an
+  /// author page is not a search, and writing `?s_mode=` onto it produced an
+  /// address the provider could not read. Options belong to the search.
+  late Uri _pendingSearch;
 
   Uri get _uri => widget.tab.current.sourceUri;
 
@@ -81,30 +84,25 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
     super.dispose();
   }
 
-  /// Tapping in shows the address rather than the title, selected whole: it is
-  /// the thing worth copying, and copying it needs no feature of ours beyond
-  /// having put it somewhere selectable.
+  /// Tapping in offers whatever this place is worth editing — on a search the
+  /// word, elsewhere the address — selected whole, so it can be replaced by
+  /// typing. The address itself is in the menu, for taking somewhere else.
   void _beginEditing() {
-    _base = _uri;
-    final address = '$_base';
+    // A search issued from here starts as the one already on screen, so its
+    // switches read the way the results were fetched.
+    _pendingSearch = searchFrom(_uri, '') ?? _uri;
+    final text = editableOf(_uri);
     _controller.value = TextEditingValue(
-      text: address,
-      selection: TextSelection(baseOffset: 0, extentOffset: address.length),
+      text: text,
+      selection: TextSelection(baseOffset: 0, extentOffset: text.length),
     );
     setState(() => _editing = true);
   }
 
-  /// Flip one of the search switches. The address is where the options live, so
-  /// the field is rewritten to match — unless a word has been typed over it, in
-  /// which case the new options are simply what that word will be searched with.
-  void _applyOption(SearchOption option) {
-    setState(() => _base = option.next);
-    if (parsePlace(_controller.text) == null) return;
-    _controller.value = TextEditingValue(
-      text: '$_base',
-      selection: TextSelection.collapsed(offset: '$_base'.length),
-    );
-  }
+  /// Flip one of the search switches: it changes the search about to be made,
+  /// and nothing about where we are.
+  void _applyOption(SearchOption option) =>
+      setState(() => _pendingSearch = option.next);
 
   void _endEditing() {
     if (!_editing) return;
@@ -122,7 +120,7 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   /// is a search of the source we are on. A source with no search drops it,
   /// which the hint text warned about before a key was pressed.
   void _submit(String text) {
-    final place = parsePlace(text) ?? searchFrom(_base, text.trim());
+    final place = parsePlace(text) ?? searchFrom(_pendingSearch, text.trim());
     _endEditing();
     if (place != null) widget.onNavigate(place);
   }
@@ -200,7 +198,7 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                hintText: searchHintFor(_base) ?? 'URI を入力',
+                hintText: searchHintFor(_uri) ?? 'URI を入力',
                 hintStyle: const TextStyle(fontSize: 13),
               ),
               textInputAction: TextInputAction.go,
@@ -209,7 +207,8 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
           ),
           // Only while a search is being typed: on a tab that cannot search,
           // or one just being read, these would be switches for nothing.
-          for (final option in searchOptionsFor(_base)) _buildOption(option),
+          for (final option in searchOptionsFor(_pendingSearch))
+            _buildOption(option),
         ],
       ),
     );

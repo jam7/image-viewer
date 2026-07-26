@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/cache/cache_manager.dart';
 import '../../services/favorites/favorites_store.dart';
@@ -211,6 +212,11 @@ class GalleryTabsScreen extends StatelessWidget {
         ],
         [
           ToolbarMenuItem(
+            label: 'アドレスをコピー',
+            icon: Icons.link,
+            onSelected: () => _copyAddress(context, tab),
+          ),
+          ToolbarMenuItem(
             label: '再読み込み',
             icon: Icons.refresh,
             onSelected: () => _reload(tab),
@@ -222,6 +228,23 @@ class GalleryTabsScreen extends StatelessWidget {
           ),
         ],
       ];
+
+  /// Take this place with you — into another tab, a note, a message.
+  ///
+  /// Its own entry rather than a side effect of tapping the window: editing
+  /// where you are and carrying it elsewhere are different errands, and the
+  /// window now offers whichever of the two is worth typing over (the search
+  /// word, usually), which is not always something that can be pasted back.
+  /// Copied raw, so it always reads back as this exact place.
+  void _copyAddress(BuildContext context, GalleryTab tab) {
+    Clipboard.setData(ClipboardData(text: '${tab.current.sourceUri}'));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('アドレスをコピーしました'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
 
   /// Read this place again from its source. A fresh session on the same URI,
   /// keeping the scroll anchor: the reader is looking at the same list, not
