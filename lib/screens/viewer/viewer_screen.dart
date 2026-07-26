@@ -255,6 +255,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
           });
         }
       }
+    } on NotAnItemException catch (e) {
+      // Reading it is how we found out, because a plain image resolves to a
+      // single page without touching the network. Same answer as in
+      // [_openItem]: the caller goes to the listing (ADR 010).
+      _log.info('not an item: ${e.path}');
+      widget.onNotAnItem?.call();
     } catch (e, st) {
       _log.warning('loadFullImage error (${image.name})', e, st);
     } finally {
