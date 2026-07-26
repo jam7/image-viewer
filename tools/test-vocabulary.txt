@@ -99,6 +99,11 @@ test-user
 # whole label has to be allowed as well -- hence the alternation below.
 部分
 古い順
+# The same switches as they read in the window, including the default side
+# (gallery_uri_dialect.dart searchOptions).
+完全
+新着
+トップ
 ~^[^\n]*(お気に入り|サービス|サーバー|ライブラリ|ブックマーク|設定|ホーム|再読み込み|の作品|部分|古い順|見つかりませんでした|新しいタブで開きました)[^\n]*$
 
 # -- documentation examples -------------------------------------------------

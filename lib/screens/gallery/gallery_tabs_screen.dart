@@ -12,6 +12,7 @@ import 'gallery_tab.dart';
 import 'gallery_tab_controller.dart';
 import 'gallery_tab_opener.dart';
 import 'gallery_uri.dart';
+import 'gallery_uri_dialect.dart';
 import 'home_gallery_body.dart';
 import 'pixiv_gallery_body.dart';
 import 'smb_gallery_body.dart';
@@ -187,24 +188,39 @@ class GalleryTabsScreen extends StatelessWidget {
         // Typed in rather than followed from a link, so nothing is known about
         // the destination but its address; the name comes from getting there.
         onNavigate: (uri) => _goTo(context, tab, uri, ''),
-        menuItems: _menuItems(context, tab),
+        menuGroups: _menuGroups(context, tab),
       ),
     );
   }
 
-  /// The hamburger: this tab's own places on top (2C-3 moves the Pixiv
-  /// sections here), operations on the whole app below.
-  List<ToolbarMenuItem> _menuItems(BuildContext context, GalleryTab tab) => [
-        ToolbarMenuItem(
-          label: '再読み込み',
-          icon: Icons.refresh,
-          onSelected: () => _reload(tab),
-        ),
-        ToolbarMenuItem(
-          label: '設定',
-          icon: Icons.settings,
-          onSelected: () => _openSettings(context),
-        ),
+  /// The hamburger: this tab's own places on top, operations on the whole app
+  /// below. Which places those are is the source's business, so it comes from
+  /// the URI dialect rather than from a scheme test here.
+  ///
+  /// `+` stays what it was — open a *new* tab — so the two never overlap.
+  List<List<ToolbarMenuItem>> _menuGroups(
+          BuildContext context, GalleryTab tab) =>
+      [
+        [
+          for (final place in sectionsOf(tab.current.sourceUri))
+            ToolbarMenuItem(
+              label: place.label,
+              icon: Icons.chevron_right,
+              onSelected: () => _goTo(context, tab, place.uri, ''),
+            ),
+        ],
+        [
+          ToolbarMenuItem(
+            label: '再読み込み',
+            icon: Icons.refresh,
+            onSelected: () => _reload(tab),
+          ),
+          ToolbarMenuItem(
+            label: '設定',
+            icon: Icons.settings,
+            onSelected: () => _openSettings(context),
+          ),
+        ],
       ];
 
   /// Read this place again from its source. A fresh session on the same URI,

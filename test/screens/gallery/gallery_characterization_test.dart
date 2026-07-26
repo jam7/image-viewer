@@ -550,38 +550,8 @@ void main() {
           registry: registry,
         );
 
-    testWidgets('the section menu reaches bookmarks', (tester) async {
-      // Fixed label: the tab chip already says which page this is.
-      final tab = GalleryTab(GallerySession.fromUri(
-        pixivGalleryUri('/top'),
-        provider: _FakePixivSource(const []),
-        cacheManager: cacheManager,
-        title: 'Pixiv',
-      ));
-      await pumpHome(
-        tester,
-        PixivGalleryBody(
-          tab: tab,
-          onOpenInNewTab: (s) => openedInNewTab.add(s),
-          cacheManager: cacheManager,
-          favoritesStore: favoritesStore,
-          registry: registry,
-        ),
-      );
-
-      expect(find.text('Pixiv'), findsOneWidget);
-
-      await tester.tap(find.text('Pixiv'));
-      await tester.pumpAndSettle();
-      expect(find.text('ブックマーク'), findsOneWidget);
-      // Cross-source favorites are not a Pixiv page; they belong to the + menu.
-      expect(find.text('お気に入り'), findsNothing);
-
-      await tester.tap(find.text('ブックマーク'));
-      await tester.pumpAndSettle();
-
-      expect(pixivPathOf(tab.current.sourceUri), '/bookmarks');
-    });
+    // The section menu used to live in this body's own header. It is the
+    // toolbar's hamburger now (2C-3), and is characterized there instead.
 
     testWidgets('empty result shows the not-found message', (tester) async {
       await pumpHome(tester, build(_FakePixivSource(const [])));

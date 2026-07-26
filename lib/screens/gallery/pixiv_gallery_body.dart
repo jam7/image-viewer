@@ -41,17 +41,11 @@ class PixivGalleryBody extends StatefulWidget {
 }
 
 class _PixivGalleryBodyState extends State<PixivGalleryBody> {
-  final _searchController = TextEditingController();
   final _filterController = TextEditingController();
   /// Lets the filter ask the view to top up when it narrows the list, and the
   /// back affordances route through the view's history-aware handler.
   final _viewKey = GlobalKey<GalleryViewState>();
   int _minPageCount = 0;
-
-  // Search options (session-only). Apply to tag searches. 2C-3 moves these
-  // into the toolbar's window; the values themselves live in the URI already.
-  String _searchMode = pixivDefaultSearchMode;
-  String _searchOrder = pixivDefaultSearchOrder;
 
   // Sections, searches and author pages are entries in the tab's history
   // rather than separate screens (ADR 008).
@@ -61,8 +55,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
 
   /// Where the tab currently is, which is what the URI of its entry says.
   String get _path => pixivPathOf(_session.sourceUri);
-
-  bool get _isSearchPage => _path.startsWith('/search');
 
   /// Items shown in the grid: loaded items minus the page-count (`>N`) filter.
   List<ImageSource> get _visibleItems => _filterImages(_session.loaded);
@@ -108,6 +100,11 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   void _openTagSearchAlongside(String tag) =>
       widget.onOpenInNewTab(_sessionFor(_searchPathFor(tag)));
 
+  /// A tag search as issued from where this tab is, so a search being refined
+  /// keeps its 完全一致 / 並び順. The Pixiv dialect always has an answer.
+  String _searchPathFor(String tag) =>
+      pixivPathOf(searchFrom(_session.sourceUri, tag)!);
+
   /// Run [action] once the viewer's pop has settled; navigating mid-pop fights
   /// the route transition.
   void _afterViewer(VoidCallback action) {
@@ -116,104 +113,16 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     });
   }
 
-  /// A search path carrying the current tag-match / order toggles. The query's
-  /// shape belongs to the Pixiv URI dialect, which is also what reads it back.
-  String _searchPathFor(String word) => pixivPathOf(
-      pixivSearchUri(word, mode: _searchMode, order: _searchOrder));
-
   @override
   void initState() {
     super.initState();
-    // Reflect how the tab's current search was issued, so the toggles agree
-    // with the results on screen.
-    if (_isSearchPage) {
-      final q = Uri.parse('https://dummy$_path').queryParameters;
-      _searchController.text = q['word'] ?? '';
-      _searchMode = q['s_mode'] ?? _searchMode;
-      _searchOrder = q['order'] ?? _searchOrder;
-    }
     _log.info('initState: path=$_path, tab=${_tab.id}');
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
     _filterController.dispose();
     super.dispose();
-  }
-
-  /// Pixiv URLを解析して内部パスに変換。
-  /// - https://www.pixiv.net/artworks/12345 → 作品を直接開く
-  /// - https://www.pixiv.net/ajax/illust/12345/pages → 作品を直接開く
-  /// - https://www.pixiv.net/users/12345 → /user/12345
-  String? _parsePixivUrl(String input) {
-    final uri = Uri.tryParse(input);
-    if (uri == null || !uri.host.contains('pixiv.net')) return null;
-
-    // /artworks/{id}
-    final artworkMatch = RegExp(r'/artworks/(\d+)').firstMatch(uri.path);
-    if (artworkMatch != null) {
-      return '/artworks/${artworkMatch.group(1)}';
-    }
-
-    // /ajax/illust/{id}/pages or /ajax/illust/{id}
-    final ajaxMatch = RegExp(r'/ajax/illust/(\d+)').firstMatch(uri.path);
-    if (ajaxMatch != null) {
-      return '/artworks/${ajaxMatch.group(1)}';
-    }
-
-    // /users/{id}
-    final userMatch = RegExp(r'/users/(\d+)').firstMatch(uri.path);
-    if (userMatch != null) {
-      return '/user/${userMatch.group(1)}';
-    }
-
-    return null;
-  }
-
-  /// Reload the same place (search options changed, favorites edited). Not a
-  /// navigation, so it swaps the history entry rather than adding one. The view
-  /// reloads when it sees the new session.
-  void _reload() {
-    final path = _isSearchPage
-        ? _searchPathFor(
-            Uri.parse('https://dummy$_path').queryParameters['word'] ?? '')
-        : _path;
-    setState(() => _tab.replaceCurrent(_sessionFor(path)));
-  }
-
-
-
-  void _onSearch() {
-    final input = _searchController.text.trim();
-    final parsed = _parsePixivUrl(input);
-
-    // /artworks/{id}: open viewer directly
-    if (parsed != null && parsed.startsWith('/artworks/')) {
-      final id = parsed.substring('/artworks/'.length);
-      final source = ImageSource(
-        id: id,
-        name: 'Artwork $id',
-        uri: '',
-        type: ImageSourceType.pixiv,
-        sourceKey: 'pixiv:default',
-        metadata: {'illustId': int.parse(id)},
-      );
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ViewerScreen(
-          items: [source],
-          registry: widget.registry,
-          cacheManager: widget.cacheManager,
-          favoritesStore: widget.favoritesStore,
-          onOpenAuthorInNewTab: _openAuthorAlongside,
-          onOpenTagSearchInNewTab: _openTagSearchAlongside,
-        ),
-      ));
-      return;
-    }
-
-    // Otherwise go to the results within this tab, carrying the options.
-    _navigate(parsed ?? _searchPathFor(input));
   }
 
   void _openViewer(int index) async {
@@ -240,10 +149,7 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
       _afterViewer(() => _navigate('/user/$userId', authorName: userName));
     } else if (result != null && result['action'] == 'searchTag') {
       final tag = result['tag'] as String;
-      _afterViewer(() {
-        _searchController.text = tag;
-        _navigate(_searchPathFor(tag));
-      });
+      _afterViewer(() => _navigate(_searchPathFor(tag)));
     }
   }
 
@@ -260,47 +166,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
           ? pixivAuthorTitle(authorName)
           : '';
 
-  /// A way to jump elsewhere in Pixiv. Labelled rather than a bare icon, which
-  /// nobody found — but with a fixed label, since the tab chip already says
-  /// which page this is and repeating it here only costs width.
-  Widget _buildSectionMenu() {
-    return PopupMenuButton<String>(
-      tooltip: 'Pixiv のページ',
-      onSelected: _navigate,
-      itemBuilder: (_) => const [
-        PopupMenuItem(value: '/top', child: Text('トップ')),
-        PopupMenuItem(value: '/bookmarks', child: Text('ブックマーク')),
-      ],
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 48),
-        padding: const EdgeInsets.only(left: 10),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Pixiv', style: TextStyle(fontWeight: FontWeight.w600)),
-            Icon(Icons.arrow_drop_down),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Cycle the tag-match mode (完全 <-> 部分). Reloads if on a search page.
-  void _toggleSearchMode() {
-    setState(() {
-      _searchMode = _searchMode == 's_tag_full' ? 's_tag' : 's_tag_full';
-    });
-    if (_isSearchPage) _reload();
-  }
-
-  /// Cycle the order (新着 <-> 古い順). Reloads if on a search page.
-  void _toggleSearchOrder() {
-    setState(() {
-      _searchOrder = _searchOrder == 'date_d' ? 'date' : 'date_d';
-    });
-    if (_isSearchPage) _reload();
-  }
-
   /// Re-apply the page-count (`>N`) filter to the already-loaded items. It is a
   /// display-only filter, so no refetch — but load more if the view got short.
   void _onFilterChanged() {
@@ -308,34 +173,15 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     _viewKey.currentState?.fillViewport();
   }
 
+  /// All that is left of this body's own header: the page-count filter, still
+  /// waiting for the button-and-badge it becomes in 2C-4. Search, its options
+  /// and the section menu all moved up into the toolbar (ADR 009), where they
+  /// work the same way for every source.
   Widget _buildFilterBar() {
-    final optionButtonStyle = OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      minimumSize: const Size(0, 48),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Row(
         children: [
-          _buildSectionMenu(),
-          const SizedBox(width: 4),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'タグ or URL...',
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _onSearch,
-                ),
-                border: const OutlineInputBorder(),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-              onSubmitted: (_) => _onSearch(),
-            ),
-          ),
-          const SizedBox(width: 8),
           SizedBox(
             width: 60,
             child: TextField(
@@ -347,18 +193,6 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
               ),
               onSubmitted: (_) => _onFilterChanged(),
             ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: _toggleSearchMode,
-            style: optionButtonStyle,
-            child: Text(_searchMode == 's_tag_full' ? '完全' : '部分'),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: _toggleSearchOrder,
-            style: optionButtonStyle,
-            child: Text(_searchOrder == 'date_d' ? '新着' : '古い順'),
           ),
         ],
       ),

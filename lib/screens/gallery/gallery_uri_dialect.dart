@@ -15,6 +15,16 @@ import 'gallery_uri.dart';
 /// still has a name. Anything that needs a lookup — an author's name, a
 /// server's nickname — belongs on `GallerySession.title`, which wins over
 /// [describe] wherever both exist (see [placeTitle]).
+/// Somewhere this source offers to go, for a menu: what to call it and where
+/// it is.
+typedef PlaceLink = ({String label, Uri uri});
+
+/// A switch that rides along with a search: how it reads right now, and the
+/// address it becomes when pressed. The caller shows [label] and, on a tap,
+/// carries on from [next] — it never has to know what the switch is called in
+/// the source's own query.
+typedef SearchOption = ({String label, Uri next});
+
 abstract class GalleryUriDialect {
   const GalleryUriDialect();
 
@@ -32,9 +42,17 @@ abstract class GalleryUriDialect {
   /// here and not in the session.
   String? titleFrom(Uri uri, List<ImageSource> items) => null;
 
+  /// The source's own sections — the places it offers to jump to from
+  /// anywhere in it. Empty for a source that is a single place.
+  List<PlaceLink> get sections => const [];
+
   /// What the address field invites when this source can be searched, e.g.
   /// 'タグ検索'. Null means it cannot, and [search] then returns null too.
   String? get searchHint => null;
+
+  /// The switches to offer beside a search being typed at [from]. Empty for a
+  /// source whose search has no options — and for one with no search at all.
+  List<SearchOption> searchOptions(Uri from) => const [];
 
   /// Where [query] leads, for a reader standing on [from]. Null if this source
   /// has no search.
@@ -75,6 +93,14 @@ Uri? searchFrom(Uri from, String query) =>
 
 /// See [GalleryUriDialect.searchHint].
 String? searchHintFor(Uri uri) => _dialects[uri.scheme]?.searchHint;
+
+/// See [GalleryUriDialect.sections].
+List<PlaceLink> sectionsOf(Uri uri) =>
+    _dialects[uri.scheme]?.sections ?? const [];
+
+/// See [GalleryUriDialect.searchOptions].
+List<SearchOption> searchOptionsFor(Uri uri) =>
+    _dialects[uri.scheme]?.searchOptions(uri) ?? const [];
 
 /// See [GalleryUriDialect.titleFrom].
 String? titleFromItems(Uri uri, List<ImageSource> items) =>
@@ -144,16 +170,59 @@ class _PixivDialect extends GalleryUriDialect {
   }
 
   @override
+  List<PlaceLink> get sections => [
+        (label: 'トップ', uri: pixivGalleryUri('/top')),
+        (label: 'ブックマーク', uri: pixivGalleryUri('/bookmarks')),
+      ];
+
+  @override
   String? get searchHint => 'タグ検索 または URI';
 
   /// Only a search page carries these, so refining a query keeps 完全一致 /
   /// 並び順 while searching from anywhere else starts from the defaults.
   @override
-  Uri? search(Uri from, String query) => pixivSearchUri(
+  Uri? search(Uri from, String query) =>
+      _pastedPlace(query) ??
+      pixivSearchUri(
         query,
         mode: from.queryParameters['s_mode'],
         order: from.queryParameters['order'],
       );
+
+  /// A pixiv.net address pasted into the field, as the place it names.
+  ///
+  /// Only an author's page: a single work is not a place this app can be at,
+  /// which is a gap the viewer will close when it becomes a tab of its own.
+  Uri? _pastedPlace(String query) {
+    final uri = Uri.tryParse(query);
+    if (uri == null || !uri.host.endsWith('pixiv.net')) return null;
+    final user = RegExp(r'/users/(\d+)').firstMatch(uri.path);
+    return user == null ? null : pixivGalleryUri('/user/${user.group(1)}');
+  }
+
+  /// The switches, read off the address and handed back with the address they
+  /// lead to. Pressing one rewrites where we are, because that is where the
+  /// options live — they travel in the query, not beside it.
+  @override
+  List<SearchOption> searchOptions(Uri from) {
+    final mode = from.queryParameters['s_mode'] ?? pixivDefaultSearchMode;
+    final order = from.queryParameters['order'] ?? pixivDefaultSearchOrder;
+    final full = mode == 's_tag_full';
+    final newest = order == 'date_d';
+    return [
+      (
+        label: full ? '完全' : '部分',
+        next: _withQuery(from, 's_mode', full ? 's_tag' : 's_tag_full'),
+      ),
+      (
+        label: newest ? '新着' : '古い順',
+        next: _withQuery(from, 'order', newest ? 'date' : 'date_d'),
+      ),
+    ];
+  }
+
+  static Uri _withQuery(Uri uri, String key, String value) =>
+      uri.replace(queryParameters: {...uri.queryParameters, key: value});
 }
 
 class _SmbDialect extends GalleryUriDialect {

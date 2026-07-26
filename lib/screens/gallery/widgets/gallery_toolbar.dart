@@ -33,13 +33,16 @@ class GalleryToolbar extends StatefulWidget {
 
   final GalleryTab tab;
   final ValueChanged<Uri> onNavigate;
-  final List<ToolbarMenuItem> menuItems;
+
+  /// The menu, in groups shown with a rule between them: this tab's own places
+  /// on top, what to do with the app below. Empty groups are left out.
+  final List<List<ToolbarMenuItem>> menuGroups;
 
   const GalleryToolbar({
     super.key,
     required this.tab,
     required this.onNavigate,
-    this.menuItems = const [],
+    this.menuGroups = const [],
   });
 
   @override
@@ -50,6 +53,11 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   bool _editing = false;
+
+  /// Where the edit started from, carrying any switches flipped since. A search
+  /// typed into the field is issued from here rather than from the tab, so the
+  /// options are the ones on screen.
+  late Uri _base;
 
   Uri get _uri => widget.tab.current.sourceUri;
 
@@ -77,12 +85,25 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   /// the thing worth copying, and copying it needs no feature of ours beyond
   /// having put it somewhere selectable.
   void _beginEditing() {
-    final address = '$_uri';
+    _base = _uri;
+    final address = '$_base';
     _controller.value = TextEditingValue(
       text: address,
       selection: TextSelection(baseOffset: 0, extentOffset: address.length),
     );
     setState(() => _editing = true);
+  }
+
+  /// Flip one of the search switches. The address is where the options live, so
+  /// the field is rewritten to match — unless a word has been typed over it, in
+  /// which case the new options are simply what that word will be searched with.
+  void _applyOption(SearchOption option) {
+    setState(() => _base = option.next);
+    if (parsePlace(_controller.text) == null) return;
+    _controller.value = TextEditingValue(
+      text: '$_base',
+      selection: TextSelection.collapsed(offset: '$_base'.length),
+    );
   }
 
   void _endEditing() {
@@ -101,7 +122,7 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   /// is a search of the source we are on. A source with no search drops it,
   /// which the hint text warned about before a key was pressed.
   void _submit(String text) {
-    final place = parsePlace(text) ?? searchFrom(_uri, text.trim());
+    final place = parsePlace(text) ?? searchFrom(_base, text.trim());
     _endEditing();
     if (place != null) widget.onNavigate(place);
   }
@@ -128,7 +149,7 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
               onPressed: tab.canGoForward ? tab.forward : null,
             ),
             Expanded(child: _buildAddressField(context)),
-            if (widget.menuItems.isEmpty)
+            if (_menuEntries().isEmpty)
               const SizedBox(width: 8)
             else
               _buildMenuButton(),
@@ -167,22 +188,63 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
   Widget _buildEditor() {
     return CallbackShortcuts(
       bindings: {const SingleActivator(LogicalKeyboardKey.escape): _endEditing},
-      child: TextField(
-        controller: _controller,
-        focusNode: _focus,
-        autofocus: true,
-        style: const TextStyle(fontSize: 13),
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-          hintText: searchHintFor(_uri) ?? 'URI を入力',
-          hintStyle: const TextStyle(fontSize: 13),
-        ),
-        textInputAction: TextInputAction.go,
-        onSubmitted: _submit,
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focus,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                hintText: searchHintFor(_base) ?? 'URI を入力',
+                hintStyle: const TextStyle(fontSize: 13),
+              ),
+              textInputAction: TextInputAction.go,
+              onSubmitted: _submit,
+            ),
+          ),
+          // Only while a search is being typed: on a tab that cannot search,
+          // or one just being read, these would be switches for nothing.
+          for (final option in searchOptionsFor(_base)) _buildOption(option),
+        ],
       ),
     );
+  }
+
+  Widget _buildOption(SearchOption option) {
+    return InkWell(
+      onTap: () => _applyOption(option),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(option.label, style: const TextStyle(fontSize: 11)),
+      ),
+    );
+  }
+
+  /// The menu, with a rule wherever one group of entries gives way to the next.
+  List<PopupMenuEntry<ToolbarMenuItem>> _menuEntries() {
+    final entries = <PopupMenuEntry<ToolbarMenuItem>>[];
+    for (final group in widget.menuGroups.where((g) => g.isNotEmpty)) {
+      if (entries.isNotEmpty) entries.add(const PopupMenuDivider());
+      for (final item in group) {
+        entries.add(PopupMenuItem(
+          value: item,
+          child: Row(
+            children: [
+              Icon(item.icon, size: 20),
+              const SizedBox(width: 12),
+              Text(item.label),
+            ],
+          ),
+        ));
+      }
+    }
+    return entries;
   }
 
   Widget _buildMenuButton() {
@@ -190,19 +252,7 @@ class _GalleryToolbarState extends State<GalleryToolbar> {
       icon: const Icon(Icons.menu, size: 20),
       tooltip: 'メニュー',
       onSelected: (item) => item.onSelected(),
-      itemBuilder: (_) => [
-        for (final item in widget.menuItems)
-          PopupMenuItem(
-            value: item,
-            child: Row(
-              children: [
-                Icon(item.icon, size: 20),
-                const SizedBox(width: 12),
-                Text(item.label),
-              ],
-            ),
-          ),
-      ],
+      itemBuilder: (_) => _menuEntries(),
     );
   }
 }

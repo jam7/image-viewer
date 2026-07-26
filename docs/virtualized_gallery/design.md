@@ -268,9 +268,12 @@ scheme ごとの規則を `lib/screens/gallery/gallery_uri_dialect.dart` に置�
 
 ```dart
 abstract class GalleryUriDialect {
-  String describe(Uri uri);              // 人に見せる文字列
-  String? get searchHint;                // null = このソースに検索は無い
-  Uri? search(Uri from, String query);   // from = 今いる場所
+  String describe(Uri uri);                          // 人に見せる文字列
+  String? titleFrom(Uri uri, List<ImageSource> it);  // 中身から分かる名前
+  List<PlaceLink> get sections;                      // ☰ 上段に出す行き先
+  String? get searchHint;                            // null = 検索は無い
+  Uri? search(Uri from, String query);               // from = 今いる場所
+  List<SearchOption> searchOptions(Uri from);        // 窓の中のトグル
 }
 ```
 
@@ -314,6 +317,12 @@ abstract class GalleryUriDialect {
 小さいトグルとして出す。常設すると、検索の無いタブ (SMB・お気に入り・ホーム) で
 意味を持たないボタンが並ぶか、タブごとに出たり消えたりして段が落ち着かない。
 
+トグルの中身は `searchOptions(from)` が返す `(label, next)` の組で、ウィジェットは
+`s_mode` という名前を知らない。**押すとアドレス側が書き換わる** — オプションは
+クエリに乗っているので、アドレスこそが状態だから。窓に語を打ち込み済みのときは
+上書きせず、その語を検索するときのオプションとして効く。結果として「トグル →
+Enter で再検索」となり、2C-3 以前の「トグルで即再読み込み」とほぼ同じ操作感になる。
+
 #### ページ数フィルタ — 一覧に付随 (検索オプションとは性質が違う)
 
 「N 枚以上の作品だけ表示」は検索オプションに似て見えるが、**表示フィルタ**
@@ -351,6 +360,13 @@ abstract class GalleryUriDialect {
 #### 残る検討
 
 - 履歴一覧 (数段飛ばしの戻り)。← の長押しか ☰ 内。今回は配線しない
+- **作品 URL の貼り付け**。2C-3 以前は Pixiv の検索欄が
+  `pixiv.net/artworks/<id>` を解釈してビューアを直接開いていた。作者 URL
+  (`/users/<id>`) は場所なので窓に移したが、作品は**この app が「居られる」
+  場所ではない**ので移し先が無く、落とした。繋ぎを作らなかったのは、
+  ビューアをタブ化すれば `pixiv://default/artworks/<id>` が場所として成立し、
+  ただで戻ってくるから。ビューアのタブ化は「リストの中の位置」を履歴エントリに
+  どう載せるかという別の設計判断 (ADR 008 の拡張) なので、独立した題材として扱う
 
 ## 既存部品の位置づけ (再利用)
 

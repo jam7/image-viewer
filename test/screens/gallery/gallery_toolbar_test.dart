@@ -242,6 +242,61 @@ void main() {
     expect(controller.active!.history.length, 1);
   });
 
+  testWidgets("the menu carries the source's own sections", (tester) async {
+    // They were in the Pixiv body's header until 2C-3. Up here they work the
+    // same for every source, and the body no longer needs a header at all.
+    await pumpHost(tester);
+    await goSomewhere(tester); // to Pixiv
+
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pumpAndSettle();
+    expect(find.text('ブックマーク'), findsOneWidget);
+    // Cross-source favorites are not a Pixiv section; they are a `+` entry.
+    expect(find.text('お気に入り'), findsNothing);
+    await tester.tap(find.text('ブックマーク'));
+    await tester.pumpAndSettle();
+
+    expect(controller.active!.current.sourceUri.path, '/bookmarks');
+    expect(controller.active!.history.length, 3); // pushed, not a new tab
+  });
+
+  testWidgets('a source with no sections gets only the common entries',
+      (tester) async {
+    await pumpHost(tester); // home
+
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ブックマーク'), findsNothing);
+    expect(find.text('再読み込み'), findsOneWidget);
+  });
+
+  testWidgets('the search switches show while typing, and travel', (tester) async {
+    // The switch reads off the address and writes back to it, so pressing one
+    // then submitting re-runs the search the other way round.
+    await pumpHost(tester);
+    await goSomewhere(tester);
+    await startTyping(tester, 'Pixiv');
+    expect(inToolbar(find.text('完全')), findsOneWidget);
+
+    await tester.tap(inToolbar(find.text('完全')));
+    await tester.pumpAndSettle();
+    expect(inToolbar(find.text('部分')), findsOneWidget); // now reads the new way
+
+    await submit(tester, 'books');
+
+    expect(controller.active!.current.sourceUri.queryParameters['s_mode'],
+        's_tag');
+  });
+
+  testWidgets('no switches where there is no search', (tester) async {
+    await pumpHost(tester); // home cannot be searched
+
+    await startTyping(tester, 'ホーム');
+
+    expect(inToolbar(find.text('完全')), findsNothing);
+  });
+
   testWidgets('the menu reloads the place without leaving it', (tester) async {
     await pumpHost(tester);
     await goSomewhere(tester);
