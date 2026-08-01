@@ -94,7 +94,6 @@ class GalleryViewState extends State<GalleryView> {
   void initState() {
     super.initState();
     _shown = widget.tab.current;
-    _shown.onChanged = _repaint;
     _log.info('view for tab=${widget.tab.id} '
         'index=${widget.tab.index}/${widget.tab.history.length} '
         'at=${_shown.sourceUri}');
@@ -115,7 +114,7 @@ class GalleryViewState extends State<GalleryView> {
   /// nothing about how far. The width is the screen's rather than the grid's,
   /// which puts the band off by a fraction of a row at most — it is a band, not
   /// a boundary.
-  void _wantThumbnails() {
+  void _wantThumbnails({bool evenIfUnmoved = false}) {
     if (!mounted || !_scrollController.hasClients) return;
     final items = _shown.visibleItems;
     if (items.isEmpty) return;
@@ -123,6 +122,11 @@ class GalleryViewState extends State<GalleryView> {
     if (stride <= 0) return;
     final position = _scrollController.position;
     final firstRow = (position.pixels / stride).floor();
+    // A scroll reports many times within one row, and the band is the same
+    // band throughout. Asking again would walk eighty items to be told
+    // eighty times that they are already held.
+    if (!evenIfUnmoved && firstRow == _bandFromRow) return;
+    _bandFromRow = firstRow;
     final rows = (position.viewportDimension / stride).ceil() + 1;
     int at(int row) =>
         (row * galleryCrossAxisCount).clamp(0, items.length).toInt();
@@ -138,14 +142,15 @@ class GalleryViewState extends State<GalleryView> {
   /// The same, once there is a viewport to measure. A place opens with no
   /// scroll position at all, and the first band is the one that matters most.
   void _wantThumbnailsAfterLayout() {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _wantThumbnails());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _wantThumbnails(evenIfUnmoved: true),
+    );
   }
 
-  /// Repaint for something the session did — a thumbnail arriving. Installed on
-  /// whichever session is on screen, so it does not matter who created it.
-  void _repaint() {
-    if (mounted) setState(() {});
-  }
+  /// The row the last band was worked out from; -1 for "there has not been
+  /// one". Reset whenever the list itself changes, since the same row then
+  /// covers different items.
+  int _bandFromRow = -1;
 
   @override
   void didChangeDependencies() {
@@ -190,11 +195,10 @@ class GalleryViewState extends State<GalleryView> {
   /// place. Hand the thumbnails over, and fetch only if the new entry has never
   /// loaded — revisiting one from the history must not append another page.
   void _onSessionChanged() {
-    _shown.onChanged = null;
     _shown.detach();
     _shown = widget.tab.current;
-    _shown.onChanged = _repaint;
     _error = null;
+    _bandFromRow = -1;
     _wantThumbnailsAfterLayout();
     // A load still running for the place we just left no longer owns this flag;
     // leaving it set would block the new entry from ever loading, and leave a
@@ -225,20 +229,13 @@ class GalleryViewState extends State<GalleryView> {
 
   @override
   void dispose() {
-    // Only if it is still ours. Navigating across sources within one tab swaps
-    // the whole body (fav:// to pixiv:// picks a different widget), and Flutter
-    // builds the replacement before unmounting this one — so the session may
-    // already be reporting to the new view, and clearing it here would leave
-    // that view without repaints as its thumbnails arrive.
-    if (_shown.onChanged == _repaint) _shown.onChanged = null;
     _scrollController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
-  /// Append the next page (the first one initially) and dispatch its thumbnail
-  /// batch. A no-op once the source reports no more pages, so it is safe to
-  /// call from the scroll trigger.
+  /// Append the next page (the first one initially). A no-op once the source
+  /// reports no more pages, so it is safe to call from the scroll trigger.
   Future<void> loadNextPage() async {
     if (!mounted || _isLoading) return;
     // Pinned for the whole call: the tab can move somewhere else mid-fetch, and
@@ -254,7 +251,7 @@ class GalleryViewState extends State<GalleryView> {
       if (!mounted || session != _shown) return;
       setState(() => _isLoading = false);
       widget.onItemsChanged?.call();
-      _wantThumbnails();
+      _wantThumbnails(evenIfUnmoved: true);
       fillViewport();
     } catch (e, st) {
       _log.warning('page load failed: ${session.sourceUri}', e, st);

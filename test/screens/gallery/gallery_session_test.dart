@@ -41,13 +41,11 @@ void main() {
         metadata: {'isDirectory': dir},
       );
 
-  GallerySession session(_FakePagedSource source, {void Function()? onChanged}) {
-    return GallerySession(
-      sourceUri: Uri.parse('test://x'),
-      provider: source,
-      cacheManager: cache,
-    )..onChanged = onChanged;
-  }
+  GallerySession session(_FakePagedSource source) => GallerySession(
+    sourceUri: Uri.parse('test://x'),
+    provider: source,
+    cacheManager: cache,
+  );
 
   test('finite source: one page, hasMore becomes false', () async {
     final t = session(_FakePagedSource([

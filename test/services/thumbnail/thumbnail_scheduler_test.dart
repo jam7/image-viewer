@@ -65,23 +65,27 @@ void main() {
     metadata: const {'isDirectory': true},
   );
 
-  ({ThumbnailScheduler scheduler, List<String> answered}) schedulerFor(
+  ThumbnailScheduler schedulerFor(
     _FakeShare share, {
     int lanes = 8,
     int fetchLanes = 5,
-  }) {
-    final answered = <String>[];
-    return (
-      scheduler: ThumbnailScheduler(
-        cache: cache,
-        pool: pool,
-        source: share,
-        onResult: (id, _) => answered.add(id),
-        lanes: lanes,
-        fetchLanes: fetchLanes,
-      ),
-      answered: answered,
-    );
+  }) => ThumbnailScheduler(
+    cache: cache,
+    pool: pool,
+    source: share,
+    lanes: lanes,
+    fetchLanes: fetchLanes,
+  );
+
+  /// Every id the pool told a watcher about. How an answer reaches a tile now
+  /// (ADR 011 段階 3): the pool is written and the watchers of that one id are
+  /// told, rather than the whole grid being asked to paint again.
+  List<String> watch(List<String> ids) {
+    final told = <String>[];
+    for (final id in ids) {
+      pool.watch(id, () => told.add(id));
+    }
+    return told;
   }
 
   /// Let the queue drain. Real time, because storing a thumbnail writes a file.
@@ -89,14 +93,15 @@ void main() {
 
   test('what is asked for is fetched, kept, and reported', () async {
     final share = _FakeShare();
-    final (:scheduler, :answered) = schedulerFor(share);
+    final scheduler = schedulerFor(share);
+    final told = watch(['a']);
 
     scheduler.want(picture('a'));
     await drain();
 
     expect(share.fetched, ['a']);
     expect(pool.get('a'), isA<ThumbnailData>());
-    expect(answered, ['a']);
+    expect(told, ['a']);
     // And it is on the disk for the next run of the app.
     expect(await cache.get('thumb:a'), isNotNull);
   });
@@ -104,18 +109,19 @@ void main() {
   test('what the cache already has is not fetched', () async {
     await cache.l2.put('thumb:a', Uint8List.fromList([1, 2, 3]));
     final share = _FakeShare();
-    final (:scheduler, :answered) = schedulerFor(share);
+    final scheduler = schedulerFor(share);
+    final told = watch(['a']);
 
     scheduler.want(picture('a'));
     await drain();
 
     expect(share.fetched, isEmpty);
-    expect(answered, ['a']);
+    expect(told, ['a']);
   });
 
   test('asking twice for the same thing does the work once', () async {
     final share = _FakeShare();
-    final (:scheduler, :answered) = schedulerFor(share);
+    final scheduler = schedulerFor(share);
 
     scheduler.want(picture('a'));
     scheduler.want(picture('a'), distance: 2);
@@ -128,7 +134,7 @@ void main() {
 
   test('a folder is never asked about', () async {
     final share = _FakeShare();
-    final scheduler = schedulerFor(share).scheduler;
+    final scheduler = schedulerFor(share);
 
     scheduler.want(folder('books'));
     await drain();
@@ -141,7 +147,7 @@ void main() {
     // A whole band is asked for in one go and starts once, after it: the far
     // one asked for first does not get a head start on the visible one.
     final share = _FakeShare(hold: true);
-    final scheduler = schedulerFor(share, lanes: 1).scheduler;
+    final scheduler = schedulerFor(share, lanes: 1);
 
     scheduler.want(picture('far'), distance: 5);
     scheduler.want(picture('near'), distance: 0);
@@ -156,7 +162,7 @@ void main() {
 
   test('films wait for the pictures, and for each other', () async {
     final share = _FakeShare(hold: true);
-    final scheduler = schedulerFor(share, lanes: 8).scheduler;
+    final scheduler = schedulerFor(share, lanes: 8);
 
     for (var i = 0; i < 3; i++) {
       scheduler.want(picture('p$i'));
@@ -176,7 +182,7 @@ void main() {
 
   test('no more than the fetch lanes are at the share at once', () async {
     final share = _FakeShare(hold: true);
-    final scheduler = schedulerFor(share, lanes: 8, fetchLanes: 2).scheduler;
+    final scheduler = schedulerFor(share, lanes: 8, fetchLanes: 2);
 
     for (var i = 0; i < 6; i++) {
       scheduler.want(picture('p$i'));
@@ -191,7 +197,7 @@ void main() {
 
   test('a view going away stops what has not started', () async {
     final share = _FakeShare(hold: true);
-    final (:scheduler, :answered) = schedulerFor(share, lanes: 1);
+    final scheduler = schedulerFor(share, lanes: 1);
 
     scheduler.want(picture('a'));
     scheduler.want(picture('b'));
@@ -201,26 +207,26 @@ void main() {
     await drain();
 
     expect(share.fetched, ['a'], reason: 'b never started');
-    // What did start is still kept — it was paid for — but nobody is told,
-    // because whoever asked is no longer there.
+    // What did start is kept: it was paid for, and the next visit to this
+    // place is the likeliest thing to want it.
     expect(pool.get('a'), isA<ThumbnailData>());
-    expect(answered, isEmpty);
   });
 
   test('a file with no thumbnail is answered, not left hanging', () async {
     final share = _FakeShare(unsupported: {'a'});
-    final (:scheduler, :answered) = schedulerFor(share);
+    final scheduler = schedulerFor(share);
+    final told = watch(['a']);
 
     scheduler.want(picture('a'));
     await drain();
 
     expect(pool.get('a'), isA<ThumbnailFailed>());
-    expect(answered, ['a']);
+    expect(told, ['a']);
   });
 
   test('what stops being wanted is dropped before it starts', () async {
     final share = _FakeShare(hold: true);
-    final scheduler = schedulerFor(share, lanes: 1).scheduler;
+    final scheduler = schedulerFor(share, lanes: 1);
 
     scheduler.want(picture('a'));
     scheduler.want(picture('gone'));

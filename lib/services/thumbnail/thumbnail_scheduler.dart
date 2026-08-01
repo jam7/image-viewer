@@ -30,10 +30,6 @@ class ThumbnailScheduler {
   final ThumbnailPool pool;
   final ImageSourceProvider source;
 
-  /// Where a result goes when it lands. The pool is written first, so this is
-  /// for repainting, not for keeping.
-  final void Function(String id, ThumbnailResult result) onResult;
-
   /// How many thumbnails to work on at once, and how many of those may be
   /// waiting on the source rather than on the disk. Reading is cheap and
   /// parallel; fetching is neither, and the share is shared.
@@ -44,7 +40,6 @@ class ThumbnailScheduler {
     required this.cache,
     required this.pool,
     required this.source,
-    required this.onResult,
     this.lanes = 8,
     this.fetchLanes = 5,
   });
@@ -222,12 +217,12 @@ class ThumbnailScheduler {
     }
   }
 
-  /// Keep the answer and say so — even for a round that has been cancelled,
-  /// since the work is done and the answer is as good now as it was asked for.
+  /// Keep the answer — even for a round that has been cancelled, since the
+  /// work is done and the answer is as good now as it was asked for. Putting
+  /// it in the pool is what tells the tile waiting for it.
   void _finish(_Want want, int round, ThumbnailResult result) {
     pool.put(want.item.id, result);
     _done(want);
-    if (round == _round) onResult(want.item.id, result);
   }
 
   void _done(_Want want) {

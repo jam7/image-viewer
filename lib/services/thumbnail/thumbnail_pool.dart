@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
 import '../../widgets/thumbnail_result.dart';
@@ -36,8 +37,35 @@ class ThumbnailPool {
 
   ThumbnailPool({this.maxBytes = defaultMaxBytes, this.maxEntries = 2048});
 
+  /// Who to tell when one particular thumbnail changes, by id.
+  ///
+  /// Per id rather than one list for the pool, because the point is to repaint
+  /// one tile. A grid that repaints whole for every thumbnail that lands does
+  /// so a hundred times over while a screenful arrives, and that is what a
+  /// list scrolled through while it fills feels like.
+  final Map<String, Set<VoidCallback>> _watchers = {};
+
   int get entryCount => _entries.length;
   int get bytes => _bytes;
+
+  void watch(String id, VoidCallback onChanged) =>
+      (_watchers[id] ??= {}).add(onChanged);
+
+  void unwatch(String id, VoidCallback onChanged) {
+    final forId = _watchers[id];
+    if (forId == null) return;
+    forId.remove(onChanged);
+    if (forId.isEmpty) _watchers.remove(id);
+  }
+
+  /// A copy, because a watcher may well stop watching as it is told.
+  void _tell(String id) {
+    final forId = _watchers[id];
+    if (forId == null) return;
+    for (final watcher in forId.toList()) {
+      watcher();
+    }
+  }
 
   /// What is held for [id], or null if nothing is — which means "ask for it",
   /// never "there is nothing to show".
@@ -49,10 +77,14 @@ class ThumbnailPool {
   }
 
   void put(String id, ThumbnailResult result) {
-    _forget(id);
+    // Not through [_forget]: telling a watcher about the moment between the
+    // old answer and the new one would have it paint a spinner and ask again.
+    final replaced = _entries.remove(id);
+    if (replaced != null) _bytes -= _sizeOf(replaced);
     _entries[id] = result;
     _bytes += _sizeOf(result);
     _evict();
+    _tell(id);
     if (++_putsSinceLog >= 256) {
       _putsSinceLog = 0;
       _log.info('pool: ${_entries.length} entries, ${_mb(_bytes)}MB');
@@ -74,13 +106,20 @@ class ThumbnailPool {
   /// thumbnails held in memory would otherwise outlive the files they came
   /// from, and the grid would go on showing what was just deleted.
   void clear() {
+    final held = _entries.keys.toList();
     _entries.clear();
     _bytes = 0;
+    held.forEach(_tell);
   }
 
   void _forget(String id) {
     final gone = _entries.remove(id);
-    if (gone != null) _bytes -= _sizeOf(gone);
+    if (gone == null) return;
+    _bytes -= _sizeOf(gone);
+    // Whoever is watching is showing what has just gone, and asks again by
+    // being painted. Includes being pushed out by [_evict], which is how a
+    // tile scrolled far away and back finds itself asking a second time.
+    _tell(id);
   }
 
   void _evict() {

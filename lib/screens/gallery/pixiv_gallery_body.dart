@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'widgets/thumbnail_of.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
 import 'widgets/gallery_view.dart';
@@ -69,8 +70,14 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
     );
   }
 
-  Widget _buildTile(BuildContext context, ImageSource image, int index) {
-    final thumb = _session.thumbnailFor(image);
+  Widget _buildTile(BuildContext context, ImageSource image, int index) =>
+      ThumbnailOf(
+        session: _session,
+        item: image,
+        builder: (context, thumb) => _tile(image, index, thumb),
+      );
+
+  Widget _tile(ImageSource image, int index, ThumbnailResult? thumb) {
     final pageCount = image.metadata?['pageCount'] as int? ?? 1;
 
     return GestureDetector(

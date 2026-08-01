@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../models/image_source.dart';
 import '../../models/viewer_mark.dart';
 import '../../services/cache/cache_manager.dart';
@@ -89,14 +91,6 @@ class GallerySession {
         .toList();
   }
 
-  /// Called when a thumbnail result arrives and the view should repaint.
-  ///
-  /// Installed by whichever view is showing this session, not by whoever built
-  /// it — a session is often created by a tab opener or a navigation, far from
-  /// the widget that will display it, and a session with no view needs no
-  /// repaints. Page loads are awaited by the caller instead of reported here.
-  void Function()? onChanged;
-
   /// Answers this place's requests for thumbnails, nearest first (ADR 011).
   late final ThumbnailScheduler _scheduler;
 
@@ -134,7 +128,6 @@ class GallerySession {
       cache: cacheManager,
       pool: cacheManager.thumbnails,
       source: provider,
-      onResult: _recordThumbnail,
     );
   }
 
@@ -181,6 +174,14 @@ class GallerySession {
   /// question was already answered.
   ThumbnailResult? thumbnailFor(ImageSource item, {int distance = 0}) =>
       _scheduler.held(item, distance: distance);
+
+  /// Follow one item's thumbnail, so that its tile alone repaints when the
+  /// answer lands (ADR 011 段階 3).
+  void watchThumbnail(String id, VoidCallback onChanged) =>
+      _cacheManager.thumbnails.watch(id, onChanged);
+
+  void unwatchThumbnail(String id, VoidCallback onChanged) =>
+      _cacheManager.thumbnails.unwatch(id, onChanged);
 
   /// Ask ahead for the band around what is on screen, so that scrolling meets
   /// thumbnails already there. [near] is what is visible; [around] is the
@@ -267,6 +268,4 @@ class GallerySession {
     return _scheduler.dispose();
   }
 
-  /// The scheduler has already put it in the pool; this is only the repaint.
-  void _recordThumbnail(String id, ThumbnailResult result) => onChanged?.call();
 }

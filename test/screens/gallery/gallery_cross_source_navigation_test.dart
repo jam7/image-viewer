@@ -70,15 +70,17 @@ void main() {
     tab.navigate(author);
     await tester.pumpAndSettle();
 
-    // The old body is disposed after the new one is built. Clearing the
-    // callback unconditionally there left the new view without repaints, so
-    // thumbnails arrived and nothing painted them.
-    expect(author.onChanged, isNotNull);
+    // This used to check that the arriving view still held the session's
+    // repaint callback: the old body is disposed after the new one is built,
+    // and clearing it there left thumbnails arriving with nothing painting
+    // them. There is no such callback now — a tile listens for its own
+    // thumbnail — so the whole failure mode is gone rather than guarded
+    // (ADR 011 段階 3).
+    expect(tab.current, author);
 
     tab.back();
     await tester.pumpAndSettle();
 
-    expect(favorites.onChanged, isNotNull);
     expect(tab.current, favorites);
   });
 

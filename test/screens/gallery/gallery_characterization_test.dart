@@ -469,7 +469,6 @@ void main() {
       seedThumbnails(items);
       final source = _FakeSmbSource(items);
       final tab = smbTab(source, '/');
-      expect(tab.current.onChanged, isNull);
 
       await pumpPushed(tester, build(source, tab: tab));
 

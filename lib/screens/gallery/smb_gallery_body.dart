@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'widgets/thumbnail_of.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
 import 'gallery_uri_dialect.dart';
@@ -92,10 +93,16 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
     );
   }
 
-  Widget _buildTile(BuildContext context, ImageSource item, int index) {
+  Widget _buildTile(BuildContext context, ImageSource item, int index) =>
+      ThumbnailOf(
+        session: _session,
+        item: item,
+        builder: (context, thumb) => _tile(item, thumb),
+      );
+
+  Widget _tile(ImageSource item, ThumbnailResult? thumb) {
     final isDir = item.metadata?['isDirectory'] == true;
     final isVideo = item.metadata?['isVideo'] == true;
-    final thumb = _session.thumbnailFor(item);
 
     return GestureDetector(
       onTap: () => _onItemTap(item),

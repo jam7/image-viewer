@@ -6,6 +6,7 @@ import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/source_registry.dart';
 import '../../widgets/thumbnail_result.dart';
 import 'gallery_session.dart';
+import 'widgets/thumbnail_of.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
 import 'gallery_uri_dialect.dart';
@@ -102,8 +103,14 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
     );
   }
 
-  Widget _buildTile(BuildContext context, ImageSource item, int index) {
-    final thumb = _session.thumbnailFor(item);
+  Widget _buildTile(BuildContext context, ImageSource item, int index) =>
+      ThumbnailOf(
+        session: _session,
+        item: item,
+        builder: (context, thumb) => _tile(item, index, thumb),
+      );
+
+  Widget _tile(ImageSource item, int index, ThumbnailResult? thumb) {
     return GestureDetector(
       onTap: () => _openViewer(index),
       child: switch (thumb) {
