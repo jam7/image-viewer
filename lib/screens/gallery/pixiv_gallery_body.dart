@@ -70,7 +70,7 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
   }
 
   Widget _buildTile(BuildContext context, ImageSource image, int index) {
-    final thumb = _session.thumbnailFor(image.id);
+    final thumb = _session.thumbnailFor(image);
     final pageCount = image.metadata?['pageCount'] as int? ?? 1;
 
     return GestureDetector(

@@ -95,7 +95,7 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
   Widget _buildTile(BuildContext context, ImageSource item, int index) {
     final isDir = item.metadata?['isDirectory'] == true;
     final isVideo = item.metadata?['isVideo'] == true;
-    final thumb = _session.thumbnailFor(item.id);
+    final thumb = _session.thumbnailFor(item);
 
     return GestureDetector(
       onTap: () => _onItemTap(item),

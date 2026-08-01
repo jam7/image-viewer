@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../../../models/image_source.dart';
 import '../system_back.dart';
+import '../gallery_constants.dart';
 import '../gallery_session.dart';
 import '../gallery_tab.dart';
 import 'gallery_chrome.dart';
@@ -102,11 +103,42 @@ class GalleryViewState extends State<GalleryView> {
     // Switching tabs builds a fresh view over a session that may already hold
     // its items; fetching again would append a duplicate page. Same rule as
     // [_onSessionChanged], which handles the moves within one view.
-    if (_shown.hasLoaded) {
-      _shown.attach();
-    } else {
-      loadNextPage();
-    }
+    if (!_shown.hasLoaded) loadNextPage();
+    _wantThumbnailsAfterLayout();
+  }
+
+  /// Ask for the thumbnails around what is on screen: everything visible, and
+  /// a screen either side of it (ADR 011).
+  ///
+  /// Worked out from the scroll position rather than from which tiles Flutter
+  /// has built, because building runs a little ahead and behind and says
+  /// nothing about how far. The width is the screen's rather than the grid's,
+  /// which puts the band off by a fraction of a row at most — it is a band, not
+  /// a boundary.
+  void _wantThumbnails() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final items = _shown.visibleItems;
+    if (items.isEmpty) return;
+    final stride = galleryRowStride(MediaQuery.sizeOf(context).width);
+    if (stride <= 0) return;
+    final position = _scrollController.position;
+    final firstRow = (position.pixels / stride).floor();
+    final rows = (position.viewportDimension / stride).ceil() + 1;
+    int at(int row) =>
+        (row * galleryCrossAxisCount).clamp(0, items.length).toInt();
+    _shown.wantBand(
+      items.sublist(at(firstRow), at(firstRow + rows)),
+      [
+        ...items.sublist(at(firstRow - rows), at(firstRow)),
+        ...items.sublist(at(firstRow + rows), at(firstRow + rows * 2)),
+      ],
+    );
+  }
+
+  /// The same, once there is a viewport to measure. A place opens with no
+  /// scroll position at all, and the first band is the one that matters most.
+  void _wantThumbnailsAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _wantThumbnails());
   }
 
   /// Repaint for something the session did — a thumbnail arriving. Installed on
@@ -163,12 +195,12 @@ class GalleryViewState extends State<GalleryView> {
     _shown = widget.tab.current;
     _shown.onChanged = _repaint;
     _error = null;
+    _wantThumbnailsAfterLayout();
     // A load still running for the place we just left no longer owns this flag;
     // leaving it set would block the new entry from ever loading, and leave a
     // spinner up over content that is already here.
     _isLoading = false;
     _shownCount = _shown.visibleItems.length;
-    _shown.attach();
     if (!_shown.hasLoaded) loadNextPage();
     // A different place, at a different height: measure the fold from there.
     _startChromeRule();
@@ -186,7 +218,9 @@ class GalleryViewState extends State<GalleryView> {
   @override
   void activate() {
     super.activate();
-    _shown.attach();
+    // Nothing to restore: what was fetched is in the pool (ADR 011). The tiles
+    // ask for whatever is not.
+    _wantThumbnailsAfterLayout();
   }
 
   @override
@@ -220,8 +254,7 @@ class GalleryViewState extends State<GalleryView> {
       if (!mounted || session != _shown) return;
       setState(() => _isLoading = false);
       widget.onItemsChanged?.call();
-      await session.thumbnails.loadNextBatch();
-      if (!mounted || session != _shown) return;
+      _wantThumbnails();
       fillViewport();
     } catch (e, st) {
       _log.warning('page load failed: ${session.sourceUri}', e, st);
@@ -237,6 +270,7 @@ class GalleryViewState extends State<GalleryView> {
     final position = _scrollController.position;
     final chrome = _chromeRule.update(position.pixels, atTop: position.pixels <= 0);
     if (chrome != null) _chrome?.value = chrome;
+    _wantThumbnails();
     if (_isLoading || !_shown.hasMore) return;
     if (position.pixels >= position.maxScrollExtent - _loadMoreMargin) {
       loadNextPage();
@@ -244,8 +278,7 @@ class GalleryViewState extends State<GalleryView> {
   }
 
   /// Nothing to scroll means the scroll trigger can never fire, so keep pulling
-  /// until the view has content to scroll: another page if there is one,
-  /// otherwise the next thumbnail batch.
+  /// pages until the view has content to scroll.
   ///
   /// Also worth calling after the caller narrows [GalleryView.items] with a
   /// display-only filter, which can leave too little to scroll.
@@ -253,11 +286,7 @@ class GalleryViewState extends State<GalleryView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
       if (_scrollController.position.maxScrollExtent > 0) return;
-      if (_shown.hasMore) {
-        loadNextPage();
-      } else if (!_shown.thumbnails.allDispatched) {
-        _shown.thumbnails.loadNextBatch();
-      }
+      if (_shown.hasMore) loadNextPage();
     });
   }
 
@@ -316,15 +345,6 @@ class GalleryViewState extends State<GalleryView> {
     );
   }
 
-  Widget _buildTile(BuildContext context, int index) {
-    final item = _shown.visibleItems[index];
-    // Painting a tile past what the loader has dispatched means the view has
-    // scrolled ahead of the thumbnails; ask for the next batch.
-    if (_shown.needsBatchFor(item)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _shown.thumbnails.loadNextBatch();
-      });
-    }
-    return widget.tileBuilder(context, item, index);
-  }
+  Widget _buildTile(BuildContext context, int index) =>
+      widget.tileBuilder(context, _shown.visibleItems[index], index);
 }

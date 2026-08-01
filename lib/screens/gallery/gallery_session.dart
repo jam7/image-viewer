@@ -1,19 +1,12 @@
-import 'dart:typed_data';
-
-import 'package:logging/logging.dart';
-
 import '../../models/image_source.dart';
 import '../../models/viewer_mark.dart';
 import '../../services/cache/cache_manager.dart';
 import 'gallery_uri.dart';
 import 'gallery_uri_dialect.dart';
 import '../../services/sources/image_source_provider.dart';
-import '../../services/thumbnail/thumbnail_loader.dart';
+import '../../services/thumbnail/thumbnail_scheduler.dart';
 import '../../widgets/thumbnail_result.dart';
-import 'gallery_constants.dart';
 import 'scroll_anchor.dart';
-
-final _log = Logger('GallerySession');
 
 /// One browsing session (ADR 007): a lazy-paged item list plus its thumbnail
 /// loader, thumbnail results and scroll position. Owns the session state that
@@ -104,9 +97,8 @@ class GallerySession {
   /// repaints. Page loads are awaited by the caller instead of reported here.
   void Function()? onChanged;
 
-  /// Thumbnail engine for this session. Its `source` is [provider] and its
-  /// results land in this session (see [thumbnailFor]).
-  late final ThumbnailLoader thumbnails;
+  /// Answers this place's requests for thumbnails, nearest first (ADR 011).
+  late final ThumbnailScheduler _scheduler;
 
   final List<ImageSource> loaded = [];
 
@@ -120,22 +112,6 @@ class GallerySession {
   /// which on a tab switch is every time the reader looks at something else.
   ViewerMark? mark;
 
-  /// Items fed to [thumbnails] = [loaded] minus filtered-out items (e.g.
-  /// directories). Same order the loader batches over, so callers can map an
-  /// item to its loader index (for the batch trigger) or build a viewer list.
-  final List<ImageSource> _thumbnailItems = [];
-  List<ImageSource> get thumbnailItems => _thumbnailItems;
-
-  /// item id → its position in [_thumbnailItems], kept in step as pages are
-  /// appended. Lets a view go from the item it is painting to the loader's
-  /// index without scanning the list on every tile.
-  final Map<String, int> _thumbnailIndex = {};
-
-  /// Decoded thumbnails, by item id. Lives here rather than in the screen so a
-  /// session keeps its thumbnails while another one is on screen (ADR 008).
-  final Map<String, ThumbnailResult> _thumbnailResults = {};
-
-  final bool Function(ImageSource) _thumbnailFilter;
   /// A finite, already-known list (e.g. favorites) served as the single page
   /// instead of calling [provider.loadPage]. Thumbnails still come from
   /// [thumbnails] (ADR 007; interim until a fav:// paged source in Phase 3).
@@ -143,8 +119,6 @@ class GallerySession {
   Object? _cursor;
   bool _firstPageLoaded = false;
   bool _loadingPage = false;
-  /// Bumped by [detach] and [dispose] so an in-flight [attach] stops.
-  int _attachGeneration = 0;
 
   GallerySession({
     required this.sourceUri,
@@ -152,17 +126,14 @@ class GallerySession {
     required CacheManager cacheManager,
     String title = '',
     this.path,
-    bool Function(ImageSource)? thumbnailFilter,
     List<ImageSource>? seedItems,
   })  : _title = title,
         _cacheManager = cacheManager,
-        _thumbnailFilter = thumbnailFilter ?? ((_) => true),
         _seedItems = seedItems {
-    thumbnails = ThumbnailLoader(
+    _scheduler = ThumbnailScheduler(
+      cache: cacheManager,
+      pool: cacheManager.thumbnails,
       source: provider,
-      cacheManager: cacheManager,
-      batchSize: galleryCrossAxisCount * 6,
-      parallelCount: galleryCrossAxisCount,
       onResult: _recordThumbnail,
     );
   }
@@ -186,11 +157,9 @@ class GallerySession {
       cacheManager: cacheManager,
       title: title,
       path: uri.scheme == smbUriScheme ? smbPathOf(uri) : pixivPathOf(uri),
-      // SMB lists directories alongside files; they have no thumbnail.
-      // The lambda needs its own parentheses or its body swallows the ternary.
-      thumbnailFilter: uri.scheme == smbUriScheme
-          ? ((i) => i.metadata?['isDirectory'] != true)
-          : null,
+      // Nothing here about which items get thumbnails: a directory tile draws
+      // a folder and never asks, so the filter that used to keep directories
+      // out of the batches has nothing left to keep them out of.
     );
   }
 
@@ -203,124 +172,66 @@ class GallerySession {
   bool get hasLoaded => _firstPageLoaded;
   bool get isLoadingPage => _loadingPage;
 
-  /// The thumbnail for [id], or null if it has not been fetched yet.
+  /// The thumbnail for [item], asking for it if there is none (ADR 011).
   ///
-  /// The pool first (ADR 011): it outlives this view, so a place returned to
-  /// paints from it straight away instead of waiting for [attach] to read the
-  /// disk. The session's own map is still consulted behind it — until the pull
-  /// rework it remains what [attach] and [resumeMissingThumbnails] go by, and
-  /// an entry pushed out of the pool must not read as "never fetched".
-  ThumbnailResult? thumbnailFor(String id) =>
-      _cacheManager.thumbnails.get(id) ?? _thumbnailResults[id];
+  /// Painting is what asks. There is no record of what has been handed out and
+  /// no watermark into the list — a tile that can paint does, and a tile that
+  /// cannot has just said so. That is what makes an emptied cache recover by
+  /// itself: the next paint asks again, because nothing is claiming the
+  /// question was already answered.
+  ThumbnailResult? thumbnailFor(ImageSource item, {int distance = 0}) {
+    final held = _cacheManager.thumbnails.get(item.id);
+    if (held != null) return held;
+    _scheduler.want(item, distance: distance);
+    return null;
+  }
 
-  /// Whether painting [item] should kick off the next thumbnail batch — i.e.
-  /// the view has scrolled past what has been dispatched. Items with no
-  /// thumbnail of their own (directories) answer false, since they are absent
-  /// from the index and a missing index reads as "before the dispatched range".
-  bool needsBatchFor(ImageSource item) =>
-      thumbnails.needsBatch(_thumbnailIndex[item.id] ?? -1);
+  /// Ask ahead for the band around what is on screen, so that scrolling meets
+  /// thumbnails already there. [near] is what is visible; [around] is the
+  /// screen either side of it.
+  void wantBand(List<ImageSource> near, List<ImageSource> around) {
+    for (final item in near) {
+      thumbnailFor(item);
+    }
+    for (final item in around) {
+      thumbnailFor(item, distance: 1);
+    }
+    final wanted = {...near.map((i) => i.id), ...around.map((i) => i.id)};
+    _scheduler.keepOnly(wanted.contains);
+  }
 
-  bool get hasThumbnailResults => _thumbnailResults.isNotEmpty;
-
-  /// The view showing this session went away. Stops its thumbnail work and
-  /// drops the decoded results; [attach] resumes and restores both
-  /// (ADR 007 決定 5 / ADR 008 決定 5).
+  /// The view showing this session went away.
   ///
-  /// Cancelling matters as much as freeing the memory: a session nobody is
-  /// looking at would otherwise keep pulling images, and the tab that *is* on
-  /// screen waits behind it for the network and the disk cache.
+  /// Only stops work. Nothing is dropped and nothing has to be restored when a
+  /// view comes back: what was fetched is in the pool, which outlives both
+  /// (ADR 011). This is all that is left of the pair of methods that used to
+  /// throw every decoded thumbnail away here and read them all back there.
+  ///
+  /// Cancelling still matters: a place nobody is looking at would otherwise go
+  /// on pulling images, and the place that *is* on screen would wait behind it.
   ///
   /// Deliberately does not fire [onChanged]: this runs from `deactivate`, i.e.
-  /// during a build, where asking for a repaint throws. The repaint comes from
-  /// the results [attach] reports as they land.
-  void detach() {
-    _attachGeneration++;
-    thumbnails.cancel();
-    // Only the decoded images cost memory. A recorded failure costs nothing and
-    // cannot be read back from the cache, so dropping it would leave the tile
-    // spinning for good: [attach] would find nothing to restore, and the loader
-    // — which still counts the item as answered — would not fetch it again.
-    _thumbnailResults.removeWhere((_, result) => result is ThumbnailData);
-  }
+  /// during a build, where asking for a repaint throws.
+  void detach() => _scheduler.cancel();
 
-  /// A view started showing this session again. Re-reads the thumbnails that
-  /// [detach] dropped from the L2 cache, reporting each one as it lands so the
-  /// grid fills in progressively.
-  ///
-  /// Only reads `thumb:` — never the full-size `full:` entry, which would put a
-  /// full-resolution decode behind a grid tile.
-  ///
-  /// Then picks up whatever [detach] cut off. Those items are inside the
-  /// dispatched range, so nothing else would ever ask for them again and they
-  /// would sit as spinners for as long as the session lives.
-  Future<void> attach() async {
-    if (_thumbnailItems.isEmpty) return;
-    final generation = ++_attachGeneration;
-    // Two clocks, because they point at different fixes: [reading] is the disk,
-    // and what is left is the repaint this asks for after every single item.
-    final wall = Stopwatch()..start();
-    final reading = Stopwatch();
-    var found = 0;
-    var missing = 0;
-    for (final item in _thumbnailItems) {
-      if (generation != _attachGeneration) return; // detached or disposed
-      if (_thumbnailResults.containsKey(item.id)) continue;
-      try {
-        reading.start();
-        final cached = await _cacheManager.get('thumb:${item.id}');
-        reading.stop();
-        if (cached == null) {
-          missing++;
-          continue;
-        }
-        if (generation != _attachGeneration) return;
-        found++;
-        _recordThumbnail(item.id, ThumbnailData(Uint8List.fromList(cached.data)));
-      } catch (e, st) {
-        reading.stop();
-        _log.warning('thumbnail cache reload failed: ${item.name}', e, st);
-      }
-    }
-    _log.info('attach: ${_thumbnailItems.length} items, $found restored, '
-        '$missing not cached, ${wall.elapsedMilliseconds}ms '
-        '(${reading.elapsedMilliseconds}ms reading)');
-    if (generation != _attachGeneration) return;
-    await resumeMissingThumbnails();
-  }
+  /// Stop making stills while the source is busy playing something, and pick
+  /// up again afterwards.
+  void pauseThumbnails() => _scheduler.pauseStills();
+  void resumeThumbnails() => _scheduler.resumeStills();
 
-  /// Fetch again every dispatched item this session has no result for.
-  ///
-  /// The loader remembers which items it has answered, but that is a different
-  /// question from what the grid can paint. [detach] drops the decoded images
-  /// and [attach] reads them back from the L2 cache — which may have been
-  /// emptied or evicted in between, leaving the item answered by the loader and
-  /// blank on screen. Going by the loader's record alone turned a whole tab
-  /// into spinners after a cache clear, with only a brand new tab showing
-  /// anything.
-  ///
-  /// A recorded [ThumbnailFailed] counts as a result, so it is not retried here
-  /// (that is [retryUnsupportedThumbnails]).
-  Future<void> resumeMissingThumbnails() =>
-      thumbnails.retryMissing((id) => !_thumbnailResults.containsKey(id));
+  /// Ask again for the items [test] selects, by forgetting the answer held for
+  /// them: the next paint finds nothing and asks. How a retry is spelled when
+  /// there is no ledger — used after a viewer visit, where a file that had no
+  /// thumbnail may now have its bytes in the cache.
+  void forgetThumbnails(bool Function(ThumbnailResult result) test) =>
+      _cacheManager.thumbnails.removeWhere((_, result) => test(result));
 
-  /// Retry items whose thumbnail failed as [ThumbnailFailReason.notSupported].
-  /// Called after returning from the viewer/player, when the backing data may
-  /// have been cached in the meantime.
-  void retryUnsupportedThumbnails() {
-    thumbnails.retryUnsupported((id) {
-      final result = _thumbnailResults[id];
-      if (result is ThumbnailFailed &&
-          result.reason == ThumbnailFailReason.notSupported) {
-        _thumbnailResults.remove(id);
-        return true;
-      }
-      return false;
-    });
-  }
-
-  /// Load the next page (the first page if none yet), append it to [loaded] and
-  /// feed the thumbnail-eligible items to [thumbnails]. Returns the new items
-  /// (empty if a load is already running or the list is exhausted).
+  /// Load the next page (the first page if none yet) and append it to
+  /// [loaded]. Returns the new items (empty if a load is already running or
+  /// the list is exhausted).
+  ///
+  /// Nothing is said about thumbnails here: a page that has arrived but is not
+  /// on screen is not wanted yet, and asking for it is the grid's business.
   Future<List<ImageSource>> loadNextPage() async {
     if (_loadingPage || (_firstPageLoaded && _cursor == null)) {
       return const [];
@@ -337,16 +248,6 @@ class GallerySession {
       _visible = null;
       if (firstPage) _learnTitle(page.items);
 
-      final eligible = page.items.where(_thumbnailFilter).toList();
-      if (firstPage) {
-        thumbnails.setItems(eligible);
-      } else {
-        thumbnails.addItems(eligible);
-      }
-      for (final item in eligible) {
-        _thumbnailIndex[item.id] = _thumbnailItems.length;
-        _thumbnailItems.add(item);
-      }
       return page.items;
     } finally {
       _loadingPage = false;
@@ -366,14 +267,10 @@ class GallerySession {
   }
 
   Future<void> dispose() {
-    _attachGeneration++;
     onEntryChanged = null; // a page still in flight must not report back
-    return thumbnails.dispose();
+    return _scheduler.dispose();
   }
 
-  void _recordThumbnail(String id, ThumbnailResult result) {
-    _cacheManager.thumbnails.put(id, result);
-    _thumbnailResults[id] = result;
-    onChanged?.call();
-  }
+  /// The scheduler has already put it in the pool; this is only the repaint.
+  void _recordThumbnail(String id, ThumbnailResult result) => onChanged?.call();
 }

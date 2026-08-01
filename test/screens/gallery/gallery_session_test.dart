@@ -14,7 +14,6 @@ import 'package:image_viewer/services/cache/download_store.dart';
 import 'package:image_viewer/services/cache/memory_cache.dart';
 import 'package:image_viewer/services/sources/image_source_provider.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
-import 'package:image_viewer/widgets/thumbnail_result.dart';
 
 /// Tests the GallerySession paging + thumbnail-feed logic (ADR 007) without UI.
 void main() {
@@ -42,13 +41,11 @@ void main() {
         metadata: {'isDirectory': dir},
       );
 
-  GallerySession session(_FakePagedSource source,
-      {bool Function(ImageSource)? filter, void Function()? onChanged}) {
+  GallerySession session(_FakePagedSource source, {void Function()? onChanged}) {
     return GallerySession(
       sourceUri: Uri.parse('test://x'),
       provider: source,
       cacheManager: cache,
-      thumbnailFilter: filter,
     )..onChanged = onChanged;
   }
 
@@ -98,181 +95,12 @@ void main() {
     expect(source.loadPageCalls, 0);
   });
 
-  test('thumbnailFilter excludes directories from the loader', () async {
-    final source = _FakePagedSource([
-      [img('dir', dir: true), img('a'), img('b')],
-    ]);
-    final t = session(source, filter: (i) => i.metadata?['isDirectory'] != true);
-
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch();
-
-    // dir is shown in loaded but not fetched as a thumbnail.
-    expect(t.loaded.length, 3);
-    expect(source.thumbnailIds, ['a', 'b']);
-  });
-
-  test('needsBatchFor: true past the dispatched range, false for directories',
-      () async {
-    // batchSize is galleryCrossAxisCount * 6 = 30, so page 1 fills one batch
-    // exactly and page 2 lands beyond it.
-    final page1 = [
-      img('dir', dir: true),
-      for (var i = 0; i < 30; i++) img('p1-$i'),
-    ];
-    final t = session(
-      _FakePagedSource([page1, [img('p2-0')]]),
-      filter: (i) => i.metadata?['isDirectory'] != true,
-    );
-
-    await t.loadNextPage();
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch(); // dispatches the first 30
-
-    expect(t.needsBatchFor(page1[1]), isFalse); // inside the dispatched range
-    expect(t.needsBatchFor(img('p2-0')), isTrue); // beyond it
-    expect(t.needsBatchFor(page1[0]), isFalse); // directory: never batched
-  });
-
-  test('loader results are stored on the session and reported once each',
-      () async {
-    var changes = 0;
-    final t = session(
-      _FakePagedSource([
-        [img('a'), img('b')],
-      ]),
-      onChanged: () => changes++,
-    );
-
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch();
-
-    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
-    expect(t.thumbnailFor('b'), isA<ThumbnailData>());
-    expect(t.thumbnailFor('missing'), isNull);
-    expect(t.hasThumbnailResults, isTrue);
-    expect(changes, 2);
-  });
-
-  test('detach lets go of the session copy; the reader keeps seeing it',
-      () async {
-    var changes = 0;
-    final t = session(
-      _FakePagedSource([
-        [img('a')],
-      ]),
-      onChanged: () => changes++,
-    );
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch();
-    changes = 0;
-
-    t.detach();
-
-    expect(t.hasThumbnailResults, isFalse);
-    // The pool outlives the view (ADR 011), so the tile still has a picture to
-    // paint the moment this place is shown again. What detach frees is this
-    // session's own copy; what bounds the memory is now the pool's size.
-    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
-    expect(t.loaded.map((i) => i.id), ['a']); // items survive the detach
-    // No repaint request: this runs from deactivate, i.e. during a build.
-    expect(changes, 0);
-  });
-
-  test('a failure survives detach, since nothing could restore it', () async {
-    // A PDF with no cached bytes cannot have a thumbnail made for it, and that
-    // answer is not in the cache to be read back.
-    final source = _FakePagedSource([
-      [img('ok'), img('nope')],
-    ], unsupported: {'nope'});
-    final t = session(source);
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch();
-    expect(t.thumbnailFor('nope'), isA<ThumbnailFailed>());
-
-    t.detach();
-
-    expect(t.thumbnailFor('ok'), isA<ThumbnailData>()); // held by the pool
-    expect(t.thumbnailFor('nope'), isA<ThumbnailFailed>()); // answer kept
-
-    await t.attach();
-
-    // Still answered, and not fetched again just to fail the same way.
-    expect(t.thumbnailFor('nope'), isA<ThumbnailFailed>());
-    expect(source.thumbnailIds.where((id) => id == 'nope').length, 1);
-  });
-
-  test('attach refetches what the cache no longer has', () async {
-    // Clearing the cache while a tab is in the background: detach dropped the
-    // decoded images, and attach finds nothing to read back. The loader counts
-    // these as answered, so without a retry the whole tab stays spinners for as
-    // long as it lives -- only a newly opened tab shows anything.
-    final source = _FakePagedSource([
-      [img('a'), img('b')],
-    ]);
-    final t = session(source);
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch();
-    expect(source.thumbnailIds, ['a', 'b']);
-
-    t.detach();
-    await cache.clearL2();
-    await t.attach();
-
-    expect(source.thumbnailIds, ['a', 'b', 'a', 'b']);
-    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
-    expect(t.thumbnailFor('b'), isA<ThumbnailData>());
-  });
-
-  test('attach restores thumbnails from the cache without refetching',
-      () async {
-    final source = _FakePagedSource([
-      [img('a'), img('b')],
-    ]);
-    final t = session(source);
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch(); // populates thumb: in the cache
-    expect(source.thumbnailIds, ['a', 'b']);
-
-    t.detach();
-    await t.attach();
-
-    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
-    expect(t.thumbnailFor('b'), isA<ThumbnailData>());
-    expect(source.thumbnailIds, ['a', 'b']); // came from the cache, not the source
-  });
-
-  test('attach ignores the full: entry, only thumb:', () async {
-    final source = _FakePagedSource([
-      [img('a')],
-    ]);
-    final t = session(source);
-    await t.loadNextPage();
-    // Only a full-size entry exists — the thumbnail fetch never succeeded.
-    await cache.l2.put('full:a', Uint8List.fromList(const [1, 2, 3]));
-
-    await t.attach();
-
-    // Showing the full-size decode behind a grid tile is what the thumb:-only
-    // rule exists to prevent.
-    expect(t.thumbnailFor('a'), isNull);
-  });
-
-  test('detaching again mid-attach stops the reload', () async {
-    final source = _FakePagedSource([
-      [img('a'), img('b')],
-    ]);
-    final t = session(source);
-    await t.loadNextPage();
-    await t.thumbnails.loadNextBatch();
-
-    t.detach();
-    final reload = t.attach();
-    t.detach(); // e.g. the view went away again straight after coming back
-    await reload;
-
-    expect(t.hasThumbnailResults, isFalse);
-  });
+  // The thumbnail machinery that used to be tested here — the loader's batch
+  // watermark, its ledger of dispatched items, and the drop-everything /
+  // read-it-all-back pair around leaving a view — no longer exists (ADR 011).
+  // What replaced it is tested where it now lives: the scheduler's own tests
+  // for ordering and fetching, thumbnail_pool_test for what is kept, and
+  // thumbnail_supply_test for what a reader is promised.
 
   /// What is on screen belongs to the place, not to the widget drawing it:
   /// the viewer walks the same list looking for neighbours (ADR 010).
@@ -414,11 +242,9 @@ class _FakePagedSource extends SmbSource {
   final List<List<ImageSource>> pages;
   final List<String> thumbnailIds = [];
 
-  /// Ids that cannot have a thumbnail made (an uncached PDF, a ZIP of nothing).
-  final Set<String> unsupported;
   int loadPageCalls = 0;
 
-  _FakePagedSource(this.pages, {this.unsupported = const {}})
+  _FakePagedSource(this.pages)
       : super(
           config: const ServerConfig(
             id: 't',
@@ -442,9 +268,6 @@ class _FakePagedSource extends SmbSource {
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async {
     thumbnailIds.add(source.id);
-    if (unsupported.contains(source.id)) {
-      throw ThumbnailNotSupportedException(source.id);
-    }
     return Uint8List.fromList(const [1]);
   }
 }

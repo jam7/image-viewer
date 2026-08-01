@@ -103,7 +103,7 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
   }
 
   Widget _buildTile(BuildContext context, ImageSource item, int index) {
-    final thumb = _session.thumbnailFor(item.id);
+    final thumb = _session.thumbnailFor(item);
     return GestureDetector(
       onTap: () => _openViewer(index),
       child: switch (thumb) {

@@ -473,7 +473,7 @@ void main() {
 
       await pumpPushed(tester, build(source, tab: tab));
 
-      expect(tab.current.thumbnailFor('f0'), isA<ThumbnailData>());
+      expect(tab.current.thumbnailFor(items.first), isA<ThumbnailData>());
       expect(find.byType(Image), findsWidgets); // painted, not still spinning
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
