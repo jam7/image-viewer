@@ -124,7 +124,11 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
           : switch (thumb) {
               ThumbnailData(data: final d) =>
                 Image.memory(d, fit: BoxFit.cover),
-              ThumbnailFailed(reason: ThumbnailFailReason.notSupported) =>
+              // Both say "no picture for this"; the difference is whether it
+              // is worth asking again, which is the scheduler's business and
+              // not something a reader can act on.
+              ThumbnailFailed(reason: ThumbnailFailReason.notSupported) ||
+              ThumbnailFailed(reason: ThumbnailFailReason.notYet) =>
                 _buildIconTile(item.name, Icons.archive, Colors.blueGrey),
               ThumbnailFailed(reason: ThumbnailFailReason.timeout) =>
                 _buildIconTile(item.name, Icons.broken_image, Colors.red[300]!),

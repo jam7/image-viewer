@@ -61,7 +61,9 @@ class FavoritesSource implements ImageSourceProvider {
   Future<Uint8List> fetchThumbnail(ImageSource source) {
     final owner = _ownerOf(source);
     if (owner == null) {
-      throw ThumbnailNotSupportedException(
+      // The source may be connected later in the same run, and asking again
+      // is a lookup in the registry.
+      throw ThumbnailNotReadyException(
           'no connected source for ${source.name} (${source.sourceKey})');
     }
     // Pixiv re-issues thumbnail addresses, and this list holds the only stored

@@ -70,30 +70,28 @@ class ThumbnailScheduler {
   int _dropped = 0;
   Stopwatch? _wave;
 
-  /// What is held for [item], asking for it if that is nothing. The one way in
-  /// for a tile being painted: it needs the answer and, lacking one, is the
-  /// request.
-  ThumbnailResult? held(ImageSource item, {int distance = 0}) {
-    final have = pool.get(item.id);
-    if (have != null) {
-      _wave ??= Stopwatch()..start();
-      _fromPool++;
-      return have;
-    }
-    want(item, distance: distance);
-    return null;
-  }
-
-  /// Ask for [item]'s thumbnail, [distance] rows from what is on screen (0 is
-  /// on screen). Asking twice is free; the shorter distance wins.
+  /// See that [item] ends up with a settled answer, [distance] rows from what
+  /// is on screen (0 is on screen). Asking twice is free; the shorter distance
+  /// wins.
   ///
-  /// Answers that are already held are not re-asked, and that includes
-  /// failures: "there is no thumbnail for this" is an answer.
+  /// There is no separate retry: a first fetch and a second look are the same
+  /// request, and which one it is depends only on what the pool holds.
+  ///
+  /// | held | |
+  /// |---|---|
+  /// | nothing | ask |
+  /// | a picture | leave it |
+  /// | `notSupported` / `timeout` | leave it — settled, and asking again would
+  ///   fail the same way |
+  /// | `notYet` | ask. The material may have turned up, and finding out is a
+  ///   lookup (see [ThumbnailNotReadyException]) |
   void want(ImageSource item, {int distance = 0}) {
     // A folder is not a picture and never will be. The tile draws one and does
     // not ask, but a band asks for whatever is in it.
     if (item.metadata?['isDirectory'] == true) return;
-    if (pool.get(item.id) != null) {
+    final settled = pool.get(item.id);
+    if (settled != null && !_isProvisional(settled)) {
+      _wave ??= Stopwatch()..start();
       _fromPool++;
       return;
     }
@@ -206,6 +204,10 @@ class ThumbnailScheduler {
       _fetched++;
       await cache.l2.put(key, data);
       _finish(want, round, ThumbnailData(data));
+    } on ThumbnailNotReadyException {
+      // Not logged: this is the common answer for a folder of unopened PDFs,
+      // and it is asked again on every paint.
+      _finish(want, round, ThumbnailFailed(ThumbnailFailReason.notYet));
     } on ThumbnailNotSupportedException {
       _log.info('no thumbnail for ${want.item.name}');
       _failed++;
@@ -252,6 +254,11 @@ class ThumbnailScheduler {
   }
 
   static bool _isVideo(ImageSource item) => item.metadata?['isVideo'] == true;
+
+  /// Whether the answer held is one to ask about again.
+  static bool _isProvisional(ThumbnailResult result) =>
+      result is ThumbnailFailed &&
+      result.reason == ThumbnailFailReason.notYet;
 }
 
 /// Lets at most [limit] tasks run at once; the rest wait their turn.

@@ -9,7 +9,8 @@
 
 ```
 GalleryView のタイル (ThumbnailOf)
-   │ (1) session.thumbnailFor(item) → scheduler.held(item)
+   │ (1) session.thumbnailFor(item)  … プールを引くだけ (純粋な読み取り)
+   │     session.wantThumbnail(item) … 頼む。描かれること自体が要求
    ▼
 ThumbnailPool (アプリで 1 つ・32MB 上限の LRU、CacheManager.thumbnails)
    │ 持っていれば即返す。無ければ ↓
@@ -41,7 +42,7 @@ ThumbnailScheduler (場所ごとに 1 つ)     ── 同時 8、うち取得は
 |---|---|
 | 置き場 | `CacheManager.thumbnails` (アプリ全体で 1 つ) |
 | 上限 | 32MB (バイト単位の LRU) + 2048 件 (失敗エントリ用) |
-| 内容 | `ThumbnailData` / `ThumbnailFailed` — **失敗も答えとして保持**する |
+| 内容 | `ThumbnailData` / `ThumbnailFailed` — **失敗も答えとして保持**する。`notSupported` (確定) と `notYet` (材料が後で揃いうる) を区別し、後者は描画のたびに聞き直す |
 | 通知 | id 単位 (`watch`/`unwatch`)。押し出しとクリアでも通知する |
 | 寿命 | ビューやタブより長い。**離れても捨てない**のがプールの存在理由 |
 
@@ -52,8 +53,7 @@ L1 がサムネイルに対して果たせなくなった役割をプールが�
 
 | メソッド | 用途 |
 |---|---|
-| `held(item, distance)` | プールを引き、無ければ要求する (タイルの入口) |
-| `want(item, distance)` | 要求だけ (帯の先読み)。フォルダは無視、既答も無視 |
+| `want(item, distance)` | 要求。プールに**確定した**答えがあれば何もしない。`notYet` なら聞き直す。フォルダは無視 |
 | `keepOnly(pred)` | 帯から外れた未着手の要求を捨てる |
 | `cancel()` | ビューが離れた。未着手を捨て、着手済みは完走させる |
 | `pauseStills()` / `resumeStills()` | 動画再生中はキャプチャを止める |

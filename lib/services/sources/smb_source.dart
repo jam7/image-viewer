@@ -260,7 +260,9 @@ class SmbSource extends ImageSourceProvider {
       final pdfCacheKey = 'full:${source.id}';
       final filePath = cacheManager?.getFilePath(pdfCacheKey);
       if (filePath == null) {
-        throw ThumbnailNotSupportedException('PDF not cached: ${source.name}');
+        // Cheap to ask again — this was a lookup, not a read — and opening the
+        // PDF in the viewer caches the file, at which point page 0 renders.
+        throw ThumbnailNotReadyException('PDF not cached: ${source.name}');
       }
       try {
         final png = await _renderPdfThumbnail(filePath);

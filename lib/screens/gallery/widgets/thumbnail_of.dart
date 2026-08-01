@@ -58,6 +58,13 @@ class _ThumbnailOfState extends State<ThumbnailOf> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      widget.builder(context, widget.session.thumbnailFor(widget.item));
+  Widget build(BuildContext context) {
+    // Two things, said in two lines: what there is to draw, and that this tile
+    // wants one. Being painted is the whole of the asking — there is no other
+    // trigger to forget to wire up, which is how the retry this replaced came
+    // to stop working without anyone noticing.
+    final thumbnail = widget.session.thumbnailFor(widget.item);
+    widget.session.wantThumbnail(widget.item);
+    return widget.builder(context, thumbnail);
+  }
 }

@@ -172,8 +172,13 @@ class GallerySession {
   /// cannot has just said so. That is what makes an emptied cache recover by
   /// itself: the next paint asks again, because nothing is claiming the
   /// question was already answered.
-  ThumbnailResult? thumbnailFor(ImageSource item, {int distance = 0}) =>
-      _scheduler.held(item, distance: distance);
+  ThumbnailResult? thumbnailFor(ImageSource item) =>
+      _cacheManager.thumbnails.get(item.id);
+
+  /// See that [item] ends up with a settled answer. What a tile does by being
+  /// painted, and what the band around it does by being near.
+  void wantThumbnail(ImageSource item, {int distance = 0}) =>
+      _scheduler.want(item, distance: distance);
 
   /// Follow one item's thumbnail, so that its tile alone repaints when the
   /// answer lands (ADR 011 段階 3).
@@ -188,10 +193,10 @@ class GallerySession {
   /// screen either side of it.
   void wantBand(List<ImageSource> near, List<ImageSource> around) {
     for (final item in near) {
-      thumbnailFor(item);
+      wantThumbnail(item);
     }
     for (final item in around) {
-      thumbnailFor(item, distance: 1);
+      wantThumbnail(item, distance: 1);
     }
     final wanted = {...near.map((i) => i.id), ...around.map((i) => i.id)};
     _scheduler.keepOnly(wanted.contains);

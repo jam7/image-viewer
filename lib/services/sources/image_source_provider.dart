@@ -79,11 +79,30 @@ class NotAnItemException implements Exception {
   String toString() => 'NotAnItemException: $path is a list, not an item';
 }
 
-/// Thrown by [ImageSourceProvider.fetchThumbnail] when a thumbnail cannot be
-/// produced cheaply for this item (e.g. an uncached PDF, a ZIP with no images).
+/// Thrown by [ImageSourceProvider.fetchThumbnail] when nothing can be made of
+/// this item, and nothing will change that: a ZIP with no pictures, a PDF that
+/// would not render, a video with no proxy to stream it through.
+///
+/// The answer is kept for as long as the app runs. Say
+/// [ThumbnailNotReadyException] instead if the material might turn up.
 class ThumbnailNotSupportedException implements Exception {
   final String message;
   ThumbnailNotSupportedException(this.message);
   @override
   String toString() => 'ThumbnailNotSupportedException: $message';
+}
+
+/// Thrown by [ImageSourceProvider.fetchThumbnail] when the material is not
+/// there *yet* — an unopened PDF, a favourite whose source is not connected.
+///
+/// The difference from [ThumbnailNotSupportedException] is what happens next:
+/// this answer is provisional, so it is asked again every time the tile is
+/// painted. **Only throw it where finding out costs nothing** — a lookup, not
+/// a read over the network. Anything expensive would then be paid for on every
+/// scroll past.
+class ThumbnailNotReadyException implements Exception {
+  final String message;
+  ThumbnailNotReadyException(this.message);
+  @override
+  String toString() => 'ThumbnailNotReadyException: $message';
 }

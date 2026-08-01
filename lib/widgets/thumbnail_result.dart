@@ -19,8 +19,18 @@ class ThumbnailFailed extends ThumbnailResult {
 }
 
 enum ThumbnailFailReason {
-  /// Thumbnail fetch is not supported for this file type (e.g. ZIP)
+  /// Nothing can be made of this item, and nothing will change that: a ZIP
+  /// with no pictures in it, a PDF that would not render.
   notSupported,
+
+  /// Nothing can be made of it *yet*, but the material may turn up — an
+  /// unopened PDF (its pages need the whole file, which the viewer caches),
+  /// or a favourite whose source is not connected this run.
+  ///
+  /// A provisional answer: the tile shows it, and asks again every time it is
+  /// painted. Only failures whose re-check costs nothing may say this — see
+  /// [ThumbnailNotReadyException].
+  notYet,
 
   /// Network error or timeout
   timeout,

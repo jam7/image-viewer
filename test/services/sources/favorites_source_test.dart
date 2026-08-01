@@ -47,12 +47,14 @@ void main() {
     expect(bytes, [7]);
   });
 
-  test('an item whose source is not connected reports no thumbnail', () async {
+  test('an item whose source is not connected has none yet', () async {
     // Nothing registered: asking would mean connecting, and a background
     // thumbnail fetch must not put a login or a connection in the user's way.
+    // "Not yet" rather than "never": the source may be connected later in the
+    // same run, and asking again is a lookup in the registry (ADR 011).
     expect(
       () => favorites.fetchThumbnail(smbItem()),
-      throwsA(isA<ThumbnailNotSupportedException>()),
+      throwsA(isA<ThumbnailNotReadyException>()),
     );
   });
 

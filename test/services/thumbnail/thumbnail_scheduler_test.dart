@@ -224,6 +224,62 @@ void main() {
     expect(told, ['a']);
   });
 
+  group('an answer that may change', () {
+    // A PDF nobody has opened cannot have a thumbnail made — the pages need
+    // the whole file — but opening it caches the file, and then it can. So the
+    // answer is provisional: kept, so the tile shows an icon rather than a
+    // spinner, and asked about again every time that tile is painted.
+    test('is asked about again, unlike a settled one', () async {
+      final share = _FakeShare(notReady: {'later'}, unsupported: {'never'});
+      final scheduler = schedulerFor(share);
+
+      scheduler.want(picture('later'));
+      scheduler.want(picture('never'));
+      await drain();
+      expect(share.fetched, ['later', 'never']);
+
+      scheduler.want(picture('later'));
+      scheduler.want(picture('never'));
+      await drain();
+
+      expect(share.fetched, ['later', 'never', 'later'],
+          reason: 'only the provisional one is asked again');
+    });
+
+    test('turns into a picture once the material is there', () async {
+      final share = _FakeShare(notReady: {'later'});
+      final scheduler = schedulerFor(share);
+      final told = watch(['later']);
+
+      scheduler.want(picture('later'));
+      await drain();
+      expect(pool.get('later'), isA<ThumbnailFailed>());
+      expect(told, ['later'], reason: 'the icon is worth painting once');
+
+      share.notReady.clear(); // the viewer cached the file
+      scheduler.want(picture('later'));
+      await drain();
+
+      expect(pool.get('later'), isA<ThumbnailData>());
+      expect(told, ['later', 'later']);
+    });
+
+    test('and saying so again is not news', () async {
+      // Otherwise painting would ask, be told, paint, ask... for ever.
+      final share = _FakeShare(notReady: {'later'});
+      final scheduler = schedulerFor(share);
+      final told = watch(['later']);
+
+      for (var i = 0; i < 3; i++) {
+        scheduler.want(picture('later'));
+        await drain();
+      }
+
+      expect(share.fetched, hasLength(3), reason: 'asked each time');
+      expect(told, ['later'], reason: 'told once');
+    });
+  });
+
   test('what stops being wanted is dropped before it starts', () async {
     final share = _FakeShare(hold: true);
     final scheduler = schedulerFor(share, lanes: 1);
@@ -244,6 +300,10 @@ class _FakeShare extends SmbSource {
   final bool hold;
   final Set<String> unsupported;
 
+  /// Ids with nothing to make a thumbnail from *yet*. Mutable, so a test can
+  /// let the material turn up.
+  final Set<String> notReady;
+
   final List<String> fetched = [];
   final List<String> inFlight = [];
   int mostFilmsAtOnce = 0;
@@ -251,8 +311,12 @@ class _FakeShare extends SmbSource {
   final List<void Function()> _held = [];
   late bool _holding = hold;
 
-  _FakeShare({this.hold = false, this.unsupported = const {}})
-    : super(
+  _FakeShare({
+    this.hold = false,
+    this.unsupported = const {},
+    Set<String> notReady = const {},
+  })  : notReady = {...notReady},
+      super(
         config: const ServerConfig(
           id: 'test',
           name: 'test',
@@ -288,6 +352,9 @@ class _FakeShare extends SmbSource {
         final turn = Completer<void>();
         _held.add(() => turn.complete());
         await turn.future;
+      }
+      if (notReady.contains(source.id)) {
+        throw ThumbnailNotReadyException(source.name);
       }
       if (unsupported.contains(source.id)) {
         throw ThumbnailNotSupportedException(source.name);

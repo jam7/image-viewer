@@ -84,7 +84,10 @@ class ThumbnailPool {
     _entries[id] = result;
     _bytes += _sizeOf(result);
     _evict();
-    _tell(id);
+    // The same answer again is not news, and saying it were would spin: a
+    // provisional failure is re-asked by painting, so a watcher told about it
+    // would paint, ask, be told again, and paint again.
+    if (!_sameAnswer(replaced, result)) _tell(id);
     if (++_putsSinceLog >= 256) {
       _putsSinceLog = 0;
       _log.info('pool: ${_entries.length} entries, ${_mb(_bytes)}MB');
@@ -128,6 +131,11 @@ class ThumbnailPool {
       _forget(_entries.keys.first);
     }
   }
+
+  static bool _sameAnswer(ThumbnailResult? before, ThumbnailResult now) =>
+      before is ThumbnailFailed &&
+      now is ThumbnailFailed &&
+      before.reason == now.reason;
 
   static int _sizeOf(ThumbnailResult result) =>
       result is ThumbnailData ? result.data.length : 0;
