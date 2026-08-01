@@ -14,6 +14,7 @@ import 'package:image_viewer/services/cache/download_store.dart';
 import 'package:image_viewer/services/cache/memory_cache.dart';
 import 'package:image_viewer/services/sources/image_source_provider.dart';
 import 'package:image_viewer/services/sources/smb_source.dart';
+import 'package:image_viewer/widgets/thumbnail_result.dart';
 
 /// Tests the GallerySession paging + thumbnail-feed logic (ADR 007) without UI.
 void main() {
@@ -99,6 +100,27 @@ void main() {
   // What replaced it is tested where it now lives: the scheduler's own tests
   // for ordering and fetching, thumbnail_pool_test for what is kept, and
   // thumbnail_supply_test for what a reader is promised.
+
+  test('reloading asks again for what failed, here and nowhere else',
+      () async {
+    // A tile showing an icon is the main reason anyone reloads, and a settled
+    // failure would otherwise last until the app restarts (ADR 011).
+    final t = session(_FakePagedSource([
+      [img('a'), img('b')],
+    ]));
+    await t.loadNextPage();
+    cache.thumbnails.put('a', ThumbnailFailed(ThumbnailFailReason.notSupported));
+    cache.thumbnails.put('b', ThumbnailData(Uint8List.fromList([1])));
+    // Another place's failure, in the same app-wide pool.
+    cache.thumbnails.put('elsewhere', ThumbnailFailed(ThumbnailFailReason.timeout));
+
+    t.forgetFailedThumbnails();
+
+    expect(cache.thumbnails.get('a'), isNull, reason: 'asked again');
+    expect(cache.thumbnails.get('b'), isA<ThumbnailData>(), reason: 'kept');
+    expect(cache.thumbnails.get('elsewhere'), isNotNull,
+        reason: 'not what was reloaded');
+  });
 
   /// What is on screen belongs to the place, not to the widget drawing it:
   /// the viewer walks the same list looking for neighbours (ADR 010).

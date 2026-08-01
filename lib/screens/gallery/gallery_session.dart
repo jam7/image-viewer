@@ -221,12 +221,21 @@ class GallerySession {
   void pauseThumbnails() => _scheduler.pauseStills();
   void resumeThumbnails() => _scheduler.resumeStills();
 
-  /// Ask again for the items [test] selects, by forgetting the answer held for
-  /// them: the next paint finds nothing and asks. How a retry is spelled when
-  /// there is no ledger — used after a viewer visit, where a file that had no
-  /// thumbnail may now have its bytes in the cache.
-  void forgetThumbnails(bool Function(ThumbnailResult result) test) =>
-      _cacheManager.thumbnails.removeWhere((_, result) => test(result));
+  /// Ask again for everything here that has no picture to show.
+  ///
+  /// What reloading means for a tile showing an icon: the reader is saying
+  /// "try again", and a settled failure would otherwise last until the app is
+  /// restarted. Removing the answer is the whole of it — the next paint finds
+  /// nothing and asks, exactly as a fresh start would.
+  ///
+  /// Only this place's items: the pool is shared, and another tab's failures
+  /// are not what was reloaded.
+  void forgetFailedThumbnails() {
+    final here = {for (final item in loaded) item.id};
+    _cacheManager.thumbnails.removeWhere(
+      (id, result) => result is ThumbnailFailed && here.contains(id),
+    );
+  }
 
   /// Load the next page (the first page if none yet) and append it to
   /// [loaded]. Returns the new items (empty if a load is already running or

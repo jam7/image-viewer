@@ -408,8 +408,14 @@ class _GalleryTabsScreenState extends State<GalleryTabsScreen> {
   /// Read this place again from its source. A fresh session on the same URI,
   /// keeping the scroll anchor: the reader is looking at the same list, not
   /// being sent somewhere new.
+  ///
+  /// Thumbnails that came out are kept — they are in the pool and did not
+  /// change — but the ones that failed are forgotten, so they are tried again
+  /// as they would be on a fresh start. A tile showing an icon is the main
+  /// reason anyone reloads.
   void _reload(GalleryTab tab) {
     final current = tab.current;
+    current.forgetFailedThumbnails();
     tab.replaceCurrent(GallerySession.fromUri(
       current.sourceUri,
       provider: current.provider,

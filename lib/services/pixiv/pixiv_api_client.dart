@@ -60,20 +60,21 @@ class PixivApiClient {
   }
 
   /// トップページ全体を取得（キャッシュして複数タブで共有）。
-  Map<String, dynamic>? _cachedTopBody;
-
+  /// The top page, fetched afresh each time it is asked for.
+  ///
+  /// It used to be held for the life of the client, from when a screen kept no
+  /// state and re-read its list on every return. A tab keeps its list now, so
+  /// looking at a picture and coming back does not come through here at all —
+  /// which left the cache serving only the one case that wants fresh data:
+  /// opening the top page anew. Pixiv changes what it recommends about twice a
+  /// day, and the app showed the same page until it was restarted.
   Future<Map<String, dynamic>> _fetchTopBody() async {
-    if (_cachedTopBody != null) return _cachedTopBody!;
     final data = await _transport.getJson(
       '$_baseUrl/ajax/top/illust?mode=all&lang=ja',
     );
     _checkError(data);
-    _cachedTopBody = data['body'] as Map<String, dynamic>;
-    return _cachedTopBody!;
+    return data['body'] as Map<String, dynamic>;
   }
-
-  /// トップページキャッシュをクリア（リロード時に呼ぶ）。
-  void clearTopCache() => _cachedTopBody = null;
 
   /// トップページ（requests を除外）。
   Future<PixivIllustList> illustTop() async {
