@@ -13,7 +13,7 @@
 | ID | 条件 | 今どこにあるか |
 |---|---|---|
 | I1 | 画面に見えたタイルは、いずれ必ず「画像 or 失敗表示」になる (永久スピナー禁止) | resumeMissingThumbnails の存在理由 |
-| I2 | `notSupported` の失敗は勝手に再試行しない。ビューア/プレーヤ表示後にだけ再試行する | `retryUnsupportedThumbnails` |
+| I2 | `notSupported` の失敗は**描画のたびに再試行しない**。答えは答えとして保持する | プールに `ThumbnailFailed` を残す |
 | I3 | 動画サムネイルは直列で、画像より後。動画再生前にはキャンセルできる | ThumbnailLoader のバッチ規則 + `cancelThumbnailWork` |
 | I4 | Pixiv サムネイル URL の陳腐化時は取り直す ([pixiv_connection.md](../pixiv_connection.md)) | provider.fetchThumbnail 内。**本設計の外、変更なし** |
 | I5 | 取得したサムネイルは L2 (ディスク) に永続化される | `_loadOne` |
@@ -46,8 +46,13 @@ ThumbnailScheduler (アプリで 1 つ) ──(3)──▶ ディスクレーン
   数え、超えたら LRU で押し出す。実測用に件数と総バイトを定期ログ
 - 失敗エントリはバイト 0 として数える (押し出しは件数上限 2048 で別途)。
   失敗も「答え」なので、貯めないと同じ失敗を描画のたびに取りに行ってしまう
-- `removeWhere(predicate)`: `notSupported` の再試行 (I2) は、該当エントリを
-  消す → タイルが描かれ直すときに再要求される、で実現する
+- `removeWhere(predicate)`: `notSupported` の再試行は、該当エントリを消す →
+  タイルが描かれ直すときに再要求される、で実現する。**現状この再試行は起きて
+  いない** — `GallerySession.retryUnsupportedThumbnails` は lib のどこからも
+  呼ばれていない (段階 0 で発覚。ビューアが pop 結果で通知していた頃の名残で、
+  ADR 010 のタブ化で呼び出し側が消えたとみられる)。プル型ではこの穴を
+  「ビューアから戻ったらプールの当該エントリを消す」の 1 行で塞げるので、
+  段階 2 で塞ぐ。塞がない選択もありうるが、それは**意識して決める**
 - 通知: エントリごとの `ValueListenable<ThumbnailResult?>`。プール全体の
   リスナーは持たない (グリッド全面 setState を作らないため)
 
@@ -113,7 +118,7 @@ ThumbnailScheduler (アプリで 1 つ) ──(3)──▶ ディスクレーン
 
 | 段階 | 内容 | 完了条件 |
 |---|---|---|
-| 0 | **特性テスト**: I1〜I3 を widget テストで固定 (見えたタイルが埋まる / 失敗表示 / notSupported の再試行タイミング / 動画直列)。基準ログは 2026-08-02 取得済み | 現行コードで緑 |
+| 0 | **特性テスト** (2026-08-02 完了): `test/screens/gallery/thumbnail_supply_test.dart` 5 件。見えたタイルが埋まる / 離れて戻っても埋まる (再取得なし) / **離れている間にキャッシュを消しても埋まる** / notSupported を描画のたびに取り直さない / 動画は画像の後で 1 本ずつ。`attach` の `resumeMissingThumbnails` を潰すと 3 番目だけが落ちることを確認済み (歯があることの確認) | 現行コードで緑 |
 | 1 | **ThumbnailPool 導入**: プールを作り、既存ローダーの結果をプールにも書く。グリッドの読み口を `thumbnailFor` → プールに差し替え (セッションのマップは併存) | 挙動不変で緑 |
 | 2 | **スケジューラ + プル化**: タイル描画駆動の want、`updateViewport`、attach/detach を dropSession だけに。旧経路 (帳簿・水位・全読み直し) を**削除** | 実機で「タブから戻る」の可視タイルが 0.5 秒以内。キャッシュクリア → スクロールで埋まる |
 | 3 | **通知の粒度**: 項目別 ValueListenable に完全移行、サムネイル起因のグリッド全面 setState を削除。サムネイルの L1 書き込み停止 | 実機で描画のカクつきが増えていない |
