@@ -1,99 +1,94 @@
 # Thumbnail Architecture
 
-## Overview
+ギャラリーのサムネイルは**プル型**で供給する: タイルが描かれることが要求であり、
+スケジューラがビューポートに近いものから応える。決定と理由は
+[ADR 011](adr/011-thumbnail-pull-pipeline.md)、設計の詳細と不変条件は
+[docs/thumbnails/design.md](thumbnails/design.md)。
 
-ギャラリー画面のサムネイル表示は、バッチ読み込み・キャンセル・リトライを `ThumbnailLoader` に集約し、画面側は結果の受け取りと表示のみを担当する。
-
-## Class Structure
+## 構成
 
 ```
-SmbGalleryScreen (UI)
-    │
-    └─→ ThumbnailLoader (バッチ制御、キャンセル、リトライ)
-            ├─→ SmbSource.fetchThumbnail() ── 画像サムネイル取得
-            │       ├── JPEG: EXIF サムネイル抽出 → リサイズ
-            │       ├── PNG/GIF/WebP/BMP: フルDL → リサイズ
-            │       ├── ZIP: 最初の画像を Range Read → リサイズ
-            │       └── PDF: ページ0をレンダリング (キャッシュ必須)
-            │
-            ├─→ VideoThumbnailService.capture() ── 動画サムネイル取得
-            │       └── Player + VideoController (media_kit)
-            │              ↓
-            │       SmbProxyServer (SMB → localhost HTTP ブリッジ)
-            │
-            ├─→ SmbSource.resizeToThumbnail() ── 長辺600px, 400KB以下ならスキップ
-            │
-            └─→ CacheManager (L1/L2 に保存)
-                    ├── L1: MemoryCache (デコード済み、即表示)
-                    └── L2: DiskCache (PNG、永続化)
+GalleryView のタイル (ThumbnailOf)
+   │ (1) session.thumbnailFor(item) → scheduler.held(item)
+   ▼
+ThumbnailPool (アプリで 1 つ・32MB 上限の LRU、CacheManager.thumbnails)
+   │ 持っていれば即返す。無ければ ↓
+   ▼
+ThumbnailScheduler (場所ごとに 1 つ)     ── 同時 8、うち取得は 5、動画は直列
+   │ 近い順のキュー                       ── フォルダは尋ねない
+   ├─ L2 (thumb:<id>) にあれば読む
+   └─ 無ければ provider.fetchThumbnail() → L2 に保存
+        ├── SmbSource: EXIF 抽出 / リサイズ / ZIP の先頭画像 / PDF ページ 0
+        ├── PixivSource: サムネイル URL を取得 (陳腐化時は取り直し)
+        └── VideoThumbnailService: media_kit でフレームキャプチャ
+   ▼
+プールに入れる → その id を見ているタイルだけが再描画
 ```
 
-## ThumbnailLoader
+**要求を作るのは 2 か所だけ**:
 
-バッチ読み込みの状態管理を一手に引き受ける。画面側はフラグを一切持たない。
+1. タイルが描かれたとき (`ThumbnailOf` → `thumbnailFor`)。距離 0
+2. `GalleryView._wantThumbnails()` の帯 — 見えている行 + 前後 1 画面。距離 1。
+   スクロール位置から計算し、先頭行が変わったときだけ更新する。帯から外れた
+   **未着手の**要求は捨てる (また見えれば描画がまた要求する)
 
-### API
+配布済みの帳簿もバッチ水位も持たない。**描かれる = 要求される**なので、
+キャッシュを消しても次の描画で勝手に埋まり直す。
+
+## ThumbnailPool
+
+| | |
+|---|---|
+| 置き場 | `CacheManager.thumbnails` (アプリ全体で 1 つ) |
+| 上限 | 32MB (バイト単位の LRU) + 2048 件 (失敗エントリ用) |
+| 内容 | `ThumbnailData` / `ThumbnailFailed` — **失敗も答えとして保持**する |
+| 通知 | id 単位 (`watch`/`unwatch`)。押し出しとクリアでも通知する |
+| 寿命 | ビューやタブより長い。**離れても捨てない**のがプールの存在理由 |
+
+サムネイルは L1 (`MemoryCache`、10 件、フル画像と共用) には**書かない**。
+L1 がサムネイルに対して果たせなくなった役割をプールが引き継いでいる。
+
+## ThumbnailScheduler
 
 | メソッド | 用途 |
 |---|---|
-| `setItems(items)` | 対象アイテム設定。全状態リセット |
-| `loadNextBatch()` | 次のバッチを開始 |
-| `cancel()` | 進行中バッチを中断 (動画再生前に呼ぶ) |
-| `retryInterrupted()` | 中断されたアイテムをリトライ |
-| `retryUnsupported(predicate)` | notSupported のアイテムをリトライ |
-| `needsBatch(itemIndex)` | build トリガー用：このアイテムは未ディスパッチか |
-| `allDispatched` | 全アイテムがバッチに入ったか |
-| `dispose()` | リソース解放 |
+| `held(item, distance)` | プールを引き、無ければ要求する (タイルの入口) |
+| `want(item, distance)` | 要求だけ (帯の先読み)。フォルダは無視、既答も無視 |
+| `keepOnly(pred)` | 帯から外れた未着手の要求を捨てる |
+| `cancel()` | ビューが離れた。未着手を捨て、着手済みは完走させる |
+| `pauseStills()` / `resumeStills()` | 動画再生中はキャプチャを止める |
 
-### Internal State
+- レーン: 同時 8 (`lanes`)、うち共有への取得は 5 (`fetchLanes`) まで
+- 動画は画像が尽きてから 1 本ずつ (デコーダと接続を 1 本占有するため)
+- キューの起動はマイクロタスクで 1 回にまとめる。帯 80 件で 80 回起動すると、
+  1 回ごとにキュー全体を走査するので描画スレッドを食う
 
-| フィールド | 役割 |
+## 計測ログ
+
+性能問題はこの 3 行に対して質問する。実際、2026-08-02 の調査はこれで
+「思い込み 3 つ」を潰した。
+
+```
+wave: 30 wanted = 1520 held + 0 cached + 30 fetched + 0 failed + 0 dropped, 687ms
+pool: 512 entries, 9.9MB
+frame: build 69ms + raster 9ms          ← 32ms 超のフレームだけ
+metadata: 10863 entries encoded in 127ms (1006KB)   ← 8ms 超の索引書き出しだけ
+```
+
+## Cache Key Convention
+
+| プレフィックス | 用途 |
 |---|---|
-| `_items` | 対象アイテム一覧 |
-| `_loadedCount` | ディスパッチ済み位置 |
-| `_resultIds` | 結果を受け取ったアイテムの ID (重複防止) |
-| `_generation` | キャンセル用カウンター。インクリメントでループが中断 |
-| `_isLoading` | バッチ進行中フラグ。次バッチの多重起動を防止 |
-| `_videoThumbService` | Player の再利用。cancel 時に dispose |
+| `thumb:<id>` | サムネイル (長辺 600px PNG) |
+| `full:<id>` | 表示用データ (画像/ZIP/PDF バイト) |
 
-### Batch Processing
-
-```
-バッチ (30 items)
-    │
-    ├── 画像: 行単位で並列 (Future.wait, 5枚ずつ)
-    │     帯域を有効活用。各行の完了を待ってから次の行へ
-    │
-    └── 動画: 末尾で1枚ずつ順次処理
-          帯域を占有するため並列にしない
-          cancel() で即中断可能 (generation チェック)
-```
-
-### Result Callback
-
-```dart
-ThumbnailLoader(
-  onResult: (id, result) {
-    if (mounted) setState(() => _thumbnailData[id] = result);
-  },
-);
-```
-
-画面側は `_thumbnailData` マップだけ管理。結果は `ThumbnailResult` sealed class:
-- `null` → ローディング中 (スピナー表示)
-- `ThumbnailData(bytes)` → 成功 (画像表示)
-- `ThumbnailFailed(notSupported)` → 未対応 (ビューア表示後にリトライ可能)
-- `ThumbnailFailed(timeout)` → エラー
+サムネイル取得時は `thumb:` キーのみ検索。`full:` は検索しない (PDF/ZIP は
+`full:` にコンテナ本体が入るため)。
 
 ## VideoThumbnailService
 
 media_kit の Player を再利用して動画サムネイルをキャプチャする。
-
-### Serialization
-
-`Completer<void>` ロックで直列化。複数の capture 呼び出しが同時に来ても、1つずつ処理する (Player.open の並行実行を防止)。
-
-### Capture Flow
+`Completer<void>` ロックで直列化し、複数の capture が同時に来ても 1 つずつ処理する。
 
 ```
 1. player.open(url, start: 3s)
@@ -105,7 +100,8 @@ media_kit の Player を再利用して動画サムネイルをキャプチャ�
 7. JPEG bytes を返す
 ```
 
-外部から dispose された場合 (動画再生開始時)、`_player == null` を検知して info ログのみ出力。
+外部から dispose された場合 (動画再生開始時)、`_player == null` を検知して
+info ログのみ出力する。
 
 ## SmbProxyServer
 
@@ -122,43 +118,3 @@ media_kit → HTTP GET http://127.0.0.1:{port}/{token}
 - ランダムポート + ワンタイムトークンで認証
 - Range Request 対応 (シーク可能)
 - `invalidateToken()` で `cancelled = true` → ストリーミング中断
-
-## Batch Trigger (Build)
-
-スクロールで新しいアイテムが見えた時にバッチを起動する仕組み。
-
-```dart
-// GridView.builder の itemBuilder 内
-if (!isDir && _thumbLoader.needsBatch(itemIndex)) {
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (mounted) _thumbLoader.loadNextBatch();
-  });
-}
-```
-
-`needsBatch` は `itemIndex >= _loadedCount && !_isLoading` を返す。
-
-## Playback Interruption Flow
-
-```
-1. ユーザーが動画をタップ
-2. _thumbLoader.cancel()
-   → _generation++ でバッチループ中断
-   → VideoThumbnailService dispose
-3. VideoPlayerScreen に遷移
-4. 戻る
-5. _thumbLoader.retryUnsupported() → notSupported のリトライ
-6. _thumbLoader.retryInterrupted() → 中断されたアイテムのリトライ
-   → _isLoading = true (次バッチの起動をブロック)
-   → リトライ完了 → _isLoading = false
-   → build トリガーが必要に応じて次バッチを起動
-```
-
-## Cache Key Convention
-
-| プレフィックス | 用途 |
-|---|---|
-| `thumb:<id>` | サムネイル (長辺 600px PNG) |
-| `full:<id>` | 表示用データ (画像/ZIP/PDF バイト) |
-
-サムネイル取得時は `thumb:` キーのみ検索。`full:` は検索しない (PDF/ZIP は `full:` にコンテナ本体が入るため)。
