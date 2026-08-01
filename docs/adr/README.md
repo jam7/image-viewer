@@ -13,4 +13,5 @@
 | [007](007-virtualized-gallery.md) | ギャラリーを仮想化ページリストモデルに統一 (閲覧状態はタブ所有) | Accepted (決定 4 は 008 で改訂) |
 | [008](008-tab-identity-and-history.md) | タブ identity をタブ ID とし、URI はタブ内ナビ履歴の要素とする | Accepted |
 | [009](009-navigation-toolbar.md) | 戻る・進むはツールバーの明示ボタンにする (Android 15 で端と長押しが使えない) | Accepted |
-| [010](010-viewer-as-a-place.md) | ビューアをルートではなくタブの中の場所にする (前後は履歴の直前から) | Accepted (実装未着手) |
+| [010](010-viewer-as-a-place.md) | ビューアをルートではなくタブの中の場所にする (前後は履歴の直前から) | Accepted (実装済み) |
+| [011](011-thumbnail-pull-pipeline.md) | サムネイルをプル型にする (画面が要求し、優先度つきで応える) | Proposed |
