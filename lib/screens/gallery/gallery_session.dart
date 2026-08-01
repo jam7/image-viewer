@@ -249,18 +249,34 @@ class GallerySession {
   Future<void> attach() async {
     if (_thumbnailItems.isEmpty) return;
     final generation = ++_attachGeneration;
+    // Two clocks, because they point at different fixes: [reading] is the disk,
+    // and what is left is the repaint this asks for after every single item.
+    final wall = Stopwatch()..start();
+    final reading = Stopwatch();
+    var found = 0;
+    var missing = 0;
     for (final item in _thumbnailItems) {
       if (generation != _attachGeneration) return; // detached or disposed
       if (_thumbnailResults.containsKey(item.id)) continue;
       try {
+        reading.start();
         final cached = await _cacheManager.get('thumb:${item.id}');
-        if (cached == null) continue;
+        reading.stop();
+        if (cached == null) {
+          missing++;
+          continue;
+        }
         if (generation != _attachGeneration) return;
+        found++;
         _recordThumbnail(item.id, ThumbnailData(Uint8List.fromList(cached.data)));
       } catch (e, st) {
+        reading.stop();
         _log.warning('thumbnail cache reload failed: ${item.name}', e, st);
       }
     }
+    _log.info('attach: ${_thumbnailItems.length} items, $found restored, '
+        '$missing not cached, ${wall.elapsedMilliseconds}ms '
+        '(${reading.elapsedMilliseconds}ms reading)');
     if (generation != _attachGeneration) return;
     await resumeMissingThumbnails();
   }

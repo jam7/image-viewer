@@ -145,31 +145,40 @@ class ThumbnailLoader {
     final videoItems = list.where((i) => i.metadata?['isVideo'] == true).toList();
     _log.info('Batch: ${imageItems.length} images + ${videoItems.length} videos ($skipped already loaded)');
 
+    // Counted so that "the list is slow" can be told apart from "the list is
+    // being fetched again": a batch served entirely from the cache and a batch
+    // off the network look the same from outside.
+    final sw = Stopwatch()..start();
+    var cached = 0;
     for (int i = 0; i < imageItems.length; i += parallelCount) {
       if (generation != _generation) return;
       final end = (i + parallelCount).clamp(0, imageItems.length);
       final row = imageItems.sublist(i, end);
-      await Future.wait(row.map(_loadOne));
+      cached += (await Future.wait(row.map(_loadOne))).where((c) => c).length;
     }
 
     for (final video in videoItems) {
       if (generation != _generation) return;
-      await _loadOne(video);
+      if (await _loadOne(video)) cached++;
     }
+    _log.info('Batch done: $cached of ${list.length} from cache, '
+        '${sw.elapsedMilliseconds}ms');
   }
 
-  Future<void> _loadOne(ImageSource image) async {
+  /// Answers whether the cache had it, which is what the batch summary counts.
+  /// A failure answers false: it did not come from the cache either.
+  Future<bool> _loadOne(ImageSource image) async {
     final thumbKey = 'thumb:${image.id}';
     try {
       final cached = await cacheManager.get(thumbKey);
       if (cached != null) {
         _emitResult(image.id, ThumbnailData(Uint8List.fromList(cached.data)));
-      } else {
-        final data = await source.fetchThumbnail(image);
-        cacheManager.l1.put(thumbKey, data);
-        await cacheManager.l2.put(thumbKey, data);
-        _emitResult(image.id, ThumbnailData(data));
+        return true;
       }
+      final data = await source.fetchThumbnail(image);
+      cacheManager.l1.put(thumbKey, data);
+      await cacheManager.l2.put(thumbKey, data);
+      _emitResult(image.id, ThumbnailData(data));
     } on ThumbnailNotSupportedException {
       _log.info('Thumbnail not supported: ${image.name}');
       _emitResult(image.id, ThumbnailFailed(ThumbnailFailReason.notSupported));
@@ -177,6 +186,7 @@ class ThumbnailLoader {
       _log.warning('thumbnail error (${image.name})', e, st);
       _emitResult(image.id, ThumbnailFailed(ThumbnailFailReason.timeout));
     }
+    return false;
   }
 
   void _emitResult(String id, ThumbnailResult result) {
