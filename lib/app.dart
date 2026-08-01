@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
@@ -44,7 +46,7 @@ class _AppRoot extends StatefulWidget {
   State<_AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<_AppRoot> {
+class _AppRootState extends State<_AppRoot> with WidgetsBindingObserver {
   final _webClient = PixivWebClient();
   final _smbConfigStore = SmbConfigStore();
   final _proxyServer = SmbProxyServer();
@@ -58,6 +60,7 @@ class _AppRootState extends State<_AppRoot> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _registry = SourceRegistry(smbConfigStore: _smbConfigStore);
     _registry.onPixivLoginRequired = _handlePixivLogin;
     _initialize();
@@ -135,8 +138,21 @@ class _AppRootState extends State<_AppRoot> {
     return PixivApiClient(webClient: _webClient);
   }
 
+  /// Going away is when the cache index has to be on disk.
+  ///
+  /// It is written a few seconds after it changes rather than on every change,
+  /// which is a window in which being killed would leave cached files that
+  /// nothing knows about. Android kills backgrounded apps freely, so the way
+  /// out is the one moment it must not be skipped.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) return;
+    unawaited(_cacheManager?.l2.flushNow());
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabs.dispose();
     _proxyServer.dispose();
     _registry.disposeAll();

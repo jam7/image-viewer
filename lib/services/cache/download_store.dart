@@ -196,8 +196,8 @@ class DownloadStore {
       _entries.clear();
       _totalSizeBytes = 0;
       for (final entry in entries.entries) {
-        final meta =
-            CacheEntryMeta.fromJson(entry.value as Map<String, dynamic>);
+        final meta = CacheEntryMeta.fromJson(
+            entry.value as Map<String, dynamic>, entry.key);
         if (_fileFor(meta.key).existsSync()) {
           _entries[entry.key] = meta;
           _totalSizeBytes += meta.sizeBytes;

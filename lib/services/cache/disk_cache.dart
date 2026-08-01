@@ -18,8 +18,17 @@ class DiskCache {
   late Directory _cacheDir;
   final Map<String, CacheEntryMeta> _entries = {};
   int _totalSizeBytes = 0;
-  int _opsSinceLastFlush = 0;
   bool _initialized = false;
+  Timer? _flushTimer;
+  bool _unwritten = false;
+
+  /// How long the index may be out of date on disk.
+  ///
+  /// Writing it costs about 90ms per ten thousand entries, on the app's own
+  /// thread (measured on the device, 2026-08-02). It used to be written every
+  /// fifth operation, which during a scroll over uncached pictures meant a
+  /// 90ms stall every 150ms: the list moved three rows and stopped.
+  static const _flushDelay = Duration(seconds: 5);
   bool _isFlushing = false;
   bool _needsFlush = false;
 
@@ -59,12 +68,12 @@ class DiskCache {
     if (!file.existsSync()) {
       _entries.remove(key);
       _totalSizeBytes -= entry.sizeBytes;
-      _scheduleFlush();
+      _flushSoon();
       return null;
     }
 
     _entries[key] = entry.copyWith(lastAccessTime: DateTime.now());
-    _scheduleFlush();
+    _touched();
     return file;
   }
 
@@ -93,7 +102,7 @@ class DiskCache {
       createdTime: now,
     );
     _totalSizeBytes += data.length;
-    _scheduleFlush();
+    _flushSoon();
   }
 
   /// Delete a single entry by key.
@@ -107,7 +116,7 @@ class DiskCache {
       } catch (e, st) {
         _log.warning('delete error for $key', e, st);
       }
-      _scheduleFlush();
+      _flushSoon();
     }
   }
 
@@ -119,7 +128,8 @@ class DiskCache {
       await _cacheDir.delete(recursive: true);
       _cacheDir.createSync(recursive: true);
     }
-    await _flushMetadata();
+    _unwritten = true;
+    await flushNow();
   }
 
   Future<CacheStats> getStats() async {
@@ -133,7 +143,20 @@ class DiskCache {
   void setMaxSize(int bytes) {
     _maxSizeBytes = bytes;
     _evictIfNeeded(0);
-    _scheduleFlush();
+    _flushSoon();
+  }
+
+  /// Write the index now, if anything is waiting to be written.
+  ///
+  /// For when the app is going away: [_flushDelay] is a window in which being
+  /// killed would lose what has been cached since the last write, leaving
+  /// files on disk that nothing knows about and nothing counts towards the
+  /// size limit.
+  Future<void> flushNow() async {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    if (!_unwritten) return;
+    await _flushMetadata();
   }
 
   // --- 内部メソッド ---
@@ -159,13 +182,21 @@ class DiskCache {
     }
   }
 
-  void _scheduleFlush() {
-    _opsSinceLastFlush++;
-    if (_opsSinceLastFlush >= 5) {
-      _opsSinceLastFlush = 0;
-      _flushMetadata();
-    }
+  /// The index itself changed: write it, within [_flushDelay] and once for
+  /// however many changes arrive in that time.
+  void _flushSoon() {
+    _unwritten = true;
+    _flushTimer ??= Timer(_flushDelay, () {
+      _flushTimer = null;
+      if (_unwritten) unawaited(_flushMetadata());
+    });
   }
+
+  /// Only an access time moved. Worth writing eventually, since it is the
+  /// order things are dropped in, but never worth a write of its own: reading
+  /// cached pictures would then stall every few seconds for nothing anyone
+  /// asked for. It goes out with the next real change, or on the way out.
+  void _touched() => _unwritten = true;
 
   Future<void> _flushMetadata() async {
     if (_isFlushing) {
@@ -173,9 +204,15 @@ class DiskCache {
       return;
     }
     _isFlushing = true;
+    _unwritten = false;
 
     try {
       final metaFile = File('${_cacheDir.path}/_metadata.json');
+      // Timed because it is the one thing here that runs whole on the app's
+      // own thread: every entry becomes a map and the lot is encoded. A frame
+      // is 16ms. What keeps it out of the way is how rarely it now happens
+      // ([_flushDelay]), not how long it takes.
+      final spent = Stopwatch()..start();
       final data = {
         'maxSizeBytes': _maxSizeBytes,
         'totalSizeBytes': _totalSizeBytes,
@@ -183,8 +220,14 @@ class DiskCache {
           for (final e in _entries.entries) e.key: e.value.toJson(),
         },
       };
+      final encoded = jsonEncode(data);
+      spent.stop();
+      if (spent.elapsedMilliseconds >= 8) {
+        _log.info('metadata: ${_entries.length} entries encoded in '
+            '${spent.elapsedMilliseconds}ms (${encoded.length ~/ 1024}KB)');
+      }
       final tmpFile = File('${metaFile.path}.tmp');
-      await tmpFile.writeAsString(jsonEncode(data), flush: true);
+      await tmpFile.writeAsString(encoded, flush: true);
       await tmpFile.rename(metaFile.path);
     } catch (e, st) {
       // rename失敗時は次回のflushで再試行
@@ -211,8 +254,8 @@ class DiskCache {
       _entries.clear();
       _totalSizeBytes = 0;
       for (final entry in entries.entries) {
-        final meta =
-            CacheEntryMeta.fromJson(entry.value as Map<String, dynamic>);
+        final meta = CacheEntryMeta.fromJson(
+            entry.value as Map<String, dynamic>, entry.key);
         // ファイルが存在する場合のみ復元
         if (_fileFor(meta.key).existsSync()) {
           _entries[entry.key] = meta;

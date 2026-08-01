@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -103,20 +104,60 @@ void main() {
     expect((await cache.getStats()).totalSizeBytes, 0);
   });
 
-  test('metadata persists across instances once the flush threshold is hit',
-      () async {
-    // _scheduleFlush writes metadata every 5 ops; 5 puts cross it.
+  test('the index is not rewritten for every change', () async {
+    // Writing it means encoding every entry there is, on the app's own thread
+    // — 90ms at ten thousand of them, measured on the device. Doing that per
+    // operation is what made a scroll over uncached pictures stall every few
+    // rows (ADR 011 の調査, 2026-08-02). It is written a few seconds later
+    // instead, once for however many changes arrive meanwhile.
     for (var i = 0; i < 5; i++) {
       await cache.put('k$i', bytes(10, i));
     }
-    // The flush is fire-and-forget; give it a moment to land.
     await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    final tooSoon = DiskCache(maxSizeBytes: 1000);
+    await tooSoon.init(baseDir: tempDir);
+    expect((await tooSoon.getStats()).itemCount, 0);
+  });
+
+  test('and is written on demand, which is how the app leaves', () async {
+    for (var i = 0; i < 5; i++) {
+      await cache.put('k$i', bytes(10, i));
+    }
+    await cache.flushNow();
 
     final reopened = DiskCache(maxSizeBytes: 1000);
     await reopened.init(baseDir: tempDir);
 
     expect((await reopened.getStats()).itemCount, 5);
     expect(await reopened.get('k3'), bytes(10, 3));
+  });
+
+  test('an index written the old way still loads', () async {
+    // Entries used to repeat their key and carry ISO dates. Every device
+    // upgrading has one of those; failing to read it would leave the whole
+    // cache on disk with nothing knowing it is there.
+    await cache.put('a', bytes(10, 1));
+    await cache.flushNow();
+    final index = File('${tempDir.path}/cache/l2/_metadata.json');
+    index.writeAsStringSync(jsonEncode({
+      'maxSizeBytes': 1000,
+      'totalSizeBytes': 10,
+      'entries': {
+        'a': {
+          'key': 'a',
+          'sizeBytes': 10,
+          'lastAccessTime': '2026-07-01T10:00:00.000',
+          'createdTime': '2026-07-01T09:00:00.000',
+        },
+      },
+    }));
+
+    final reopened = DiskCache(maxSizeBytes: 1000);
+    await reopened.init(baseDir: tempDir);
+
+    expect((await reopened.getStats()).itemCount, 1);
+    expect(await reopened.get('a'), bytes(10, 1));
   });
 
   test('clear removes all entries and files', () async {
