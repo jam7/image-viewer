@@ -138,6 +138,8 @@ void main() {
 
   test('the nearest to the viewport goes first', () async {
     // One lane, so the order they come out in is the order they were chosen.
+    // A whole band is asked for in one go and starts once, after it: the far
+    // one asked for first does not get a head start on the visible one.
     final share = _FakeShare(hold: true);
     final scheduler = schedulerFor(share, lanes: 1).scheduler;
 
@@ -149,9 +151,7 @@ void main() {
       await drain();
     }
 
-    // 'far' was already running when the others arrived: only what is still
-    // waiting can be reordered.
-    expect(share.fetched, ['far', 'near', 'middle']);
+    expect(share.fetched, ['near', 'middle', 'far']);
   });
 
   test('films wait for the pictures, and for each other', () async {

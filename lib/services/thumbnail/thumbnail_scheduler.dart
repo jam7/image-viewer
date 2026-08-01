@@ -65,11 +65,29 @@ class ThumbnailScheduler {
   /// something more important than a still.
   bool _stillsPaused = false;
 
+  bool _pumpQueued = false;
+
   int _asked = 0;
   int _fromPool = 0;
   int _fromCache = 0;
   int _fetched = 0;
+  int _failed = 0;
+  int _dropped = 0;
   Stopwatch? _wave;
+
+  /// What is held for [item], asking for it if that is nothing. The one way in
+  /// for a tile being painted: it needs the answer and, lacking one, is the
+  /// request.
+  ThumbnailResult? held(ImageSource item, {int distance = 0}) {
+    final have = pool.get(item.id);
+    if (have != null) {
+      _wave ??= Stopwatch()..start();
+      _fromPool++;
+      return have;
+    }
+    want(item, distance: distance);
+    return null;
+  }
 
   /// Ask for [item]'s thumbnail, [distance] rows from what is on screen (0 is
   /// on screen). Asking twice is free; the shorter distance wins.
@@ -93,13 +111,15 @@ class ThumbnailScheduler {
     _asked++;
     _wave ??= Stopwatch()..start();
     _wanted[item.id] = _Want(item, distance);
-    _pump();
+    _schedulePump();
   }
 
   /// Drop what is no longer near enough to matter. Painting asks again, so
   /// dropping costs nothing but the asking.
   void keepOnly(bool Function(String id) stillWanted) {
+    final before = _wanted.length;
     _wanted.removeWhere((id, _) => !stillWanted(id));
+    _dropped += before - _wanted.length;
   }
 
   /// The view went away. Forget what was wanted and disown what is running —
@@ -107,9 +127,12 @@ class ThumbnailScheduler {
   /// paid for itself either way.
   void cancel() {
     _round++;
+    _dropped += _wanted.length;
     _wanted.clear();
     _stillsPaused = false;
     source.cancelThumbnailWork();
+    // Nothing left to finish, so nothing else will close the run of asking.
+    if (_busy == 0) _reportWave();
   }
 
   /// Stop making stills while the source is needed for playing something.
@@ -120,10 +143,25 @@ class ThumbnailScheduler {
 
   void resumeStills() {
     _stillsPaused = false;
-    _pump();
+    _schedulePump();
   }
 
   Future<void> dispose() async => cancel();
+
+  /// Start soon, rather than once per request.
+  ///
+  /// A scroll asks for its whole band in one go — some eighty items — and
+  /// starting after each one meant walking the queue for each one as well:
+  /// eighty walks of eighty, sixty times a second, all of it on the thread
+  /// that was trying to draw the scroll.
+  void _schedulePump() {
+    if (_pumpQueued) return;
+    _pumpQueued = true;
+    scheduleMicrotask(() {
+      _pumpQueued = false;
+      _pump();
+    });
+  }
 
   /// Start whatever there is room to start.
   void _pump() {
@@ -175,9 +213,11 @@ class ThumbnailScheduler {
       _finish(want, round, ThumbnailData(data));
     } on ThumbnailNotSupportedException {
       _log.info('no thumbnail for ${want.item.name}');
+      _failed++;
       _finish(want, round, ThumbnailFailed(ThumbnailFailReason.notSupported));
     } catch (e, st) {
       _log.warning('thumbnail error (${want.item.name})', e, st);
+      _failed++;
       _finish(want, round, ThumbnailFailed(ThumbnailFailReason.timeout));
     }
   }
@@ -203,13 +243,17 @@ class ThumbnailScheduler {
   /// ADR 011, and the log that answered it).
   void _reportWave() {
     final wave = _wave;
-    if (wave == null || _asked == 0) return;
+    if (wave == null || (_asked == 0 && _fromPool == 0)) return;
+    // Everything asked for is accounted for, including what was given up on:
+    // a line that says fifty were wanted and one arrived, with no word of the
+    // other forty-nine, reads as a fault rather than as leaving the place.
     _log.info(
       'wave: $_asked wanted = $_fromPool held + $_fromCache cached + '
-      '$_fetched fetched, ${wave.elapsedMilliseconds}ms',
+      '$_fetched fetched + $_failed failed + $_dropped dropped, '
+      '${wave.elapsedMilliseconds}ms',
     );
     _wave = null;
-    _asked = _fromPool = _fromCache = _fetched = 0;
+    _asked = _fromPool = _fromCache = _fetched = _failed = _dropped = 0;
   }
 
   static bool _isVideo(ImageSource item) => item.metadata?['isVideo'] == true;

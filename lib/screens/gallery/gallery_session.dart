@@ -179,12 +179,8 @@ class GallerySession {
   /// cannot has just said so. That is what makes an emptied cache recover by
   /// itself: the next paint asks again, because nothing is claiming the
   /// question was already answered.
-  ThumbnailResult? thumbnailFor(ImageSource item, {int distance = 0}) {
-    final held = _cacheManager.thumbnails.get(item.id);
-    if (held != null) return held;
-    _scheduler.want(item, distance: distance);
-    return null;
-  }
+  ThumbnailResult? thumbnailFor(ImageSource item, {int distance = 0}) =>
+      _scheduler.held(item, distance: distance);
 
   /// Ask ahead for the band around what is on screen, so that scrolling meets
   /// thumbnails already there. [near] is what is visible; [around] is the
