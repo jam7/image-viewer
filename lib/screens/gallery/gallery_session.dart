@@ -204,7 +204,14 @@ class GallerySession {
   bool get isLoadingPage => _loadingPage;
 
   /// The thumbnail for [id], or null if it has not been fetched yet.
-  ThumbnailResult? thumbnailFor(String id) => _thumbnailResults[id];
+  ///
+  /// The pool first (ADR 011): it outlives this view, so a place returned to
+  /// paints from it straight away instead of waiting for [attach] to read the
+  /// disk. The session's own map is still consulted behind it — until the pull
+  /// rework it remains what [attach] and [resumeMissingThumbnails] go by, and
+  /// an entry pushed out of the pool must not read as "never fetched".
+  ThumbnailResult? thumbnailFor(String id) =>
+      _cacheManager.thumbnails.get(id) ?? _thumbnailResults[id];
 
   /// Whether painting [item] should kick off the next thumbnail batch — i.e.
   /// the view has scrolled past what has been dispatched. Items with no
@@ -365,6 +372,7 @@ class GallerySession {
   }
 
   void _recordThumbnail(String id, ThumbnailResult result) {
+    _cacheManager.thumbnails.put(id, result);
     _thumbnailResults[id] = result;
     onChanged?.call();
   }

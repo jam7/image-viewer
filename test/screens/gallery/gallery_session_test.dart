@@ -154,7 +154,8 @@ void main() {
     expect(changes, 2);
   });
 
-  test('detach clears the results but keeps the item list', () async {
+  test('detach lets go of the session copy; the reader keeps seeing it',
+      () async {
     var changes = 0;
     final t = session(
       _FakePagedSource([
@@ -169,7 +170,10 @@ void main() {
     t.detach();
 
     expect(t.hasThumbnailResults, isFalse);
-    expect(t.thumbnailFor('a'), isNull);
+    // The pool outlives the view (ADR 011), so the tile still has a picture to
+    // paint the moment this place is shown again. What detach frees is this
+    // session's own copy; what bounds the memory is now the pool's size.
+    expect(t.thumbnailFor('a'), isA<ThumbnailData>());
     expect(t.loaded.map((i) => i.id), ['a']); // items survive the detach
     // No repaint request: this runs from deactivate, i.e. during a build.
     expect(changes, 0);
@@ -188,7 +192,7 @@ void main() {
 
     t.detach();
 
-    expect(t.thumbnailFor('ok'), isNull); // decoded image dropped
+    expect(t.thumbnailFor('ok'), isA<ThumbnailData>()); // held by the pool
     expect(t.thumbnailFor('nope'), isA<ThumbnailFailed>()); // answer kept
 
     await t.attach();
