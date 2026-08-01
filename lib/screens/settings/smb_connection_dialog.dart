@@ -123,88 +123,117 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
       final basePath = _basePathController.text.trim().isEmpty
           ? '/' : _basePathController.text.trim();
 
-      // Find files in basePath
+      // Biggest first: the largest file is what the single-file run reads,
+      // and the top of the list is what the parallel run works through.
       final files = await tree.listDirectory(basePath);
-      final readableFiles = files
-          .where((f) => !f.isDirectory && f.size > 0)
-          .toList()
+      final readable = files.where((f) => !f.isDirectory && f.size > 0).toList()
         ..sort((a, b) => b.size.compareTo(a.size));
 
-      if (readableFiles.isEmpty) {
+      if (readable.isEmpty) {
         log('ファイルが見つかりません: $basePath');
         return;
       }
 
-      // --- Single file benchmark (largest file) ---
-      final target = readableFiles.first;
-      log('=== Single file: ${target.name} (${(target.size / 1024).toStringAsFixed(0)} KB) ===');
-
-      for (final ra in [1, 2, 3, 5, 8]) {
-        if (_benchmarkCancelled) break;
-        final sw = Stopwatch()..start();
-        final reader = await tree.openRead(target.path);
-        int totalBytes = 0;
-        try {
-          await for (final chunk in reader.readStream(readAhead: ra)) {
-            totalBytes += chunk.length;
-            if (_benchmarkCancelled) break;
-          }
-        } finally {
-          await reader.close();
-        }
-        sw.stop();
-        final sec = sw.elapsedMilliseconds / 1000;
-        final speed = sec > 0 ? (totalBytes / 1024 / sec).toStringAsFixed(0) : '?';
-        log('readAhead=$ra: ${sec.toStringAsFixed(2)}s  $speed KB/s');
-      }
-
+      await _benchReadAhead(tree, readable.first, log);
       if (_benchmarkCancelled) return;
-
-      // --- Parallel directory benchmark ---
-      final benchFiles = readableFiles.take(20).toList();
-      final totalSize = benchFiles.fold<int>(0, (s, f) => s + f.size);
+      await _benchParallel(tree, readable.take(_benchFileCount).toList(), log);
+      if (_benchmarkCancelled) return;
       log('');
-      log('=== Parallel: ${benchFiles.length} files (${(totalSize / 1024).toStringAsFixed(0)} KB) ===');
-
-      for (final par in [1, 2, 3, 5, 8]) {
-        if (_benchmarkCancelled) break;
-        final sw = Stopwatch()..start();
-        int downloaded = 0;
-
-        for (int i = 0; i < benchFiles.length; i += par) {
-          if (_benchmarkCancelled) break;
-          final end = (i + par).clamp(0, benchFiles.length);
-          final batch = benchFiles.sublist(i, end);
-          await Future.wait(batch.map((f) async {
-            final reader = await tree.openRead(f.path);
-            try {
-              await for (final chunk in reader.readStream(readAhead: 3)) {
-                downloaded += chunk.length;
-                if (_benchmarkCancelled) break;
-              }
-            } finally {
-              await reader.close();
-            }
-          }));
-        }
-
-        sw.stop();
-        final sec = sw.elapsedMilliseconds / 1000;
-        final speed = sec > 0 ? (downloaded / 1024 / sec).toStringAsFixed(0) : '?';
-        log('parallel=$par: ${sec.toStringAsFixed(2)}s  $speed KB/s');
-      }
-
-      if (!_benchmarkCancelled) log('');
-      if (!_benchmarkCancelled) log('完了');
+      log('完了');
     } catch (e, st) {
       _log.warning('Benchmark error', e, st);
       log('エラー: $e');
     } finally {
       try {
         await client?.disconnect();
-      } catch (_) {}
+      } catch (e, st) {
+        // Nothing left to do about it — the run is over either way — but a
+        // share that will not let go is worth knowing about.
+        _log.warning('disconnect error after benchmark', e, st);
+      }
       if (mounted) setState(() => _isBenchmarking = false);
     }
+  }
+
+  /// The settings each run is measured at, and how much of the directory the
+  /// parallel run reads.
+  static const _benchSteps = [1, 2, 3, 5, 8];
+  static const _benchFileCount = 20;
+
+  /// How fast one file reads at each read-ahead depth.
+  Future<void> _benchReadAhead(
+    Smb2Tree tree,
+    Smb2FileInfo target,
+    void Function(String) log,
+  ) async {
+    log('=== Single file: ${target.name} '
+        '(${(target.size / 1024).toStringAsFixed(0)} KB) ===');
+    for (final readAhead in _benchSteps) {
+      if (_benchmarkCancelled) return;
+      final sw = Stopwatch()..start();
+      final bytes = await _readWhole(tree, target.path, readAhead: readAhead);
+      sw.stop();
+      log('readAhead=$readAhead: ${_timing(bytes, sw)}');
+    }
+  }
+
+  /// How fast a directory reads with several files in flight at once.
+  Future<void> _benchParallel(
+    Smb2Tree tree,
+    List<Smb2FileInfo> files,
+    void Function(String) log,
+  ) async {
+    final totalSize = files.fold<int>(0, (sum, f) => sum + f.size);
+    log('');
+    log('=== Parallel: ${files.length} files '
+        '(${(totalSize / 1024).toStringAsFixed(0)} KB) ===');
+    for (final width in _benchSteps) {
+      if (_benchmarkCancelled) return;
+      final sw = Stopwatch()..start();
+      var bytes = 0;
+      for (var i = 0; i < files.length; i += width) {
+        if (_benchmarkCancelled) break;
+        final batch = files.sublist(i, (i + width).clamp(0, files.length));
+        final read = await Future.wait(
+          batch.map((f) => _readWhole(tree, f.path, readAhead: 3)),
+        );
+        bytes += read.fold(0, (sum, n) => sum + n);
+      }
+      sw.stop();
+      log('parallel=$width: ${_timing(bytes, sw)}');
+    }
+  }
+
+  /// Read [path] to the end, answering how many bytes came back.
+  ///
+  /// Stops where it is if the run was cancelled: a benchmark is minutes of
+  /// traffic, and the cancel button has to mean now rather than after this
+  /// file.
+  Future<int> _readWhole(
+    Smb2Tree tree,
+    String path, {
+    required int readAhead,
+  }) async {
+    final reader = await tree.openRead(path);
+    var total = 0;
+    try {
+      await for (final chunk in reader.readStream(readAhead: readAhead)) {
+        total += chunk.length;
+        if (_benchmarkCancelled) break;
+      }
+    } finally {
+      await reader.close();
+    }
+    return total;
+  }
+
+  /// How long it took and how fast that was: `1.23s  4567 KB/s`.
+  static String _timing(int bytes, Stopwatch sw) {
+    final seconds = sw.elapsedMilliseconds / 1000;
+    final rate = seconds > 0
+        ? (bytes / 1024 / seconds).toStringAsFixed(0)
+        : '?';
+    return '${seconds.toStringAsFixed(2)}s  $rate KB/s';
   }
 
   void _save() {
