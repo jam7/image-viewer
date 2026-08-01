@@ -757,9 +757,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final pages = _pages;
     if (pages != null) {
       for (final page in pages) {
-        final pageKey = 'full:${page.id}';
-        if (widget.cacheManager.l3.isDownloaded(pageKey)) {
-          await widget.cacheManager.l3.remove(pageKey);
+        if (widget.cacheManager.l3.isDownloaded(_pageKey(page))) {
+          await widget.cacheManager.l3.remove(_pageKey(page));
         }
       }
     }
@@ -767,157 +766,182 @@ class _ViewerScreenState extends State<ViewerScreen> {
     setState(() {});
   }
 
-  /// Download the current work to L3 (single image, PDF, ZIP stream, or
-  /// page-by-page depending on the work type).
+  /// Download the current work to L3. Four kinds of thing arrive four ways:
+  /// the picture already on screen, a PDF, a ZIP, or a work of many pictures.
   Future<void> _downloadWork(ImageSource currentImage, String workKey) async {
     final item = widget.items[widget.index];
     _log.info('Downloading work: ${item.name} key=$workKey');
 
-    final meta = {
-      'name': item.name,
-      'uri': item.uri,
-      'sourceKey': item.sourceKey,
-      ...?item.metadata,
-    };
-
-    // Single image (no pages or 1 page = the item itself)
     final pages = _pages;
-    if (pages == null ||
-        (pages.length == 1 &&
-            pages.first.metadata?['isPdfPage'] != true &&
-            pages.first.metadata?['isZipEntry'] != true)) {
-      final data = _fullImages[currentImage.id];
-      if (data == null) {
-        _log.warning('Download skipped: image not loaded yet (${item.name})');
-        return;
-      }
-      await widget.cacheManager.l3.put(workKey, data, meta);
-      _log.info('Downloaded single image: ${item.name} (${data.length} bytes)');
-      setState(() {});
+    if (pages == null || _isSinglePage(pages)) {
+      await _saveSingleImage(currentImage, workKey);
       return;
     }
 
-    // Multi-page work: show loading screen
     setState(() {
       _isDownloading = true;
       _downloadProgress = null;
     });
-
     try {
       final provider = item.sourceKey != null
           ? await widget.registry.resolve(item.sourceKey!, context)
           : null;
       if (provider == null || !mounted) return;
-
-      Uint8List? workData;
-
       if (item.metadata?['isPdf'] == true) {
-        // PDF: get bytes from cache (already downloaded during resolvePages)
-        _log.info('Downloading PDF from cache: ${item.name}');
-        final cached = await widget.cacheManager.get('full:${item.id}');
-        workData = cached != null ? Uint8List.fromList(cached.data) : null;
+        await _savePdf(item, workKey);
       } else if (item.metadata?['isZip'] == true) {
-        // ZIP: stream directly to L3 file (avoid loading entire ZIP into memory)
-        _log.info('Downloading ZIP from source: ${item.name}');
-        final (:stream, :fileSize, :close) = await provider.openReadStream(
-          item,
-        );
-        final saved = await widget.cacheManager.l3.putFromStream(
-          workKey,
-          stream,
-          meta,
-          total: fileSize,
-          onProgress: (received, total) {
-            if (mounted) {
-              setState(() => _downloadProgress = (received, total));
-            }
-          },
-          isCancelled: () => !_isDownloading || !mounted,
-        );
-        await close();
-        if (saved) {
-          _log.info(
-            'Downloaded ZIP: ${item.name} (${(fileSize / 1024).toStringAsFixed(0)} KB)',
-          );
-        } else {
-          _log.info('Download cancelled: ${item.name}');
-        }
-        if (mounted) {
-          setState(() {
-            _isDownloading = false;
-            _downloadProgress = null;
-          });
-        }
-        return;
+        await _saveZip(provider, item, workKey);
       } else {
-        // Multi-page (e.g. Pixiv): download all pages individually
-        _log.info('Downloading ${pages.length} pages: ${item.name}');
-        int received = 0;
-        final savedPageKeys = <String>[];
-        final totalPages = pages.length;
-        for (var i = 0; i < pages.length; i++) {
-          if (!mounted || !_isDownloading) {
-            // Cancel: remove pages saved so far
-            _log.info(
-              'Download cancelled at page ${i + 1}/$totalPages: ${item.name}',
-            );
-            for (final k in savedPageKeys) {
-              await widget.cacheManager.l3.remove(k);
-            }
-            return;
-          }
-          final page = pages[i];
-          final pageKey = 'full:${page.id}';
-          // Skip if already in L3
-          if (!widget.cacheManager.l3.isDownloaded(pageKey)) {
-            final pageData =
-                _fullImages[page.id] ??
-                (await widget.cacheManager.get(pageKey))?.data as Uint8List? ??
-                await provider.fetchFullImage(page);
-            await widget.cacheManager.l3.put(
-              pageKey,
-              Uint8List.fromList(pageData),
-              {
-                'name': page.name,
-                'uri': page.uri,
-                'workKey': workKey,
-                ...?page.metadata,
-              },
-            );
-            savedPageKeys.add(pageKey);
-          } else {
-            savedPageKeys.add(pageKey); // track for cleanup on cancel
-          }
-          received = i + 1;
-          if (mounted) {
-            setState(() => _downloadProgress = (received, totalPages));
-          }
-        }
-        // Mark work itself as downloaded (empty data, metadata only)
-        await widget.cacheManager.l3.put(workKey, Uint8List(0), meta);
-        _log.info('Downloaded all pages: ${item.name}');
-        setState(() {
-          _isDownloading = false;
-          _downloadProgress = null;
-        });
-        return;
-      }
-
-      if (workData != null && mounted) {
-        await widget.cacheManager.l3.put(workKey, workData, meta);
-        _log.info(
-          'Downloaded work: ${item.name} (${(workData.length / 1024).toStringAsFixed(0)} KB)',
-        );
+        await _saveAllPages(provider, pages, workKey);
       }
     } catch (e, st) {
       _log.warning('Download work failed', e, st);
     } finally {
+      // Every way out passes through here, cancelled or not. Each branch used
+      // to put the screen back itself, three copies of the same four lines.
       if (mounted) {
         setState(() {
           _isDownloading = false;
           _downloadProgress = null;
         });
       }
+    }
+  }
+
+  /// Whether the work is the picture on screen and nothing more.
+  ///
+  /// One page is not enough to say so: a one-page PDF and a ZIP holding a
+  /// single picture both have a container to fetch behind them.
+  static bool _isSinglePage(List<ImageSource> pages) =>
+      pages.length == 1 &&
+      pages.first.metadata?['isPdfPage'] != true &&
+      pages.first.metadata?['isZipEntry'] != true;
+
+  /// What is stored beside the bytes, so that a downloaded work can be shown
+  /// without the source it came from.
+  Map<String, dynamic> _metaFor(ImageSource item) => {
+    'name': item.name,
+    'uri': item.uri,
+    'sourceKey': item.sourceKey,
+    ...?item.metadata,
+  };
+
+  String _pageKey(ImageSource page) => 'full:${page.id}';
+
+  /// The picture on screen is the whole work, and it is already in memory:
+  /// what would be fetched is what is being looked at.
+  Future<void> _saveSingleImage(
+    ImageSource currentImage,
+    String workKey,
+  ) async {
+    final item = widget.items[widget.index];
+    final data = _fullImages[currentImage.id];
+    if (data == null) {
+      _log.warning('Download skipped: image not loaded yet (${item.name})');
+      return;
+    }
+    await widget.cacheManager.l3.put(workKey, data, _metaFor(item));
+    _log.info('Downloaded single image: ${item.name} (${data.length} bytes)');
+    setState(() {});
+  }
+
+  /// The PDF is in the cache already: rendering even its first page meant
+  /// fetching the whole file.
+  Future<void> _savePdf(ImageSource item, String workKey) async {
+    _log.info('Downloading PDF from cache: ${item.name}');
+    final cached = await widget.cacheManager.get(_pageKey(item));
+    if (cached == null || !mounted) return;
+    final data = Uint8List.fromList(cached.data);
+    await widget.cacheManager.l3.put(workKey, data, _metaFor(item));
+    _log.info(
+      'Downloaded work: ${item.name} (${(data.length / 1024).toStringAsFixed(0)} KB)',
+    );
+  }
+
+  /// Streamed straight into the file. A ZIP is a whole book, and holding one
+  /// in memory to write it out again is how a large one ends the app.
+  Future<void> _saveZip(
+    ImageSourceProvider provider,
+    ImageSource item,
+    String workKey,
+  ) async {
+    _log.info('Downloading ZIP from source: ${item.name}');
+    final (:stream, :fileSize, :close) = await provider.openReadStream(item);
+    final saved = await widget.cacheManager.l3.putFromStream(
+      workKey,
+      stream,
+      _metaFor(item),
+      total: fileSize,
+      onProgress: (received, total) {
+        if (mounted) setState(() => _downloadProgress = (received, total));
+      },
+      isCancelled: () => !_isDownloading || !mounted,
+    );
+    await close();
+    _log.info(
+      saved
+          ? 'Downloaded ZIP: ${item.name} '
+                '(${(fileSize / 1024).toStringAsFixed(0)} KB)'
+          : 'Download cancelled: ${item.name}',
+    );
+  }
+
+  /// A work of many pictures, saved one at a time.
+  ///
+  /// Stopping half way takes back what was saved: half a work in the
+  /// downloads is worse than none of it, because nothing afterwards says it
+  /// is half.
+  Future<void> _saveAllPages(
+    ImageSourceProvider provider,
+    List<ImageSource> pages,
+    String workKey,
+  ) async {
+    final item = widget.items[widget.index];
+    _log.info('Downloading ${pages.length} pages: ${item.name}');
+    final saved = <String>[];
+    for (var i = 0; i < pages.length; i++) {
+      if (!mounted || !_isDownloading) {
+        _log.info(
+          'Download cancelled at page ${i + 1}/${pages.length}: ${item.name}',
+        );
+        await _removeAll(saved);
+        return;
+      }
+      saved.add(await _savePage(provider, pages[i], workKey));
+      if (mounted) setState(() => _downloadProgress = (i + 1, pages.length));
+    }
+    // The work itself holds no bytes: its pages are the download, and this
+    // entry is what says they belong together.
+    await widget.cacheManager.l3.put(workKey, Uint8List(0), _metaFor(item));
+    _log.info('Downloaded all pages: ${item.name}');
+  }
+
+  /// Save one page unless it is there already, answering with its key either
+  /// way — a page found in the downloads still belongs to this work, and has
+  /// to come out again if the rest of it is cancelled.
+  Future<String> _savePage(
+    ImageSourceProvider provider,
+    ImageSource page,
+    String workKey,
+  ) async {
+    final key = _pageKey(page);
+    if (widget.cacheManager.l3.isDownloaded(key)) return key;
+    final data =
+        _fullImages[page.id] ??
+        (await widget.cacheManager.get(key))?.data as Uint8List? ??
+        await provider.fetchFullImage(page);
+    await widget.cacheManager.l3.put(key, Uint8List.fromList(data), {
+      'name': page.name,
+      'uri': page.uri,
+      'workKey': workKey,
+      ...?page.metadata,
+    });
+    return key;
+  }
+
+  Future<void> _removeAll(List<String> keys) async {
+    for (final key in keys) {
+      await widget.cacheManager.l3.remove(key);
     }
   }
 
