@@ -70,7 +70,8 @@ class GalleryView extends StatefulWidget {
 /// page). Reach it with a `GlobalKey<GalleryViewState>`.
 class GalleryViewState extends State<GalleryView> {
   /// How close to the end counts as "about to run out" (logical pixels).
-  static const _loadMoreMargin = 200.0;
+  /// How much list to keep below what is on screen, in screenfuls.
+  static const _runwayScreens = 3;
 
   final _scrollController = ScrollController();
 
@@ -252,6 +253,9 @@ class GalleryViewState extends State<GalleryView> {
       setState(() => _isLoading = false);
       widget.onItemsChanged?.call();
       _wantThumbnails(evenIfUnmoved: true);
+      // Straight on to the next one if the runway is still short. A page is
+      // only a list of names — the pictures are fetched by being looked at
+      // (ADR 011) — so reading ahead costs a request, not a download.
       fillViewport();
     } catch (e, st) {
       _log.warning('page load failed: ${session.sourceUri}', e, st);
@@ -268,23 +272,32 @@ class GalleryViewState extends State<GalleryView> {
     final chrome = _chromeRule.update(position.pixels, atTop: position.pixels <= 0);
     if (chrome != null) _chrome?.value = chrome;
     _wantThumbnails();
-    if (_isLoading || !_shown.hasMore) return;
-    if (position.pixels >= position.maxScrollExtent - _loadMoreMargin) {
-      loadNextPage();
-    }
+    _keepRunway();
   }
 
-  /// Nothing to scroll means the scroll trigger can never fire, so keep pulling
-  /// pages until the view has content to scroll.
+  /// Keep enough list below the reader to fling into.
+  ///
+  /// The next page used to be asked for on coming within 200 pixels of the
+  /// end — a row and a bit. A page takes a second or two to arrive (Pixiv
+  /// answers through the WebView), so a reader scrolling steadily arrived at
+  /// the end of the list and stopped there, three to five rows at a time,
+  /// waiting for each page in turn. Asking while the end is still a few
+  /// screens away means the page lands before the reader does.
+  void _keepRunway() {
+    if (!mounted || _isLoading || !_shown.hasMore) return;
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final ahead = position.maxScrollExtent - position.pixels;
+    if (ahead < position.viewportDimension * _runwayScreens) loadNextPage();
+  }
+
+  /// The same, once there is a viewport to measure it against — including the
+  /// case of nothing to scroll at all, where no scroll will ever report.
   ///
   /// Also worth calling after the caller narrows [GalleryView.items] with a
   /// display-only filter, which can leave too little to scroll.
   void fillViewport() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      if (_scrollController.position.maxScrollExtent > 0) return;
-      if (_shown.hasMore) loadNextPage();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _keepRunway());
   }
 
   /// Step back one history entry. At the first entry it does nothing: the tab

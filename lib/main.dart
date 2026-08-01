@@ -34,5 +34,28 @@ void main() async {
   // (temporary directory via path_provider) and loads the engine.
   await pdfrxFlutterInitialize();
 
+  _reportSlowFrames();
+
   runApp(const ImageViewerApp());
+}
+
+/// Say which half of a slow frame was slow.
+///
+/// Build is this app's own code — laying out the grid, running our callbacks.
+/// Raster is the engine turning that into pixels, where decoding a thumbnail
+/// and handing it to the GPU lands. A stutter looks the same from the outside
+/// either way, and every fix so far has assumed the first.
+///
+/// Only frames past twice the budget are reported: a 60Hz frame is 16ms, and
+/// a line per frame would itself be the problem.
+void _reportSlowFrames() {
+  final log = Logger('Frames');
+  WidgetsBinding.instance.addTimingsCallback((timings) {
+    for (final frame in timings) {
+      final build = frame.buildDuration.inMilliseconds;
+      final raster = frame.rasterDuration.inMilliseconds;
+      if (build + raster < 32) continue;
+      log.info('frame: build ${build}ms + raster ${raster}ms');
+    }
+  });
 }
