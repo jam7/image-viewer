@@ -88,17 +88,32 @@ metadata: 10863 entries encoded in 127ms (1006KB)   ← 8ms 超の索引書き�
 ## VideoThumbnailService
 
 media_kit の Player を再利用して動画サムネイルをキャプチャする。
-`Completer<void>` ロックで直列化し、複数の capture が同時に来ても 1 つずつ処理する。
+`Completer<void>` ロックで直列化し、複数の capture が同時に来ても 1 つずつ処理する
+(スケジューラ側も動画は「静止画が全部終わってから 1 本ずつ」— 二重に直列)。
 
 ```
-1. player.open(url, start: 3s)
-2. position >= 2s を待つ (15s timeout)
-3. 200ms delay (フレームバッファ安定待ち)
-4. player.pause()
-5. screenshot (最大5回リトライ, 200ms間隔)
-6. player.stop()
-7. JPEG bytes を返す
+1. player.open(url, start: 3s, play: false)   ← 一時停止のまま。再生しない
+2. videoParams (フレーム寸法) を待つ (15s timeout)
+3. screenshot(format: null) で生 BGRA (最大10回リトライ, 200ms間隔)
+4. player.stop()
+5. 生フレーム (bgra + width + height) を返す → shrinkRawFrame がタイルに縮小
 ```
+
+Player は作成時に 2 つのプロパティを固定する:
+
+- `aid=no` — 音声を完全に切る。volume 0 では聞こえないだけでデコードも
+  プロキシ経由のダウンロードも続いていた
+- `hr-seek=no` — キーフレームシーク。既定の精密シークは直前キーフレームから
+  3 秒地点まで全フレームをデコードして捨てるため 1 本 1.5〜2 秒かかっていた。
+  サムネイルは 3.000 秒ちょうどでなくてよい
+
+**JPEG を経由しない**のが肝。media_kit の `format: 'image/jpeg'` はフル解像度の
+フレームを package:image で 1 画素ずつ変換して純 Dart でエンコードする
+(1080p で数秒)。生 BGRA でもらい、エンジン (`ui.ImageDescriptor.raw` +
+`instantiateCodec(targetWidth:)`) でタイルサイズに縮小する。
+
+実測 (49 本、8 インチタブレット): 成功 49/49、1 本の中央値 0.98 秒。
+旧実装 (再生して position を待つ + JPEG 経由) は成功 4/36 だった。
 
 外部から dispose された場合 (動画再生開始時)、`_player == null` を検知して
 info ログのみ出力する。
