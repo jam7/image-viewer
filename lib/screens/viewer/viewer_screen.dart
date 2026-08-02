@@ -17,6 +17,7 @@ import '../../services/sources/pixiv_source.dart';
 import '../../services/sources/source_registry.dart';
 import '../../services/video/smb_proxy_server.dart';
 import '../../widgets/thumbnail_result.dart';
+import 'rendered_pages.dart';
 import 'viewer_video_controls.dart';
 import 'viewer_video_page.dart';
 
@@ -114,6 +115,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
   double _scale = 1.0;
   Offset _offset = Offset.zero;
   final Map<String, Uint8List> _fullImages = {};
+
+  /// Pages this app drew rather than fetched — PDF, today. Kept as pixels
+  /// because encoding one costs several times what drawing it does, and
+  /// because nothing else would ever read the encoded form back
+  /// (ADR 012 の続き). Disposal lives in the class, not here.
+  final _rendered = RenderedPages();
   final Map<String, CacheSource> _cacheSources = {};
   final Map<String, bool> _loadingStates = {};
   final Map<String, (int received, int total)> _loadProgress = {};
@@ -179,6 +186,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     // Release image data when pushed behind another screen.
     // Data will be reloaded when this screen becomes visible again.
     _fullImages.clear();
+    _rendered.clear();
     _cacheSources.clear();
     _loadingStates.clear();
     _log.info('deactivate: cleared image data');
@@ -342,6 +350,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
     _loadingStates[image.id] = true;
     final key = 'full:${image.id}';
+    // Read before the first await: after one, this context may be gone.
+    final displayPx = _displaySizePx(context);
     _log.info('Loading full image: ${image.name} key=$key');
 
     try {
@@ -361,6 +371,20 @@ class _ViewerScreenState extends State<ViewerScreen> {
             ? await widget.registry.resolve(image.sourceKey!, context)
             : null;
         if (provider == null) return;
+        // A page the source draws rather than fetches comes over as pixels and
+        // stops there: there is nothing to fetch and nothing worth storing,
+        // since encoding it costs several times what drawing it does.
+        final drawing = provider.renderPage(image, maxDisplayPx: displayPx);
+        if (drawing != null) {
+          final drawn = await drawing;
+          if (!mounted) {
+            // Nobody else holds it, and nothing else will let it go.
+            drawn.dispose();
+            return;
+          }
+          setState(() => _rendered.put(image.id, drawn));
+          return;
+        }
         final result = await widget.cacheManager.fetchAndCache(
           key,
           () => provider.fetchFullImage(
@@ -454,6 +478,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
     _scale = 1.0;
     _offset = Offset.zero;
     _fullImages.clear();
+    _rendered.clear();
     _cacheSources.clear();
     _loadingStates.clear();
     _loadProgress.clear();
@@ -470,7 +495,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   /// Whether this one's bytes are worth fetching at all.
   bool _worthLoading(ImageSource image) {
-    if (_fullImages.containsKey(image.id)) return false;
+    if (_fullImages.containsKey(image.id) || _rendered.contains(image.id)) {
+      return false;
+    }
     if (_loadingStates[image.id] == true) return false;
     // Already tried and failed. Asking again on every scroll would hammer a
     // source that has just said no; asking again is the reader's to do.
@@ -572,6 +599,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       }
     }
     _fullImages.removeWhere((key, _) => !keysToKeep.contains(key));
+    _rendered.keepOnly(keysToKeep);
   }
 
   void _nextPage() {
@@ -1190,30 +1218,40 @@ class _ViewerScreenState extends State<ViewerScreen> {
     if (currentImage.metadata?['unsupported'] == true) {
       return _buildUnsupported(currentImage);
     }
+    // Drawn here rather than fetched: already pixels, so nothing to decode.
+    final drawn = _rendered[currentImage.id];
+    if (drawn != null) {
+      return _zoomed(RawImage(
+        image: drawn,
+        fit: BoxFit.contain,
+        // The image is in device pixels; without this it would be laid out as
+        // though those were logical ones.
+        scale: MediaQuery.devicePixelRatioOf(context),
+      ));
+    }
     if (data != null) {
-      return Transform(
-        alignment: Alignment.center,
-        transform: Matrix4.identity()
-          // ignore: deprecated_member_use
-          // ignore: deprecated_member_use
-          // ignore: deprecated_member_use
-          ..translate(
-            _offset.dx,
-            _offset.dy,
-          ) // ignore: deprecated_member_use
-          ..scale(_scale), // ignore: deprecated_member_use
-        child: Image.memory(
-          data,
-          fit: BoxFit.contain,
-          // Decoded at the width of the window rather than of the file
-          // (ADR 012). A 3000x2000 scan is 24MB decoded, and four pages are
-          // held ahead of this one; Flutter's image cache is 100MB.
-          cacheWidth: _displayWidthPx(context),
-        ),
-      );
+      return _zoomed(Image.memory(
+        data,
+        fit: BoxFit.contain,
+        // Decoded at the width of the window rather than of the file
+        // (ADR 012). A 3000x2000 scan is 24MB decoded, and four pages are
+        // held ahead of this one; Flutter's image cache is 100MB.
+        cacheWidth: _displayWidthPx(context),
+      ));
     }
     return _buildUnreadable(currentImage) ??
         _buildLoadingIndicator(currentImage.id);
+  }
+
+  /// The page under the reader's pinch and drag.
+  Widget _zoomed(Widget child) {
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..translate(_offset.dx, _offset.dy) // ignore: deprecated_member_use
+        ..scale(_scale), // ignore: deprecated_member_use
+      child: child,
+    );
   }
 
   /// A file the listing let through but nothing here can draw. Named, so it

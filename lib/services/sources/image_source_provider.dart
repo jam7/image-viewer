@@ -1,3 +1,4 @@
+import 'dart:ui' as ui show Image;
 import 'dart:ui' show Size;
 import 'dart:typed_data';
 
@@ -49,6 +50,19 @@ abstract class ImageSourceProvider {
     void Function(int received, int total)? onProgress,
     Size? maxDisplayPx,
   });
+
+  /// The page as pixels, for a source that has to draw it rather than fetch
+  /// it — today only a PDF (ADR 012).
+  ///
+  /// Null, synchronously, when this source hands over bytes instead; the
+  /// caller then goes through [fetchFullImage] and the cache. A drawn page
+  /// skips both: there is nothing to fetch, and storing it would mean
+  /// inventing an encoding, which on this device costs several times what
+  /// redrawing does.
+  ///
+  /// The image belongs to the caller, who must dispose it.
+  Future<ui.Image>? renderPage(ImageSource source, {Size? maxDisplayPx}) =>
+      null;
 
   /// Stream the raw file bytes (for large file download to disk).
   /// Returns the stream, file size, and a close callback to release resources.

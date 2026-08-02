@@ -378,6 +378,25 @@ class SmbSource extends ImageSourceProvider {
       () => _fetchFullImage(source,
           onProgress: onProgress, maxDisplayPx: maxDisplayPx));
 
+  /// A PDF page, as pixels. Nothing else here draws its own pages.
+  @override
+  Future<ui.Image>? renderPage(ImageSource source, {Size? maxDisplayPx}) {
+    if (source.metadata?['isPdfPage'] != true) return null;
+    return _renderPdfImageFor(source, maxDisplayPx);
+  }
+
+  Future<ui.Image> _renderPdfImageFor(
+      ImageSource source, Size? maxDisplayPx) async {
+    final pdfPath = source.metadata!['pdfPath'] as String;
+    final pdfCacheKey = source.metadata!['pdfCacheKey'] as String;
+    final pageIndex = source.metadata!['pageIndex'] as int;
+    final filePath = await _ensurePdfFile(pdfPath, pdfCacheKey);
+    final doc = await _openPdfCached(filePath);
+    final page = doc.pages[pageIndex];
+    return _renderPdfImage(filePath, pageIndex,
+        scale: displayScale(page.width, page.height, maxDisplayPx));
+  }
+
   Future<Uint8List> _fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
@@ -617,7 +636,8 @@ class SmbSource extends ImageSourceProvider {
   /// rasterising, the engine making an image of the result, and PNG
   /// compressing it. A page turn that waits seconds is one of them, and which
   /// one decides whether the answer is a smaller [scale] or a cheaper format.
-  Future<Uint8List> _renderPdfPageFrom(String filePath, int pageIndex, {required double scale}) async {
+  Future<ui.Image> _renderPdfImage(String filePath, int pageIndex,
+      {required double scale}) async {
     final doc = await _openPdfCached(filePath);
     final page = doc.pages[pageIndex];
     final width = page.width * scale;
@@ -631,24 +651,34 @@ class SmbSource extends ImageSourceProvider {
     }
     try {
       final image = await pdfImage.createImage();
-      final imageMs = spent.elapsedMilliseconds - rasterMs;
-      try {
-        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData == null) {
-          throw StateError('Failed to encode PDF page $pageIndex as PNG');
-        }
-        final pngMs = spent.elapsedMilliseconds - rasterMs - imageMs;
-        final png = byteData.buffer.asUint8List();
-        _log.info('Rendered PDF page $pageIndex: '
-            '${(png.length / 1024).toStringAsFixed(0)} KB '
-            '(${width.round()}x${height.round()}) '
-            'raster ${rasterMs}ms + image ${imageMs}ms + png ${pngMs}ms');
-        return png;
-      } finally {
-        image.dispose();
-      }
+      _log.info('Rendered PDF page $pageIndex: '
+          '${width.round()}x${height.round()} '
+          'raster ${rasterMs}ms + image '
+          '${spent.elapsedMilliseconds - rasterMs}ms');
+      return image;
     } finally {
       pdfImage.dispose();
+    }
+  }
+
+  /// The same, as PNG bytes. Only the thumbnail wants this now: a page on
+  /// screen is handed over as pixels, because encoding it is several times
+  /// what drawing it costs (ADR 012 の続き).
+  Future<Uint8List> _renderPdfPageFrom(String filePath, int pageIndex, {required double scale}) async {
+    final image = await _renderPdfImage(filePath, pageIndex, scale: scale);
+    try {
+      final spent = Stopwatch()..start();
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw StateError('Failed to encode PDF page $pageIndex as PNG');
+      }
+      final png = byteData.buffer.asUint8List();
+      _log.info('Encoded PDF page $pageIndex: '
+          '${(png.length / 1024).toStringAsFixed(0)} KB '
+          'in ${spent.elapsedMilliseconds}ms');
+      return png;
+    } finally {
+      image.dispose();
     }
   }
 

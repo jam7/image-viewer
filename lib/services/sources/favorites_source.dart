@@ -1,3 +1,4 @@
+import 'dart:ui' as ui show Image;
 import 'dart:ui' show Size;
 import 'dart:async';
 import 'dart:typed_data';
@@ -83,6 +84,13 @@ class FavoritesSource implements ImageSourceProvider {
   void _rememberThumbnailUrl(String imageId, String url) {
     unawaited(store.updateThumbnailUrl(imageId, url));
   }
+
+  /// Whatever the owning source would do. A favourite is a work rather than a
+  /// page, so nothing reaches here today; delegating keeps that true by
+  /// accident rather than by omission.
+  @override
+  Future<ui.Image>? renderPage(ImageSource source, {Size? maxDisplayPx}) =>
+      _ownerOf(source)?.renderPage(source, maxDisplayPx: maxDisplayPx);
 
   @override
   Future<Uint8List> fetchFullImage(
