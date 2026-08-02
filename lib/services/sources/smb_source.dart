@@ -578,25 +578,37 @@ class SmbSource extends ImageSourceProvider {
   }
 
   /// Render a PDF page to PNG at given scale.
+  ///
+  /// Timed in three parts because they are three different machines: PDFium
+  /// rasterising, the engine making an image of the result, and PNG
+  /// compressing it. A page turn that waits seconds is one of them, and which
+  /// one decides whether the answer is a smaller [scale] or a cheaper format.
   Future<Uint8List> _renderPdfPageFrom(String filePath, int pageIndex, {required double scale}) async {
     final doc = await _openPdfCached(filePath);
     final page = doc.pages[pageIndex];
-    final pdfImage = await page.render(
-      fullWidth: page.width * scale,
-      fullHeight: page.height * scale,
-    );
+    final width = page.width * scale;
+    final height = page.height * scale;
+
+    final spent = Stopwatch()..start();
+    final pdfImage = await page.render(fullWidth: width, fullHeight: height);
+    final rasterMs = spent.elapsedMilliseconds;
     if (pdfImage == null) {
       throw StateError('Failed to render PDF page $pageIndex');
     }
     try {
       final image = await pdfImage.createImage();
+      final imageMs = spent.elapsedMilliseconds - rasterMs;
       try {
         final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData == null) {
           throw StateError('Failed to encode PDF page $pageIndex as PNG');
         }
+        final pngMs = spent.elapsedMilliseconds - rasterMs - imageMs;
         final png = byteData.buffer.asUint8List();
-        _log.info('Rendered PDF page $pageIndex: ${(png.length / 1024).toStringAsFixed(0)} KB');
+        _log.info('Rendered PDF page $pageIndex: '
+            '${(png.length / 1024).toStringAsFixed(0)} KB '
+            '(${width.round()}x${height.round()}) '
+            'raster ${rasterMs}ms + image ${imageMs}ms + png ${pngMs}ms');
         return png;
       } finally {
         image.dispose();
