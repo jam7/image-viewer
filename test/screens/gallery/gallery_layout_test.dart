@@ -8,6 +8,8 @@ import 'package:image_viewer/screens/gallery/gallery_constants.dart';
 /// pixels a thumbnail is stored at (ADR 012). They have to agree, so the
 /// arithmetic is pinned here rather than left to three call sites.
 void main() {
+  setUp(GalleryLayout.forgetTileSize);
+
   // The device the numbers in ADR 012 were measured on: 800x1340 physical at
   // density 180, so 711x1191 logical.
   const tablet = Size(711, 1191);
@@ -22,9 +24,34 @@ void main() {
       expect(portrait.columns, galleryPortraitColumns);
     });
 
+    test('is settled by the first window and not moved by a resize', () {
+      // A desktop window can be dragged to any size. Recomputing would change
+      // what thumbnails are stored at every time it moved, and L2 would fill
+      // with the same pictures at a handful of sizes (ADR 012 決定 1).
+      final opened = GalleryLayout.of(1200, const Size(1200, 800), 1.0);
+
+      final maximised = GalleryLayout.of(2560, const Size(2560, 1440), 1.0);
+
+      expect(maximised.tile, opened.tile);
+      expect(maximised.thumbnailPx, opened.thumbnailPx);
+      expect(maximised.columns, greaterThan(opened.columns),
+          reason: 'the extra width goes into columns');
+    });
+
+    test('is five columns of the narrow side, even opened landscape', () {
+      // Which is how a desktop window usually opens. Dividing the width would
+      // give tiles half again too big.
+      final landscape = GalleryLayout.of(1200, const Size(1200, 800), 1.0);
+
+      expect(landscape.tile, closeTo((800 - 24) / 5, 0.001));
+    });
+
     test('adapts to the device rather than being a fixed number of dp', () {
-      // A fixed tile would leave a phone with two columns.
+      // A fixed tile would leave a phone with two columns. Two devices in one
+      // test means forgetting in between, which is the rule showing through:
+      // one run has one tile, and only a test ever sees a second device.
       final phone = GalleryLayout.of(360, const Size(360, 780), 3.0);
+      GalleryLayout.forgetTileSize();
       final tab = GalleryLayout.of(tablet.width, tablet, 1.125);
 
       expect(phone.columns, galleryPortraitColumns);
@@ -72,6 +99,7 @@ void main() {
     test('follows the pixel ratio, not the logical size', () {
       final coarse = GalleryLayout.of(tablet.width, tablet, 1.0);
       final fine = GalleryLayout.of(tablet.width, tablet, 3.0);
+      // Same tile in dp either way; the pixels differ because the screen does.
 
       expect(fine.thumbnailPx, greaterThan(coarse.thumbnailPx));
     });

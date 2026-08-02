@@ -22,8 +22,9 @@ const galleryPadding = 4.0;
 /// a grid that shows barely three rows of thumbnails on a tablet in landscape.
 const galleryHeaderRowHeight = 44.0;
 
-/// What a thumbnail should be stored and decoded at on this device, in device
-/// pixels. Independent of the window's width — see [GalleryLayout.tile].
+/// What a thumbnail should be stored and decoded at, in device pixels.
+/// Independent of the window's width, and of later resizes — see
+/// [GalleryLayout.tile].
 int galleryThumbnailPx(BuildContext context) {
   final media = MediaQuery.of(context);
   return GalleryLayout.of(media.size.width, media.size, media.devicePixelRatio)
@@ -41,9 +42,9 @@ int galleryThumbnailPx(BuildContext context) {
 ///
 /// The split that matters:
 ///
-/// - [tile] comes from the screen's shortest side, so **it does not change
-///   when the device is rotated**. That is what lets a device have exactly one
-///   thumbnail size
+/// - [tile] is settled once, from the first window drawn, and **does not move
+///   again for the life of the run** — not for a rotation and not for a
+///   desktop resize. That is what lets one run have exactly one thumbnail size
 /// - [columns] comes from the width being laid out, so it does change
 class GalleryLayout {
   /// How many tiles fit across the width being laid out. At least one.
@@ -60,8 +61,9 @@ class GalleryLayout {
   /// Top of one row to the top of the next.
   final double rowStride;
 
-  /// What a thumbnail for this device should be stored at, in device pixels.
-  /// One number per device — [tile] does not turn with the screen.
+  /// What a thumbnail should be stored at, in device pixels. One number for
+  /// the whole run — [tile] neither turns with the screen nor follows a
+  /// window being dragged.
   final int thumbnailPx;
 
   const GalleryLayout({
@@ -93,16 +95,32 @@ class GalleryLayout {
     );
   }
 
-  /// The tile as the device's upright width would give it. Uses
-  /// [Size.shortestSide] rather than the current width so that rotating does
-  /// not resize every tile — and so that the number a thumbnail is stored at
-  /// is a property of the device, not of how it is being held.
+  /// The tile, as the first window this app drew would give it upright.
+  ///
+  /// Two things are going on, and both are in ADR 012.
+  ///
+  /// [Size.shortestSide] rather than the current width, because the point of
+  /// reference is five columns held upright — a window opened landscape, which
+  /// on a desktop is most of them, would otherwise get tiles half again too
+  /// big.
+  ///
+  /// And latched, because a desktop window can be resized. Recomputing would
+  /// change what thumbnails are stored at every time the window moved, and L2
+  /// would fill with the same pictures at a handful of sizes. A resize moves
+  /// the column count and the gaps; it does not move this.
+  static double? _latched;
+
   static double _baseTile(Size screen) {
     final across = screen.shortestSide -
         galleryPadding * 2 -
         gallerySpacing * (galleryPortraitColumns - 1);
-    return across / galleryPortraitColumns;
+    return _latched ??= across / galleryPortraitColumns;
   }
+
+  /// Forget the latched tile. For tests, which lay out several devices in one
+  /// process; nothing in the app has a second device to move to.
+  @visibleForTesting
+  static void forgetTileSize() => _latched = null;
 
   /// By value, so a rebuild at the same width is not mistaken for a resize —
   /// what a resize triggers is a scroll restore.

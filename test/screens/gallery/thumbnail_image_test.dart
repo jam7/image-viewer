@@ -11,6 +11,8 @@ import 'package:image_viewer/screens/gallery/widgets/thumbnail_image.dart';
 /// in decoded bytes, so nothing about the stored file shows it — only what is
 /// asked of the decoder.
 void main() {
+  setUp(GalleryLayout.forgetTileSize);
+
   ResizeImage resizerIn(WidgetTester tester) =>
       tester.widget<Image>(find.byType(Image)).image as ResizeImage;
 
