@@ -195,13 +195,16 @@ class VideoThumbnailService {
     }
   }
 
-  /// How fast the scan walks the file. 4x keeps a 20s window under ~6s of
-  /// wall clock; 480p decodes far faster than that, so the limit is the
-  /// clock, not the decoder.
+  /// How fast the scan walks the file. 4x keeps the window's worth of
+  /// content around two seconds of wall clock; 480p decodes far faster than
+  /// that, so the limit is the clock, not the decoder.
   static const _scanRate = 4.0;
 
-  /// How deep into the video the scan is willing to look.
-  static const _scanWindow = Duration(seconds: 20);
+  /// How deep into the video the scan is willing to look. Was 20s, and a
+  /// video with a dark opening act made the user wait all of it (5s of wall
+  /// clock) for a tile; 8s keeps the wait around 2s, and whatever is least
+  /// dark by then is usually a fine tile anyway.
+  static const _scanWindow = Duration(seconds: 8);
 
   /// The frame's own size, needed to read the raw pixels. open() resets
   /// videoParams, so this never sees the previous video's answer — and it
