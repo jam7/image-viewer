@@ -13,6 +13,19 @@ final _log = Logger('ZipReader');
 /// Maximum uncompressed size allowed (100MB) to guard against zip bombs.
 const _maxUncompressedSize = 100 * 1024 * 1024;
 
+// Structure signatures, as the spec writes them.
+const _localHeaderSignature = 0x04034b50;
+const _centralDirSignature = 0x02014b50;
+const _eocdSignature = 0x06054b50;
+
+/// What a 32-bit field holds when the real value does not fit in it: the
+/// archive is ZIP64, and the value is elsewhere. Not supported here.
+const _zip64Marker = 0xFFFFFFFF;
+
+/// Fixed part of a Central Directory entry, before the name, extra field and
+/// comment that follow it.
+const _centralDirEntrySize = 46;
+
 /// ZIP archive reader using range reads.
 ///
 /// Reads the End of Central Directory (EOCD) and Central Directory
@@ -84,11 +97,11 @@ class ZipReader implements ArchiveReader {
 
     _log.info('Searching for EOCD in last $eocdSearchSize bytes');
 
-    // Find EOCD signature (0x06054b50) scanning backwards
+    // Find the EOCD, scanning backwards: it is last, but a trailing comment
+    // of any length may follow it.
     int eocdPos = -1;
     for (var i = tail.length - 22; i >= 0; i--) {
-      if (tail[i] == 0x50 && tail[i + 1] == 0x4b &&
-          tail[i + 2] == 0x05 && tail[i + 3] == 0x06) {
+      if (_hasSignature(tail, i, _eocdSignature)) {
         eocdPos = i;
         break;
       }
@@ -102,7 +115,7 @@ class ZipReader implements ArchiveReader {
     final cdOffset = _readUint32(tail, eocdPos + 16);
 
     // ZIP64 detection
-    if (cdOffset == 0xFFFFFFFF || cdSize == 0xFFFFFFFF) {
+    if (cdOffset == _zip64Marker || cdSize == _zip64Marker) {
       throw FormatException('ZIP64 archives are not supported');
     }
 
@@ -115,14 +128,12 @@ class ZipReader implements ArchiveReader {
     final entries = <ArchiveEntry>[];
     var pos = 0;
     for (var i = 0; i < cdEntryCount; i++) {
-      if (pos + 46 > cd.length) {
+      if (pos + _centralDirEntrySize > cd.length) {
         _log.warning('Central Directory truncated at entry $i');
         break;
       }
 
-      // Validate Central Directory file header signature (0x02014b50)
-      if (cd[pos] != 0x50 || cd[pos + 1] != 0x4b ||
-          cd[pos + 2] != 0x01 || cd[pos + 3] != 0x02) {
+      if (!_hasSignature(cd, pos, _centralDirSignature)) {
         throw FormatException('Invalid Central Directory entry signature at offset $pos');
       }
 
@@ -135,17 +146,21 @@ class ZipReader implements ArchiveReader {
       final extraLen = _readUint16(cd, pos + 30);
       final commentLen = _readUint16(cd, pos + 32);
       final localHeaderOffset = _readUint32(cd, pos + 42);
+      final entrySize =
+          _centralDirEntrySize + fileNameLen + extraLen + commentLen;
 
       // ZIP64 marker on individual entry
-      if (compressedSize == 0xFFFFFFFF || uncompressedSize == 0xFFFFFFFF ||
-          localHeaderOffset == 0xFFFFFFFF) {
+      if (compressedSize == _zip64Marker ||
+          uncompressedSize == _zip64Marker ||
+          localHeaderOffset == _zip64Marker) {
         _log.warning('Skipping ZIP64 entry at index $i');
-        pos += 46 + fileNameLen + extraLen + commentLen;
+        pos += entrySize;
         continue;
       }
 
       // Decode file name: bit 11 of general flag = UTF-8
-      final nameBytes = cd.sublist(pos + 46, pos + 46 + fileNameLen);
+      final nameStart = pos + _centralDirEntrySize;
+      final nameBytes = cd.sublist(nameStart, nameStart + fileNameLen);
       final isUtf8 = (generalFlag & (1 << 11)) != 0;
       final name = isUtf8
           ? utf8.decode(nameBytes, allowMalformed: true)
@@ -160,7 +175,7 @@ class ZipReader implements ArchiveReader {
         crc32: crc32,
       ));
 
-      pos += 46 + fileNameLen + extraLen + commentLen;
+      pos += entrySize;
     }
 
     _log.info('Parsed $cdEntryCount entries from Central Directory');
@@ -169,8 +184,7 @@ class ZipReader implements ArchiveReader {
 
   void _validateLocalHeader(Uint8List header) {
     if (header.length < 30 ||
-        header[0] != 0x50 || header[1] != 0x4b ||
-        header[2] != 0x03 || header[3] != 0x04) {
+        !_hasSignature(header, 0, _localHeaderSignature)) {
       throw FormatException('Invalid local file header signature');
     }
   }
@@ -216,6 +230,16 @@ class ZipReader implements ArchiveReader {
     }
     return crc ^ 0xFFFFFFFF;
   }
+
+  /// Whether the four bytes at [offset] are [signature].
+  ///
+  /// ZIP marks each of its structures with a 32-bit signature, written
+  /// little-endian — so 0x04034b50 sits in the file as 50 4b 03 04, and the
+  /// number in the spec reads backwards from the bytes on disk. Said once
+  /// here so the call sites can use the spec's numbers.
+  static bool _hasSignature(Uint8List data, int offset, int signature) =>
+      offset + 4 <= data.length &&
+      _readUint32(data, offset) == signature;
 
   // --- Little-endian readers ---
 
