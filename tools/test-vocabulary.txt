@@ -145,3 +145,12 @@ NTLMSSP\0                     # the NTLM signature, a fixed byte string
 # -- placeholders in prose and commit messages ------------------------------
 ~^(full|thumb):smb:\.\.\.:.*$
 ~^N(-N)*\.(jpg|png)$
+
+# -- names that appear only in already-published history --------------------
+# Both are invented: placeholders left by the 2026-07-25 sanitize of the
+# benchmark doc comment, and an example cache key. Neither was ever declared
+# here, so every audit reported them as unknown content. Declaring them
+# removes the noise without hiding anything -- the decision to leave the
+# published history as it is, and why, is in docs/private-data.md.
+photos
+~^smb:123:path/file\.jpg$
