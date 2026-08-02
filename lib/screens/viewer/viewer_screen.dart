@@ -349,64 +349,18 @@ class _ViewerScreenState extends State<ViewerScreen> {
     if (!_worthLoading(image)) return;
 
     _loadingStates[image.id] = true;
-    final key = 'full:${image.id}';
     // Read before the first await: after one, this context may be gone.
     final displayPx = _displaySizePx(context);
-    _log.info('Loading full image: ${image.name} key=$key');
+    _log.info('Loading full image: ${image.name} key=full:${image.id}');
 
     try {
-      final cached = await widget.cacheManager.get(key);
-      if (cached != null) {
-        _log.info(
-          'Cache hit: ${image.name} (${cached.data.length} bytes, ${cached.source})',
-        );
-        if (mounted) {
-          setState(() {
-            _fullImages[image.id] = Uint8List.fromList(cached.data);
-            _cacheSources[image.id] = cached.source;
-          });
-        }
-      } else {
-        final provider = image.sourceKey != null
-            ? await widget.registry.resolve(image.sourceKey!, context)
-            : null;
-        if (provider == null) return;
-        // A page the source draws rather than fetches comes over as pixels and
-        // stops there: there is nothing to fetch and nothing worth storing,
-        // since encoding it costs several times what drawing it does.
-        final drawing = provider.renderPage(image, maxDisplayPx: displayPx);
-        if (drawing != null) {
-          final drawn = await drawing;
-          if (!mounted) {
-            // Nobody else holds it, and nothing else will let it go.
-            drawn.dispose();
-            return;
-          }
-          setState(() => _rendered.put(image.id, drawn));
-          return;
-        }
-        final result = await widget.cacheManager.fetchAndCache(
-          key,
-          () => provider.fetchFullImage(
-            image,
-            // Only a PDF page uses this: it is drawing instructions until
-            // somebody picks a resolution, and the screen is the right one
-            // (ADR 012).
-            maxDisplayPx: _displaySizePx(context),
-            onProgress: (received, total) {
-              if (mounted) {
-                setState(() => _loadProgress[image.id] = (received, total));
-              }
-            },
-          ),
-        );
-        if (mounted) {
-          setState(() {
-            _fullImages[image.id] = Uint8List.fromList(result.data);
-            _cacheSources[image.id] = result.source;
-          });
-        }
-      }
+      if (await _showCached(image)) return;
+      final provider = image.sourceKey != null
+          ? await widget.registry.resolve(image.sourceKey!, context)
+          : null;
+      if (provider == null) return;
+      if (await _showDrawn(image, provider, displayPx)) return;
+      await _showFetched(image, provider, displayPx);
     } on NotAnItemException catch (e) {
       // Reading it is how we found out, because a plain image resolves to a
       // single page without touching the network. Same answer as in
@@ -419,6 +373,62 @@ class _ViewerScreenState extends State<ViewerScreen> {
     } finally {
       _loadingStates[image.id] = false;
       _loadProgress.remove(image.id);
+    }
+  }
+
+  /// Whether it was already somewhere in the cache.
+  Future<bool> _showCached(ImageSource image) async {
+    final cached = await widget.cacheManager.get('full:${image.id}');
+    if (cached == null) return false;
+    _log.info('Cache hit: ${image.name} '
+        '(${cached.data.length} bytes, ${cached.source})');
+    if (mounted) {
+      setState(() {
+        _fullImages[image.id] = Uint8List.fromList(cached.data);
+        _cacheSources[image.id] = cached.source;
+      });
+    }
+    return true;
+  }
+
+  /// Whether this is a page the source draws rather than fetches.
+  ///
+  /// One that is comes over as pixels and stops there: there is nothing to
+  /// fetch and nothing worth storing, since encoding it costs several times
+  /// what drawing it does (ADR 012 の続き).
+  Future<bool> _showDrawn(
+      ImageSource image, ImageSourceProvider provider, Size displayPx) async {
+    final drawing = provider.renderPage(image, maxDisplayPx: displayPx);
+    if (drawing == null) return false;
+    final drawn = await drawing;
+    if (!mounted) {
+      // Nobody else holds it, and nothing else will let it go.
+      drawn.dispose();
+      return true;
+    }
+    setState(() => _rendered.put(image.id, drawn));
+    return true;
+  }
+
+  Future<void> _showFetched(
+      ImageSource image, ImageSourceProvider provider, Size displayPx) async {
+    final result = await widget.cacheManager.fetchAndCache(
+      'full:${image.id}',
+      () => provider.fetchFullImage(
+        image,
+        maxDisplayPx: displayPx,
+        onProgress: (received, total) {
+          if (mounted) {
+            setState(() => _loadProgress[image.id] = (received, total));
+          }
+        },
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _fullImages[image.id] = Uint8List.fromList(result.data);
+        _cacheSources[image.id] = result.source;
+      });
     }
   }
 
