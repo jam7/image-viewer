@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (実装済み、実機確認は未)
 
 ## Context
 
