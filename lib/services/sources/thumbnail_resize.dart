@@ -23,9 +23,10 @@ final _log = Logger('ThumbnailResize');
 /// this function's job and judging is not. Whatever they are, they reach the
 /// tile as they would have before, and fail to draw there.
 Future<Uint8List> shrinkToFit(Uint8List data, int targetPx) async {
+  final ui.ImmutableBuffer buffer;
   final ui.ImageDescriptor descriptor;
   try {
-    final buffer = await ui.ImmutableBuffer.fromUint8List(data);
+    buffer = await ui.ImmutableBuffer.fromUint8List(data);
     descriptor = await ui.ImageDescriptor.encoded(buffer);
   } catch (e, st) {
     _log.warning('cannot read the size of ${data.length} bytes', e, st);
@@ -36,7 +37,7 @@ Future<Uint8List> shrinkToFit(Uint8List data, int targetPx) async {
   final longEdge = width > height ? width : height;
 
   if (longEdge <= targetPx) {
-    descriptor.dispose();
+    buffer.dispose();
     return data;
   }
 
@@ -45,7 +46,11 @@ Future<Uint8List> shrinkToFit(Uint8List data, int targetPx) async {
     targetWidth: (width * scale).round(),
     targetHeight: (height * scale).round(),
   );
-  descriptor.dispose();
+  // The buffer goes and the descriptor stays, which is the order the framework
+  // uses in instantiateImageCodecWithSize and not the obvious one. Releasing
+  // the descriptor here instead segfaults the decode thread: the codec is
+  // still reading through it, and getNextFrame has not been awaited yet.
+  buffer.dispose();
   final frame = await codec.getNextFrame();
   try {
     final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
