@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:image_viewer/services/video/video_thumbnail_service.dart';
@@ -46,5 +48,36 @@ void main() {
     final size = frameSizeOf(320 * 240 * 4, w: 320, h: 240, dw: null, dh: null);
 
     expect(size, (320, 240));
+  });
+
+  /// [count] pixels of one BGRA colour followed by [count] of another.
+  Uint8List half(List<int> first, List<int> second, int count) {
+    final out = Uint8List(count * 8);
+    for (var i = 0; i < count; i++) {
+      out.setRange(i * 4, i * 4 + 4, first);
+      out.setRange((count + i) * 4, (count + i) * 4 + 4, second);
+    }
+    return out;
+  }
+
+  test('a black title card measures black, a lit scene does not', () {
+    final card = half(const [0, 0, 0, 255], const [12, 8, 4, 255], 4096);
+    final scene = half(const [90, 120, 180, 255], const [30, 60, 20, 255], 4096);
+
+    expect(blackFractionOf(card), 1.0);
+    expect(blackFractionOf(scene), 0.0);
+  });
+
+  test('half black is half black', () {
+    final frame = half(const [0, 0, 0, 255], const [200, 200, 200, 255], 4096);
+
+    expect(blackFractionOf(frame), closeTo(0.5, 0.01));
+  });
+
+  test('one bright channel keeps a pixel out of the black count', () {
+    // Deep blue: B is high, R and G are nothing. Not black.
+    final frame = half(const [220, 0, 0, 255], const [220, 0, 0, 255], 4096);
+
+    expect(blackFractionOf(frame), 0.0);
   });
 }

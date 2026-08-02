@@ -29,10 +29,28 @@ typedef CapturedFrame = ({Uint8List bgra, int width, int height});
 ///
 /// Null when no candidate matches; rows might be padded then, and guessing
 /// the height from a padded length picks wrong answers silently.
-(int, int)? frameSizeOf(int byteCount, {required int w, required int h, int? dw, int? dh}) {
+(int, int)? frameSizeOf(int byteCount,
+    {required int w, required int h, int? dw, int? dh}) {
   if (dw != null && dh != null && byteCount == dw * dh * 4) return (dw, dh);
   if (byteCount == w * h * 4) return (w, h);
   return null;
+}
+
+/// How much of the frame is black: 0.0 (none) to 1.0 (all of it).
+///
+/// "Black" is every channel under 30 of 255 — dark enough that a black
+/// title card counts and a dim scene mostly does not. Every 8th pixel is
+/// looked at, which is plenty for a whole-frame fraction and keeps the walk
+/// under a millisecond where the full frame would be several.
+double blackFractionOf(Uint8List bgra) {
+  const step = 4 * 8;
+  var black = 0;
+  var seen = 0;
+  for (var i = 0; i + 2 < bgra.length; i += step) {
+    seen++;
+    if (bgra[i] < 30 && bgra[i + 1] < 30 && bgra[i + 2] < 30) black++;
+  }
+  return seen == 0 ? 0 : black / seen;
 }
 
 /// Captures video thumbnails using media_kit.
@@ -43,29 +61,35 @@ class VideoThumbnailService {
   Player? _player;
   Completer<void>? _lock;
 
-  /// Capture one frame from the given video URL at 3 seconds.
+  /// Capture one frame from the given video URL.
   /// Returns the raw frame, or null if capture fails.
   /// Serialized: concurrent calls wait for the previous capture to finish.
   ///
-  /// [seekPrecisely] decides how the 3s mark is reached. A keyframe seek
-  /// (false) shows the nearest keyframe at once — but it trusts the
-  /// demuxer's keyframe flags, and ASF/AVI flags lie often enough that the
-  /// "keyframe" is a delta frame, which decodes without its reference into
-  /// coloured macroblock noise. A precise seek (true) decodes forward from
-  /// the keyframe to the target, so a lying flag heals along the way; it
-  /// costs the decode of everything in between (1.5-2s for a 3MP phone
-  /// video, which is why it is not simply always on). The caller knows the
-  /// container; MP4's keyframe list is an index (stss), not a flag, and can
-  /// be trusted.
+  /// [trustIndex] picks how the frame is reached, and the caller knows the
+  /// container:
+  ///
+  /// - true — a keyframe seek to 3s, shown at once. This trusts the
+  ///   demuxer's keyframe flags, which is safe where they are a real index
+  ///   (MP4's stss) and not elsewhere: ASF flags lie often enough that the
+  ///   "keyframe" is a delta frame, which decodes without its reference
+  ///   into striped macroblock noise.
+  /// - false — no seeking at all. Play from the start (the one frame that
+  ///   never needs a flag to be decodable) at several times speed, sample
+  ///   about once per content second, and take the first frame past 1s
+  ///   that is not mostly black — title cards and watermark plates open
+  ///   these files, and a fixed 3s landed square on them. If everything
+  ///   sampled is black, the least black frame seen wins over failing.
   Future<CapturedFrame?> capture(String url,
-      {required bool seekPrecisely}) async {
+      {required bool trustIndex}) async {
     // Wait for any in-progress capture
     while (_lock != null) {
       await _lock!.future;
     }
     _lock = Completer<void>();
     try {
-      return await _captureImpl(url, seekPrecisely);
+      return trustIndex
+          ? await _captureAtThreeSeconds(url)
+          : await _scanForBrightFrame(url);
     } finally {
       final lock = _lock;
       _lock = null;
@@ -73,15 +97,13 @@ class VideoThumbnailService {
     }
   }
 
-  Future<CapturedFrame?> _captureImpl(String url, bool seekPrecisely) async {
+  /// One keyframe seek, one frame. For containers whose keyframe list can
+  /// be believed.
+  Future<CapturedFrame?> _captureAtThreeSeconds(String url) async {
     _ensurePlayer();
     final player = _player!;
 
     try {
-      final platform = player.platform;
-      if (platform is NativePlayer) {
-        await platform.setProperty('hr-seek', seekPrecisely ? 'yes' : 'no');
-      }
       // Opened paused: mpv seeks to `start` and decodes that one frame for
       // display, which is all a thumbnail needs. Playing (the old way) meant
       // waiting for the position to pass 2s, and seeks snap to keyframes —
@@ -91,17 +113,7 @@ class VideoThumbnailService {
         Media(url, start: const Duration(seconds: 3)),
         play: false,
       );
-
-      // The frame's own size, needed to read the raw pixels. open() resets
-      // videoParams, so this never sees the previous video's answer — and it
-      // fills in over more than one emission: w/h arrive with the demuxed
-      // track, dw/dh (the display size, which is what the buffer of an
-      // anamorphic video actually is) only once the output is configured.
-      // Waiting for the earlier emission got a 720x480 answer for a
-      // 720x540 buffer.
-      final params = await player.stream.videoParams
-          .firstWhere((p) => (p.dw ?? 0) > 0 && (p.dh ?? 0) > 0)
-          .timeout(const Duration(seconds: 15));
+      final params = await _sizedVideoParams(player);
 
       // Demux said what the frame will be; the decoder may not have put it
       // up yet, and there is no event for that — hence polling.
@@ -115,26 +127,106 @@ class VideoThumbnailService {
 
       if (_player != null) await player.stop();
       if (bytes == null) return null;
-      final size = frameSizeOf(bytes.length,
-          w: params.w ?? params.dw!,
-          h: params.h ?? params.dh!,
-          dw: params.dw,
-          dh: params.dh);
-      if (size == null) {
-        _log.warning('cannot size a ${bytes.length}-byte frame '
-            '(${params.w}x${params.h}, display ${params.dw}x${params.dh})');
-        return null;
-      }
-      return (bgra: bytes, width: size.$1, height: size.$2);
+      return _framed(bytes, params);
     } catch (e, st) {
-      if (_player == null) {
-        // Player was externally disposed (e.g. video playback started)
-        _log.info('capture cancelled');
-      } else {
-        _log.warning('capture failed: $e', e, st);
+      return _captureFailed(e, st);
+    }
+  }
+
+  /// Play from the start and take the first frame that shows something.
+  ///
+  /// No seek is ever issued, so the demuxer's keyframe flags are never
+  /// consulted and the decode is clean from frame one. The clock is run at
+  /// [_scanRate] — the sound is off and nobody is watching, so "playback"
+  /// is just the decoder being walked forward — and a sample is taken
+  /// roughly once per content second up to [_scanWindow].
+  Future<CapturedFrame?> _scanForBrightFrame(String url) async {
+    _ensurePlayer();
+    final player = _player!;
+
+    try {
+      await player.open(Media(url), play: true);
+      await player.setRate(_scanRate);
+      final params = await _sizedVideoParams(player);
+
+      Uint8List? leastBlack;
+      var leastBlackFraction = 2.0;
+      final sampleEvery =
+          Duration(milliseconds: 1000 ~/ _scanRate.round());
+      final scanned = Stopwatch()..start();
+      while (scanned.elapsed <
+          _scanWindow * (1 / _scanRate) + const Duration(seconds: 2)) {
+        await Future.delayed(sampleEvery);
+        final position = player.state.position;
+        final bytes = await player.screenshot(format: null);
+        if (bytes == null) continue;
+        final fraction = blackFractionOf(bytes);
+        if (fraction < leastBlackFraction) {
+          leastBlackFraction = fraction;
+          leastBlack = bytes;
+        }
+        // The first second is skipped even when bright: fade-ins pass the
+        // blackness test a few frames in while still being murk.
+        if (position >= const Duration(seconds: 1) && fraction <= 0.5) break;
+        if (position >= _scanWindow) break;
+        if (player.state.completed) break;
       }
+
+      if (_player != null) await player.stop();
+      if (leastBlack == null) return null;
+      if (leastBlackFraction > 0.5) {
+        _log.info('every sampled frame was mostly black; keeping the '
+            'least black one (${(leastBlackFraction * 100).round()}%)');
+      }
+      return _framed(leastBlack, params);
+    } catch (e, st) {
+      return _captureFailed(e, st);
+    }
+  }
+
+  /// How fast the scan walks the file. 4x keeps a 20s window under ~6s of
+  /// wall clock; 480p decodes far faster than that, so the limit is the
+  /// clock, not the decoder.
+  static const _scanRate = 4.0;
+
+  /// How deep into the video the scan is willing to look.
+  static const _scanWindow = Duration(seconds: 20);
+
+  /// The frame's own size, needed to read the raw pixels. open() resets
+  /// videoParams, so this never sees the previous video's answer — and it
+  /// fills in over more than one emission: w/h arrive with the demuxed
+  /// track, dw/dh (the display size, which is what the buffer of an
+  /// anamorphic video actually is) only once the output is configured.
+  /// Waiting for the earlier emission got a 720x480 answer for a
+  /// 720x540 buffer.
+  Future<VideoParams> _sizedVideoParams(Player player) {
+    return player.stream.videoParams
+        .firstWhere((p) => (p.dw ?? 0) > 0 && (p.dh ?? 0) > 0)
+        .timeout(const Duration(seconds: 15));
+  }
+
+  CapturedFrame? _framed(Uint8List bytes, VideoParams params) {
+    final size = frameSizeOf(bytes.length,
+        w: params.w ?? params.dw!,
+        h: params.h ?? params.dh!,
+        dw: params.dw,
+        dh: params.dh);
+    if (size == null) {
+      _log.warning('cannot size a ${bytes.length}-byte frame '
+          '(${params.w}x${params.h}, display ${params.dw}x${params.dh})');
       return null;
     }
+    return (bgra: bytes, width: size.$1, height: size.$2);
+  }
+
+  Null _captureFailed(Object e, StackTrace st) {
+    if (_player == null) {
+      // Player was externally disposed (e.g. video playback started)
+      _log.info('capture cancelled');
+    } else {
+      _log.warning('capture failed: $e', e, st);
+    }
+    return null;
   }
 
   void _ensurePlayer() {
@@ -147,6 +239,9 @@ class VideoThumbnailService {
         // No audio at all. The volume was already 0, but the sound was still
         // being decoded — and, over the SMB proxy, still being downloaded.
         unawaited(platform.setProperty('aid', 'no'));
+        // Keyframe seeks: the only seek anyone issues here is the trusted
+        // 3s one, and the scan path never seeks at all.
+        unawaited(platform.setProperty('hr-seek', 'no'));
       }
       player.setVolume(0);
       _player = player;

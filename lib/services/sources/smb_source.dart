@@ -241,12 +241,12 @@ class SmbSource extends ImageSourceProvider {
       // MP4's keyframe index (stss) can be trusted, so the fast keyframe
       // seek is safe there. Everywhere else the keyframe flags are just
       // flags — ASF's lie in practice, seen as striped macroblock noise on
-      // the tile — so those containers pay the precise seek; they have been
-      // the small ones here, so the decode it costs is short.
+      // the tile — so those containers are never seeked: they play from
+      // the start and the first frame that shows something is taken.
       final ext = source.name.split('.').last.toLowerCase();
-      final trustedIndex = const {'mp4', 'm4v', 'mov'}.contains(ext);
-      final frame = await _videoThumbService!
-          .capture(url, seekPrecisely: !trustedIndex);
+      final trustIndex = const {'mp4', 'm4v', 'mov'}.contains(ext);
+      final frame =
+          await _videoThumbService!.capture(url, trustIndex: trustIndex);
       if (frame == null) {
         throw Exception('Video capture returned null: ${source.name}');
       }
