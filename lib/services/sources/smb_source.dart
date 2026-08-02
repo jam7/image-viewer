@@ -415,29 +415,44 @@ class SmbSource extends ImageSourceProvider {
     final tree = await _connect();
     final reader = await tree.openRead(source.uri).timeout(_ioTimeout);
     try {
-      final chunks = <Uint8List>[];
-      int received = 0;
-      await for (final chunk in reader.readStream()) {
-        chunks.add(chunk);
-        received += chunk.length;
-        onProgress?.call(received, reader.fileSize);
-      }
+      final result = await _readWhole(reader, onProgress: onProgress);
 
       stopwatch.stop();
       final seconds = stopwatch.elapsedMilliseconds / 1000;
+      final received = result.length;
       final speed = seconds > 0 ? (received / 1024 / seconds).toStringAsFixed(0) : '?';
       _log.info('Downloaded ${source.name}: ${(received / 1024).toStringAsFixed(0)} KB in ${seconds.toStringAsFixed(2)}s ($speed KB/s)');
 
-      final result = Uint8List(received);
-      int offset = 0;
-      for (final chunk in chunks) {
-        result.setRange(offset, offset + chunk.length, chunk);
-        offset += chunk.length;
-      }
       return result;
     } finally {
       await reader.close();
     }
+  }
+
+  /// Drains [reader] into one buffer.
+  ///
+  /// The chunks are kept and joined at the end rather than appended into a
+  /// growing buffer: how much there is only becomes known once the stream ends,
+  /// and growing would copy what has arrived so far each time it did.
+  Future<Uint8List> _readWhole(
+    Smb2FileReader reader, {
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final chunks = <Uint8List>[];
+    var received = 0;
+    await for (final chunk in reader.readStream()) {
+      chunks.add(chunk);
+      received += chunk.length;
+      onProgress?.call(received, reader.fileSize);
+    }
+
+    final result = Uint8List(received);
+    var offset = 0;
+    for (final chunk in chunks) {
+      result.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+    return result;
   }
 
   @override
@@ -596,19 +611,7 @@ class SmbSource extends ImageSourceProvider {
     final tree = await _connect();
     final reader = await tree.openRead(path).timeout(_ioTimeout);
     try {
-      final chunks = <Uint8List>[];
-      int received = 0;
-      await for (final chunk in reader.readStream()) {
-        chunks.add(chunk);
-        received += chunk.length;
-      }
-      final result = Uint8List(received);
-      int offset = 0;
-      for (final chunk in chunks) {
-        result.setRange(offset, offset + chunk.length, chunk);
-        offset += chunk.length;
-      }
-      return result;
+      return await _readWhole(reader);
     } finally {
       await reader.close();
     }
