@@ -101,16 +101,15 @@ void main() {
     expect(await reopened.get('a'), bytes(10, 3));
   });
 
-  test('get self-heals a vanished file but (current behavior) keeps the '
-      'byte count in stats', () async {
+  test('get self-heals a vanished file, byte count included', () async {
     await store.put('a', bytes(40), null);
     File(store.getFilePath('a')!).deleteSync();
 
     expect(await store.get('a'), isNull);
     expect(store.isDownloaded('a'), isFalse);
-    // Unlike DiskCache, totalSizeBytes is NOT decremented here — pinned as
-    // current behavior (see fix-session-20260704-refactor.md).
-    expect((await store.getStats()).totalSizeBytes, 40);
+    // Used to keep the 40 bytes, unlike DiskCache: the same self-heal written
+    // twice, fixed in one copy only. Both are the one store now.
+    expect((await store.getStats()).totalSizeBytes, 0);
   });
 
   test('clear removes all entries and files', () async {

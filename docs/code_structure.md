@@ -23,6 +23,7 @@ lib/
 │   │   └── pixiv_api_client.dart      # Pixiv Web API ラッパー
 │   ├── cache/                         # 3層キャッシュ
 │   │   ├── memory_cache.dart          # L1: メモリ (LRU)
+│   │   ├── keyed_file_store.dart      # L2/L3 の実体 (ファイル + 索引)
 │   │   ├── disk_cache.dart            # L2: ディスク (LRU、500MB〜5GB)
 │   │   ├── download_store.dart        # L3: DL永久保存 (トグル式)
 │   │   ├── cache_manager.dart         # L1→L2→L3統合検索

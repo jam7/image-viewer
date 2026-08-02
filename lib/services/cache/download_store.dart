@@ -1,81 +1,34 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
-import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
-
-import 'cache_metadata.dart';
-
-final _log = Logger('DownloadStore');
+import 'keyed_file_store.dart';
 
 /// L3: ユーザーが明示的にDLした画像の永久保存。
 /// トグル式 — DL済みならtoggleで削除、未DLならtoggleで保存。
-class DownloadStore {
-  late Directory _dlDir;
-  final Map<String, CacheEntryMeta> _entries = {};
-  int _totalSizeBytes = 0;
-  bool _initialized = false;
-
-  /// [baseDir] overrides the app documents directory (tests only).
-  Future<void> init({Directory? baseDir}) async {
-    final appDir = baseDir ?? await getApplicationDocumentsDirectory();
-    _dlDir = Directory('${appDir.path}/cache/downloads');
-    if (!_dlDir.existsSync()) {
-      _dlDir.createSync(recursive: true);
-    }
-    await _loadMetadata();
-    _initialized = true;
-  }
+class DownloadStore extends KeyedFileStore {
+  DownloadStore() : super(dirName: 'downloads');
 
   /// DL済みならtrue。
-  bool isDownloaded(String key) {
-    return _entries.containsKey(key);
-  }
+  bool isDownloaded(String key) => contains(key);
 
-  /// Save data to L3.
-  Future<void> put(String key, Uint8List data, Map<String, dynamic>? meta) async {
-    if (!_initialized) return;
-    // Remove existing entry if present
-    await remove(key);
-    final file = _fileFor(key);
-    await file.writeAsBytes(data, flush: true);
-    final now = DateTime.now();
-    _entries[key] = CacheEntryMeta(
-      key: key,
-      sizeBytes: data.length,
-      lastAccessTime: now,
-      createdTime: now,
-    );
-    _totalSizeBytes += data.length;
-    await _flushMetadata();
-  }
-
-  /// Remove data from L3.
-  Future<void> remove(String key) async {
-    if (!_initialized) return;
-    final entry = _entries.remove(key);
-    if (entry != null) {
-      _totalSizeBytes -= entry.sizeBytes;
-      final file = _fileFor(key);
-      if (file.existsSync()) file.deleteSync();
-      await _flushMetadata();
-    }
-  }
+  /// [meta] は受け取るが保存していない。呼び出し側 (`viewer_screen._metaFor`)
+  /// が毎回組み立てて捨てられている状態で、保存するか引数を消すかは未決
+  /// (notes/TODO.md)。
+  @override
+  Future<void> put(String key, Uint8List data,
+          [Map<String, dynamic>? meta]) =>
+      super.put(key, data);
 
   /// トグル。未DL→保存してtrue返却、DL済み→削除してfalse返却。
   Future<bool> toggle(
       String key, Uint8List? data, Map<String, dynamic>? meta) async {
-    if (!_initialized) return false;
-    if (_entries.containsKey(key)) {
+    if (!initialized) return false;
+    if (contains(key)) {
       await remove(key);
       return false;
-    } else {
-      if (data == null) return false;
-      await put(key, data, meta);
-      return true;
     }
+    if (data == null) return false;
+    await put(key, data, meta);
+    return true;
   }
 
   /// Stream download: write chunks directly to file without holding all in memory.
@@ -88,9 +41,9 @@ class DownloadStore {
     int total = 0,
     bool Function()? isCancelled,
   }) async {
-    if (!_initialized) return false;
+    if (!initialized) return false;
 
-    final file = _fileFor(key);
+    final file = fileFor(key);
     final sink = file.openWrite();
     int received = 0;
     bool cancelled = false;
@@ -114,99 +67,8 @@ class DownloadStore {
       return false;
     }
 
-    final now = DateTime.now();
-    _entries[key] = CacheEntryMeta(
-      key: key,
-      sizeBytes: received,
-      lastAccessTime: now,
-      createdTime: now,
-    );
-    _totalSizeBytes += received;
-    await _flushMetadata();
+    recordEntry(key, received);
+    await saveIndex();
     return true;
-  }
-
-  Future<Uint8List?> get(String key) async {
-    final file = _validFile(key);
-    return file?.readAsBytes();
-  }
-
-  /// キーに対応するファイルパスを返す。エントリが存在しファイルがあれば返す。
-  String? getFilePath(String key) => _validFile(key)?.path;
-
-  /// エントリと実ファイルの存在を検証してファイルを返す。ファイルが消えて
-  /// いた場合はエントリを取り除く (サイズ集計は現状維持で触らない)。
-  File? _validFile(String key) {
-    if (!_initialized || !_entries.containsKey(key)) return null;
-    final file = _fileFor(key);
-    if (!file.existsSync()) {
-      _entries.remove(key);
-      return null;
-    }
-    return file;
-  }
-
-  Future<CacheStats> getStats() async {
-    return CacheStats(
-      totalSizeBytes: _totalSizeBytes,
-      itemCount: _entries.length,
-      maxSizeBytes: -1, // 無制限
-    );
-  }
-
-  Future<void> clear() async {
-    if (!_initialized) return;
-    _entries.clear();
-    _totalSizeBytes = 0;
-    if (_dlDir.existsSync()) {
-      await _dlDir.delete(recursive: true);
-      _dlDir.createSync(recursive: true);
-    }
-    await _flushMetadata();
-  }
-
-  // --- 内部メソッド ---
-
-  File _fileFor(String key) {
-    final hash = sha256.convert(utf8.encode(key)).toString();
-    return File('${_dlDir.path}/$hash.bin');
-  }
-
-  Future<void> _flushMetadata() async {
-    final metaFile = File('${_dlDir.path}/_metadata.json');
-    final data = {
-      'totalSizeBytes': _totalSizeBytes,
-      'entries': {
-        for (final e in _entries.entries) e.key: e.value.toJson(),
-      },
-    };
-    final tmpFile = File('${metaFile.path}.tmp');
-    await tmpFile.writeAsString(jsonEncode(data), flush: true);
-    await tmpFile.rename(metaFile.path);
-  }
-
-  Future<void> _loadMetadata() async {
-    final metaFile = File('${_dlDir.path}/_metadata.json');
-    if (!metaFile.existsSync()) return;
-
-    try {
-      final content = await metaFile.readAsString();
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      final entries = data['entries'] as Map<String, dynamic>? ?? {};
-      _entries.clear();
-      _totalSizeBytes = 0;
-      for (final entry in entries.entries) {
-        final meta = CacheEntryMeta.fromJson(
-            entry.value as Map<String, dynamic>, entry.key);
-        if (_fileFor(meta.key).existsSync()) {
-          _entries[entry.key] = meta;
-          _totalSizeBytes += meta.sizeBytes;
-        }
-      }
-    } catch (e, st) {
-      _log.warning('load error', e, st);
-      _entries.clear();
-      _totalSizeBytes = 0;
-    }
   }
 }

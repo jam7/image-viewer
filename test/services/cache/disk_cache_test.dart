@@ -93,11 +93,11 @@ void main() {
     expect((await cache.getStats()).totalSizeBytes, 800);
   });
 
-  test('delete removes the entry and its file', () async {
+  test('remove deletes the entry and its file', () async {
     await cache.put('a', bytes(10));
     final path = cache.getFilePath('a')!;
 
-    cache.delete('a');
+    await cache.remove('a');
 
     expect(await cache.get('a'), isNull);
     expect(File(path).existsSync(), isFalse);
