@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -53,7 +54,8 @@ class _FiniteProvider extends ImageSourceProvider {
 
   @override
   Future<Uint8List> fetchFullImage(ImageSource source,
-          {void Function(int received, int total)? onProgress}) async =>
+          {void Function(int received, int total)? onProgress,
+          Size? maxDisplayPx}) async =>
       Uint8List(0);
 
   @override

@@ -192,7 +192,7 @@ class _FakeSource extends SmbSource {
 
   @override
   Future<Uint8List> fetchFullImage(ImageSource source,
-      {void Function(int, int)? onProgress}) async {
+      {void Function(int, int)? onProgress, Size? maxDisplayPx}) async {
     if (failReads) throw Exception('no');
     return Uint8List.fromList(const [1]);
   }

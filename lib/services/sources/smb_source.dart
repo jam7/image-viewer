@@ -1,8 +1,10 @@
-import 'dart:typed_data';
+import 'dart:math' as math;
+import 'dart:ui' show Size;
 
 import 'package:archive_reader/archive_reader.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'dart:ui' as ui;
 
@@ -370,19 +372,23 @@ class SmbSource extends ImageSourceProvider {
   Future<Uint8List> fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
-  }) async =>
-      _asItem(source.uri, () => _fetchFullImage(source, onProgress: onProgress));
+    Size? maxDisplayPx,
+  }) async => _asItem(
+      source.uri,
+      () => _fetchFullImage(source,
+          onProgress: onProgress, maxDisplayPx: maxDisplayPx));
 
   Future<Uint8List> _fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
+    Size? maxDisplayPx,
   }) async {
     // PDF pages: render from cached PDF bytes
     if (source.metadata?['isPdfPage'] == true) {
       final pdfPath = source.metadata!['pdfPath'] as String;
       final pdfCacheKey = source.metadata!['pdfCacheKey'] as String;
       final pageIndex = source.metadata!['pageIndex'] as int;
-      return _renderPdfPage(pdfPath, pdfCacheKey, pageIndex);
+      return _renderPdfPage(pdfPath, pdfCacheKey, pageIndex, maxDisplayPx);
     }
 
     // ZIP entries: read individual file via range read
@@ -573,10 +579,36 @@ class SmbSource extends ImageSourceProvider {
   }
 
   /// Render a single PDF page to PNG.
-  Future<Uint8List> _renderPdfPage(String pdfPath, String pdfCacheKey, int pageIndex) async {
+  Future<Uint8List> _renderPdfPage(String pdfPath, String pdfCacheKey,
+      int pageIndex, Size? maxDisplayPx) async {
     final pdfFilePath = await _ensurePdfFile(pdfPath, pdfCacheKey);
     _log.info('Rendering PDF page $pageIndex from $pdfPath');
-    return _renderPdfPageFrom(pdfFilePath, pageIndex, scale: 2.0);
+    final doc = await _openPdfCached(pdfFilePath);
+    final page = doc.pages[pageIndex];
+    return _renderPdfPageFrom(pdfFilePath, pageIndex,
+        scale: displayScale(page.width, page.height, maxDisplayPx));
+  }
+
+  /// How much to magnify a page of [pageWidth] x [pageHeight] points so that
+  /// it fills the screen it will be seen on — whichever way the screen is
+  /// held, since it can be turned after the page is cached (ADR 012).
+  ///
+  /// Page dimensions are points, which are pixels at 72 dpi, so a page box is
+  /// not a paper size: a scan placed at 72 dpi has a box the size of the scan.
+  /// The constant 2.0 this replaces was an A4-shaped guess — right for A4 on a
+  /// 1600px screen, and 1.9 times too much for the 1078x1511pt book that
+  /// prompted the measuring.
+  @visibleForTesting
+  static double displayScale(
+      double pageWidth, double pageHeight, Size? maxDisplayPx) {
+    if (maxDisplayPx == null) return 2.0;
+    final long = math.max(maxDisplayPx.width, maxDisplayPx.height);
+    final short = math.min(maxDisplayPx.width, maxDisplayPx.height);
+    // Fitted upright, then fitted on its side; the bigger of the two is what
+    // the page has to hold to look right in either.
+    final upright = math.min(short / pageWidth, long / pageHeight);
+    final onItsSide = math.min(long / pageWidth, short / pageHeight);
+    return math.max(upright, onItsSide);
   }
 
   /// Render a PDF page to PNG at given scale.

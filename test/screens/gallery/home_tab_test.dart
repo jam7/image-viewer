@@ -192,7 +192,8 @@ class _EmptySource extends ImageSourceProvider {
   Future<Uint8List> fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
-  }) =>
+      Size? maxDisplayPx,
+      }) =>
       throw UnsupportedError('none');
 
   @override

@@ -1,3 +1,4 @@
+import 'dart:ui' show Size;
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -87,12 +88,14 @@ class FavoritesSource implements ImageSourceProvider {
   Future<Uint8List> fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
+    Size? maxDisplayPx,
   }) {
     final owner = _ownerOf(source);
     if (owner == null) {
       throw StateError('no connected source for ${source.sourceKey}');
     }
-    return owner.fetchFullImage(source, onProgress: onProgress);
+    return owner.fetchFullImage(source,
+        onProgress: onProgress, maxDisplayPx: maxDisplayPx);
   }
 
   @override

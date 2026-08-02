@@ -180,7 +180,7 @@ class _SlowSource extends SmbSource {
 
   @override
   Future<Uint8List> fetchFullImage(ImageSource source,
-      {void Function(int, int)? onProgress}) async {
+      {void Function(int, int)? onProgress, Size? maxDisplayPx}) async {
     await readsGate?.future;
     return Uint8List.fromList(const [1]);
   }

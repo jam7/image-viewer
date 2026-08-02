@@ -1,3 +1,4 @@
+import 'dart:ui' show Size;
 import 'dart:typed_data';
 
 import '../../models/image_source.dart';
@@ -35,9 +36,18 @@ abstract class ImageSourceProvider {
 
   /// フル解像度の画像を取得する。
   /// [onProgress] でダウンロード進捗を通知。
+  ///
+  /// [maxDisplayPx] is the largest the result will be drawn, in device pixels,
+  /// or null when the caller does not know. **Only a source that has to make
+  /// the picture uses it** — a PDF page, which is drawing instructions until
+  /// somebody chooses a resolution (ADR 012). Sources that already hold a
+  /// compressed picture return it as it is; shrinking it here would throw away
+  /// detail that costs nothing to keep, and the decoder is told the display
+  /// size separately.
   Future<Uint8List> fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
+    Size? maxDisplayPx,
   });
 
   /// Stream the raw file bytes (for large file download to disk).

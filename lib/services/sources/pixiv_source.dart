@@ -1,3 +1,4 @@
+import 'dart:ui' show Size;
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -181,6 +182,7 @@ class PixivSource extends ImageSourceProvider {
   Future<Uint8List> fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
+    Size? maxDisplayPx,
   }) {
     // regularUrl（中サイズ）を優先、なければoriginalUrl、最後にuri
     final url = source.metadata?['regularUrl'] as String?

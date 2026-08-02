@@ -1,3 +1,4 @@
+import 'dart:ui' show Size;
 import 'dart:typed_data';
 
 import '../../models/image_source.dart';
@@ -22,6 +23,7 @@ class GoogleDriveSource extends ImageSourceProvider {
   Future<Uint8List> fetchFullImage(
     ImageSource source, {
     void Function(int received, int total)? onProgress,
+    Size? maxDisplayPx,
   }) async {
     // TODO: 実装
     throw UnimplementedError();

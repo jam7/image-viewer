@@ -365,6 +365,10 @@ class _ViewerScreenState extends State<ViewerScreen> {
           key,
           () => provider.fetchFullImage(
             image,
+            // Only a PDF page uses this: it is drawing instructions until
+            // somebody picks a resolution, and the screen is the right one
+            // (ADR 012).
+            maxDisplayPx: _displaySizePx(context),
             onProgress: (received, total) {
               if (mounted) {
                 setState(() => _loadProgress[image.id] = (received, total));
@@ -1144,6 +1148,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  /// The window in device pixels: what a page is worth *making* at, for the
+  /// one source that has to make it.
+  static Size _displaySizePx(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return media.size * media.devicePixelRatio;
   }
 
   /// The window's width in device pixels: what a page is worth decoding at.
