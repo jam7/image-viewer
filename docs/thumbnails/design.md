@@ -178,3 +178,98 @@ pool: 512 entries, 9.9MB
   聞き直しが Range Read のやり直し = 無料ではないから (`notYet` は「確かめるのが
   無料」に限る、という契約)。一時的な失敗が固定されるのは承知の上で、
   タイルが画面に入るたび共有を読むよりはまし、と判断した
+
+---
+
+# 画素数を表示サイズに合わせる (ADR 012、未実装)
+
+決定と理由は [ADR 012](../adr/012-pixels-at-display-size.md)。ここは実装の形。
+
+## GalleryLayout — 1 フレームに 1 つ、数を配る
+
+寸法の計算が `gallery_constants.dart` / `gallery_grid.dart` / `gallery_view.dart` に
+散っていて、しかも幅の出どころが 2 種類ある。1 つの値型にまとめる。
+
+```dart
+class GalleryLayout {
+  final int columns;        // この幅に入る列数
+  final double tile;        // タイルの一辺 (dp)。向きで変わらない
+  final double spacing;     // 余りを配った列間 (dp)
+  final double rowStride;   // tile + spacing
+  final int thumbnailPx;    // tile * dpr。L2 に入れる画素数
+
+  factory GalleryLayout.of(double width, Size screen, double dpr);
+}
+```
+
+- `tile` は `screen.shortestSide` から出す。**回転しても変わらない**
+- `columns` は `width` から出す。**回転すると変わる**
+- `thumbnailPx` は `tile` から出るので、**端末ごとに 1 つ**
+
+縦画面の列数 (既定 5) は 1 つの定数として持つ。設定から変えられるようにするのは
+別タスク (`notes/TODO.md`)。参照は `GalleryLayout.of` の 1 か所だけにしておく。
+
+## 目標画素数をソース層へ渡す
+
+`_thumbnailMaxSize = 600` は `SmbSource` の定数で、端末を知らない。ソース層は
+`BuildContext` を持たないので、**呼び出し側が渡す**。
+
+```dart
+Future<Uint8List> fetchThumbnail(ImageSource source, {required int targetPx});
+Future<Uint8List> fetchFullImage(ImageSource source, {int? maxDisplayPx, ...});
+```
+
+- `targetPx`: サムネイルの長辺。`ThumbnailScheduler` が唯一の呼び出し元なので
+  そこから渡す
+- `maxDisplayPx`: **画素を作るソースだけが使う** (今は PDF のみ)。他のソースは
+  元データをそのまま返すので無視してよい。null は「表示サイズを知らない」
+
+アプリ全体のシングルトンに置く案は採らない。値は端末と向きで変わるので、
+「いつの値か」が見えない場所に置くと追えなくなる。
+
+## リサイズの判断
+
+`resizeToThumbnail(data, targetPx)` に変える。
+
+- **バイト基準 (400KB) を削除**。画素数が `targetPx` を超えていれば縮める
+- `instantiateImageCodecWithSize` の `getTargetSize` は既にあるので、渡す数が
+  定数から引数になるだけ
+- `PixivSource.fetchThumbnail` も通す (今は素通し)
+
+## 表示側
+
+`Image.memory` に `cacheWidth` を渡す。4 か所:
+
+| 場所 | 渡す値 |
+|---|---|
+| `pixiv_gallery_body` / `smb_gallery_body` / `favorites_gallery_body` のタイル | `layout.thumbnailPx` |
+| `viewer_screen._buildPage` | 画面の物理幅 |
+
+保存側を直しても、既存エントリと元データそのままのソース (SMB のスキャン、
+Pixiv の regular) はデコードで効く。**両方要る。**
+
+## PDF
+
+```dart
+scale = max(縦画面に収めたときの倍率, 横画面に収めたときの倍率)
+```
+
+`_renderPdfThumbnail` は既に `目標 / 長辺` で正しく計算している。ページ側にも
+同じ形を持たせる (`scale: 2.0` の定数をやめる)。
+
+## 進め方
+
+各段階でテスト緑 + 実機確認 + commit。**見た目が変わるのは段階 1 だけ**なので、
+そこを単独にしておく。
+
+- **段階 0**: characterization テスト。幅を変えたときの列数・stride と、
+  `ScrollAnchor` の記録/復元を固定する。**列数が幅で変わるのは初めて**なので、
+  ここを先に縛る
+- **段階 1**: `GalleryLayout` 導入と列数の可変化 (**挙動変化**: 横画面の見た目)。
+  実機で列数と間隔を確認
+- **段階 2**: `cacheWidth` を 4 か所に (**挙動不変**)。効果はメモリなので、
+  スクロールのガタつきで確認
+- **段階 3**: `targetPx` をソース層へ、バイト基準を削除 (**挙動変化**: 保存される
+  画素数)。L2 の新しいエントリが小さくなることをログで確認
+- **段階 4**: PDF を表示サイズで描画。**既存の計測ログ
+  (`raster + image + png`) がそのまま効果測定になる**
