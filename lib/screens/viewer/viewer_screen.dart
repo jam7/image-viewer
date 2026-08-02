@@ -1017,71 +1017,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isResolvingPages) {
-      return Focus(
-        focusNode: _focusNode,
-        autofocus: true,
-        onKeyEvent: _onKeyEvent,
-        child: Listener(
-          onPointerDown: _onPointerDown,
-          child: const Scaffold(
-            backgroundColor: Colors.black,
-            body: Center(child: CircularProgressIndicator()),
-          ),
-        ),
-      );
-    }
-
-    if (_isDownloading) {
-      return Focus(
-        focusNode: _focusNode,
-        autofocus: true,
-        onKeyEvent: (node, event) {
-          if (event is KeyDownEvent &&
-              event.logicalKey == LogicalKeyboardKey.escape) {
-            setState(() => _isDownloading = false);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: Listener(
-          onPointerDown: _onPointerDown,
-          child: Scaffold(
-            backgroundColor: Colors.black,
-            body: Center(
-              child: _downloadProgress != null
-                  ? _buildDownloadProgress()
-                  : const CircularProgressIndicator(),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_error != null) {
-      return Focus(
-        focusNode: _focusNode,
-        autofocus: true,
-        onKeyEvent: _onKeyEvent,
-        child: Listener(
-          onPointerDown: _onPointerDown,
-          child: Scaffold(
-            backgroundColor: Colors.black,
-            appBar: AppBar(
-              backgroundColor: Colors.transparent,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: widget.onClose,
-              ),
-              title: const Text('エラー', style: TextStyle(color: Colors.white)),
-            ),
-            body: Center(
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
-          ),
-        ),
-      );
-    }
+    final interruption = _buildInterruption();
+    if (interruption != null) return interruption;
 
     final pages = _pages!;
     final currentImage = pages[_pageIndex];
@@ -1101,22 +1038,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
       onKeyEvent: _onKeyEvent,
       child: GestureDetector(
         onTap: () => _setOverlay(!_showOverlay),
-        onVerticalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          if (velocity < -300) {
-            _nextPage();
-          } else if (velocity > 300) {
-            _prevPage();
-          }
-        },
-        onHorizontalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          if (velocity < -500) {
-            _nextItem(); // 左スワイプ → 次の作品
-          } else if (velocity > 500) {
-            _prevItem(); // 右スワイプ → 前の作品
-          }
-        },
+        onVerticalDragEnd: _onVerticalFling,
+        onHorizontalDragEnd: _onHorizontalFling,
         child: Listener(
           onPointerSignal: _onPointerSignal,
           onPointerDown: _onPointerDown,
@@ -1124,63 +1047,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
             backgroundColor: Colors.black,
             body: Stack(
               children: [
-                Center(
-                  child: _isVideo(currentImage)
-                      ? ViewerVideoPage(
-                          key: ValueKey(currentImage.id),
-                          item: currentImage,
-                          registry: widget.registry,
-                          proxyServer: widget.proxyServer,
-                          // A video left part-way through comes back to black
-                          // and its bar, not to its own opening frame: the
-                          // still would say the wrong thing about where it is.
-                          poster: _resting ? null : _posterFor(currentImage),
-                          startAt: _videoAt,
-                          play: _autoplayNext || _playAsked,
-                          onPlayingChanged: (p) => _videoWasPlaying = p,
-                          onPlayer: _attachVideo,
-                        )
-                      : currentImage.metadata?['unsupported'] == true
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.block,
-                              color: Colors.white38,
-                              size: 64,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              currentImage.name.split(') ').last,
-                              style: const TextStyle(color: Colors.white54),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Unsupported format',
-                              style: TextStyle(
-                                color: Colors.white38,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        )
-                      : data != null
-                      ? Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.identity()
-                            // ignore: deprecated_member_use
-                            // ignore: deprecated_member_use
-                            // ignore: deprecated_member_use
-                            ..translate(
-                              _offset.dx,
-                              _offset.dy,
-                            ) // ignore: deprecated_member_use
-                            ..scale(_scale), // ignore: deprecated_member_use
-                          child: Image.memory(data, fit: BoxFit.contain),
-                        )
-                      : _buildUnreadable(currentImage) ??
-                          _buildLoadingIndicator(currentImage.id),
-                ),
+                Center(child: _buildPage(currentImage, data)),
                 // Page sidebar (right edge)
                 if (pages.length > 1)
                   Positioned(
@@ -1194,29 +1061,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
                   // what its address is are the toolbar's, which is showing
                   // just above (ADR 010 決定 7) — keeping a second set of them
                   // meant two of everything, and the two overlapped.
-                  if (tags.isNotEmpty)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.black54, Colors.transparent],
-                          ),
-                        ),
-                        child: SafeArea(
-                          // Below whatever the host floats over us, so the two
-                          // do not land on top of each other.
-                          child: Padding(
-                            padding: EdgeInsets.only(top: widget.topInset),
-                            child: _buildTagBar(tags),
-                          ),
-                        ),
-                      ),
-                    ),
+                  if (tags.isNotEmpty) _buildTagOverlay(tags),
                   _buildBottomBar(currentImage, isFav, isDl, cacheSource),
                 ],
               ],
@@ -1225,6 +1070,185 @@ class _ViewerScreenState extends State<ViewerScreen> {
         ),
       ),
     );
+  }
+
+  /// What is in the way of the page, if anything is. Null means there is a
+  /// page to show, which is the only case the rest of [build] handles.
+  Widget? _buildInterruption() {
+    if (_isResolvingPages) {
+      return _plainScreen(body: const Center(child: CircularProgressIndicator()));
+    }
+
+    if (_isDownloading) {
+      return _plainScreen(
+        onKeyEvent: _abandonDownloadOnEscape,
+        body: Center(
+          child: _downloadProgress != null
+              ? _buildDownloadProgress()
+              : const CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return _plainScreen(
+        // The only one of the three with a way out of its own: the host's
+        // toolbar is not over a viewer that never opened.
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: widget.onClose,
+          ),
+          title: const Text('エラー', style: TextStyle(color: Colors.white)),
+        ),
+        body: Center(
+          child: Text(_error!, style: const TextStyle(color: Colors.red)),
+        ),
+      );
+    }
+
+    return null;
+  }
+
+  /// The three screens that are not a page: still working out what the pages
+  /// are, a download in the way, and a work that would not open. Black, with
+  /// the same pointer handling, and the keyboard as [_onKeyEvent] has it
+  /// unless the screen means something else by a key.
+  Widget _plainScreen({
+    required Widget body,
+    PreferredSizeWidget? appBar,
+    FocusOnKeyEventCallback? onKeyEvent,
+  }) {
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: onKeyEvent ?? _onKeyEvent,
+      child: Listener(
+        onPointerDown: _onPointerDown,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          appBar: appBar,
+          body: body,
+        ),
+      ),
+    );
+  }
+
+  /// Escape means "stop waiting for this download", not "leave the viewer" —
+  /// which is what it means everywhere else, so nothing else is handled here.
+  KeyEventResult _abandonDownloadOnEscape(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
+      setState(() => _isDownloading = false);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Whatever this page turns out to be: a film, something nothing can open,
+  /// the picture itself, or the wait for it.
+  Widget _buildPage(ImageSource currentImage, Uint8List? data) {
+    if (_isVideo(currentImage)) {
+      return ViewerVideoPage(
+        key: ValueKey(currentImage.id),
+        item: currentImage,
+        registry: widget.registry,
+        proxyServer: widget.proxyServer,
+        // A video left part-way through comes back to black and its bar, not
+        // to its own opening frame: the still would say the wrong thing about
+        // where it is.
+        poster: _resting ? null : _posterFor(currentImage),
+        startAt: _videoAt,
+        play: _autoplayNext || _playAsked,
+        onPlayingChanged: (p) => _videoWasPlaying = p,
+        onPlayer: _attachVideo,
+      );
+    }
+    if (currentImage.metadata?['unsupported'] == true) {
+      return _buildUnsupported(currentImage);
+    }
+    if (data != null) {
+      return Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          // ignore: deprecated_member_use
+          // ignore: deprecated_member_use
+          // ignore: deprecated_member_use
+          ..translate(
+            _offset.dx,
+            _offset.dy,
+          ) // ignore: deprecated_member_use
+          ..scale(_scale), // ignore: deprecated_member_use
+        child: Image.memory(data, fit: BoxFit.contain),
+      );
+    }
+    return _buildUnreadable(currentImage) ??
+        _buildLoadingIndicator(currentImage.id);
+  }
+
+  /// A file the listing let through but nothing here can draw. Named, so it
+  /// can be told from a page that is merely slow.
+  Widget _buildUnsupported(ImageSource image) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.block, color: Colors.white38, size: 64),
+        const SizedBox(height: 16),
+        Text(
+          image.name.split(') ').last,
+          style: const TextStyle(color: Colors.white54),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Unsupported format',
+          style: TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTagOverlay(List<String> tags) {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.black54, Colors.transparent],
+          ),
+        ),
+        child: SafeArea(
+          // Below whatever the host floats over us, so the two do not land on
+          // top of each other.
+          child: Padding(
+            padding: EdgeInsets.only(top: widget.topInset),
+            child: _buildTagBar(tags),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _onVerticalFling(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity < -300) {
+      _nextPage();
+    } else if (velocity > 300) {
+      _prevPage();
+    }
+  }
+
+  void _onHorizontalFling(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity < -500) {
+      _nextItem(); // 左スワイプ → 次の作品
+    } else if (velocity > 500) {
+      _prevItem(); // 右スワイプ → 前の作品
+    }
   }
 
   /// Everything about the item that is not the item: what it is called, what
@@ -1257,36 +1281,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
               ?_videoBar(),
               Row(
                 children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: GestureDetector(
-                        onLongPress: () =>
-                            _showAuthor(currentImage, newTab: true),
-                        child: ActionChip(
-                          avatar: const Icon(
-                            Icons.person,
-                            size: 16,
-                            color: Colors.black54,
-                          ),
-                          label: Text(
-                            currentImage.metadata?['author'] as String? ?? '',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onPressed: () => _showAuthor(currentImage),
-                          backgroundColor: Colors.white.withValues(alpha: 0.85),
-                          labelStyle: const TextStyle(
-                            color: Colors.black87,
-                            fontSize: 12,
-                          ),
-                          side: BorderSide.none,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    ),
-                  ),
+                  Expanded(child: _authorChip(currentImage)),
                   IconButton(
                     icon: Icon(
                       isFav ? Icons.favorite : Icons.favorite_border,
@@ -1307,22 +1302,52 @@ class _ViewerScreenState extends State<ViewerScreen> {
                     _buildPositionText(),
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
-                  if (cacheSource != null)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: Icon(
-                        cacheSource == CacheSource.network
-                            ? Icons.cloud_download
-                            : Icons.storage,
-                        color: Colors.white70,
-                        size: 16,
-                      ),
-                    ),
+                  ?_cacheSourceIcon(cacheSource),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Tap to follow the author, long-press to open them alongside — the same
+  /// pair as everywhere else a place can be reached from (ADR 010 決定 6).
+  Widget _authorChip(ImageSource currentImage) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: () => _showAuthor(currentImage, newTab: true),
+        child: ActionChip(
+          avatar: const Icon(Icons.person, size: 16, color: Colors.black54),
+          label: Text(
+            currentImage.metadata?['author'] as String? ?? '',
+            overflow: TextOverflow.ellipsis,
+          ),
+          onPressed: () => _showAuthor(currentImage),
+          backgroundColor: Colors.white.withValues(alpha: 0.85),
+          labelStyle: const TextStyle(color: Colors.black87, fontSize: 12),
+          side: BorderSide.none,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
+    );
+  }
+
+  /// Where this page came from, when that is known: the network, or a cache
+  /// that already had it.
+  Widget? _cacheSourceIcon(CacheSource? cacheSource) {
+    if (cacheSource == null) return null;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Icon(
+        cacheSource == CacheSource.network
+            ? Icons.cloud_download
+            : Icons.storage,
+        color: Colors.white70,
+        size: 16,
       ),
     );
   }
@@ -1336,75 +1361,74 @@ class _ViewerScreenState extends State<ViewerScreen> {
         onVerticalDragStart: (_) => setState(() => _sidebarActive = true),
         onVerticalDragEnd: (_) => setState(() => _sidebarActive = false),
         onVerticalDragUpdate: (details) {
-          final renderBox = details.localPosition;
-          final height = context.size?.height ?? 1;
-          final ratio = (renderBox.dy / height).clamp(0.0, 1.0);
-          final targetPage = (ratio * (pages.length - 1)).round();
-          if (targetPage != _pageIndex) {
-            _goToPage(targetPage);
-          }
+          // A drag reports the whole way down, so most of what it says is
+          // where we already are.
+          final page = _pageAt(details.localPosition.dy, pages.length);
+          if (page != _pageIndex) _goToPage(page);
         },
-        onTapDown: (details) {
-          final height = context.size?.height ?? 1;
-          final ratio = (details.localPosition.dy / height).clamp(0.0, 1.0);
-          final targetPage = (ratio * (pages.length - 1)).round();
-          _goToPage(targetPage);
-        },
+        onTapDown: (details) =>
+            _goToPage(_pageAt(details.localPosition.dy, pages.length)),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           width: active ? 40 : 6,
           color: active ? Colors.black26 : Colors.transparent,
           child: LayoutBuilder(
-            builder: (context, constraints) {
-              final totalHeight = constraints.maxHeight;
-              final indicatorPos = pages.length > 1
-                  ? (_pageIndex / (pages.length - 1)) * (totalHeight - 24)
-                  : 0.0;
-              return Stack(
-                children: [
-                  // Thin track line (always visible)
-                  if (!active)
-                    Positioned(
-                      top: indicatorPos,
-                      right: 0,
-                      child: Container(
-                        width: 4,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Colors.white38,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                  // Full indicator (hover/drag)
-                  if (active)
-                    Positioned(
-                      top: indicatorPos,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        height: 24,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '${_pageIndex + 1}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
+            builder: (context, constraints) =>
+                _sidebarMarker(constraints.maxHeight, pages.length, active),
           ),
         ),
       ),
     );
+  }
+
+  /// The page the sidebar is pointing at, [dy] down its height.
+  int _pageAt(double dy, int pageCount) {
+    final height = context.size?.height ?? 1;
+    final ratio = (dy / height).clamp(0.0, 1.0);
+    return (ratio * (pageCount - 1)).round();
+  }
+
+  /// A thumb at the reader's place: a tick on the edge normally, and the page
+  /// number itself once the sidebar has been reached for.
+  Widget _sidebarMarker(double totalHeight, int pageCount, bool active) {
+    final top = pageCount > 1
+        ? (_pageIndex / (pageCount - 1)) * (totalHeight - 24)
+        : 0.0;
+    if (!active) {
+      return Stack(children: [
+        Positioned(
+          top: top,
+          right: 0,
+          child: Container(
+            width: 4,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.white38,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ]);
+    }
+    return Stack(children: [
+      Positioned(
+        top: top,
+        left: 0,
+        right: 0,
+        child: Container(
+          height: 24,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white24,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            '${_pageIndex + 1}',
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+        ),
+      ),
+    ]);
   }
 
   /// Position within the work list. The page number within the work (e.g.
