@@ -7,6 +7,7 @@ import '../../models/image_source.dart';
 import '../../models/pixiv_artwork.dart';
 import '../pixiv/pixiv_api_client.dart';
 import 'image_source_provider.dart';
+import 'thumbnail_resize.dart';
 
 final _log = Logger('PixivSource');
 
@@ -125,13 +126,17 @@ class PixivSource extends ImageSourceProvider {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {required int targetPx}) async {
     final url = source.metadata?['thumbnailUrl'] as String;
+    // Pixiv serves `square1200`, which is seven times a tile on the device
+    // this was measured on and 5.76MB once decoded. One re-encode here buys
+    // that back sixty-fold, in the cache and in memory both (ADR 012).
     try {
-      return await _client.downloadImage(url);
+      return await shrinkToFit(await _client.downloadImage(url), targetPx);
     } on DioException catch (e) {
       if (e.response?.statusCode != 404) rethrow;
-      return _refetchThumbnail(source, url, e);
+      return shrinkToFit(await _refetchThumbnail(source, url, e), targetPx);
     }
   }
 

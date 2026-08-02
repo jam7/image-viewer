@@ -255,6 +255,7 @@ class _Fake extends SmbSource {
       PageResult(items: items);
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async =>
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+          {int targetPx = 155}) async =>
       throw ThumbnailNotSupportedException('none');
 }

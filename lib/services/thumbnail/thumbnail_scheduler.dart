@@ -85,7 +85,11 @@ class ThumbnailScheduler {
   ///   fail the same way |
   /// | `notYet` | ask. The material may have turned up, and finding out is a
   ///   lookup (see [ThumbnailNotReadyException]) |
-  void want(ImageSource item, {int distance = 0}) {
+  /// [targetPx] is the long edge the tile will draw this at, in device
+  /// pixels. Carried on the request rather than held on the scheduler: it
+  /// comes from whoever is painting, and a request already in the queue keeps
+  /// the size it was made with (ADR 012).
+  void want(ImageSource item, {int distance = 0, required int targetPx}) {
     // A folder is not a picture and never will be. The tile draws one and does
     // not ask, but a band asks for whatever is in it.
     if (item.metadata?['isDirectory'] == true) return;
@@ -103,7 +107,7 @@ class ThumbnailScheduler {
     }
     _asked++;
     _wave ??= Stopwatch()..start();
-    _wanted[item.id] = _Want(item, distance);
+    _wanted[item.id] = _Want(item, distance, targetPx);
     _schedulePump();
   }
 
@@ -200,7 +204,8 @@ class ThumbnailScheduler {
       // Waiting for a fetching slot inside the lane, so that reads of the
       // disk do not queue behind the share. Kept out of L1: ten entries shared
       // with full-size images is not a thumbnail cache, and the pool is.
-      final data = await _fetchGate.run(() => source.fetchThumbnail(want.item));
+      final data = await _fetchGate
+          .run(() => source.fetchThumbnail(want.item, targetPx: want.targetPx));
       _fetched++;
       await cache.l2.put(key, data);
       _finish(want, round, ThumbnailData(data));
@@ -287,6 +292,7 @@ class _Gate {
 
 class _Want {
   final ImageSource item;
+  final int targetPx;
   int distance;
-  _Want(this.item, this.distance);
+  _Want(this.item, this.distance, this.targetPx);
 }

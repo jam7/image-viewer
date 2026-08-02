@@ -96,7 +96,7 @@ void main() {
     final scheduler = schedulerFor(share);
     final told = watch(['a']);
 
-    scheduler.want(picture('a'));
+    scheduler.want(picture('a'), targetPx: 155);
     await drain();
 
     expect(share.fetched, ['a']);
@@ -112,7 +112,7 @@ void main() {
     final scheduler = schedulerFor(share);
     final told = watch(['a']);
 
-    scheduler.want(picture('a'));
+    scheduler.want(picture('a'), targetPx: 155);
     await drain();
 
     expect(share.fetched, isEmpty);
@@ -123,10 +123,10 @@ void main() {
     final share = _FakeShare();
     final scheduler = schedulerFor(share);
 
-    scheduler.want(picture('a'));
-    scheduler.want(picture('a'), distance: 2);
+    scheduler.want(picture('a'), targetPx: 155);
+    scheduler.want(picture('a'), distance: 2, targetPx: 155);
     await drain();
-    scheduler.want(picture('a')); // and again now it is answered
+    scheduler.want(picture('a'), targetPx: 155); // and again now it is answered
 
     await drain();
     expect(share.fetched, ['a']);
@@ -136,7 +136,7 @@ void main() {
     final share = _FakeShare();
     final scheduler = schedulerFor(share);
 
-    scheduler.want(folder('books'));
+    scheduler.want(folder('books'), targetPx: 155);
     await drain();
 
     expect(share.fetched, isEmpty);
@@ -149,9 +149,9 @@ void main() {
     final share = _FakeShare(hold: true);
     final scheduler = schedulerFor(share, lanes: 1);
 
-    scheduler.want(picture('far'), distance: 5);
-    scheduler.want(picture('near'), distance: 0);
-    scheduler.want(picture('middle'), distance: 2);
+    scheduler.want(picture('far'), distance: 5, targetPx: 155);
+    scheduler.want(picture('near'), distance: 0, targetPx: 155);
+    scheduler.want(picture('middle'), distance: 2, targetPx: 155);
     for (var i = 0; i < 4; i++) {
       share.releaseOne();
       await drain();
@@ -165,10 +165,10 @@ void main() {
     final scheduler = schedulerFor(share, lanes: 8);
 
     for (var i = 0; i < 3; i++) {
-      scheduler.want(picture('p$i'));
+      scheduler.want(picture('p$i'), targetPx: 155);
     }
-    scheduler.want(film('v0'));
-    scheduler.want(film('v1'));
+    scheduler.want(film('v0'), targetPx: 155);
+    scheduler.want(film('v1'), targetPx: 155);
     await drain();
 
     expect(share.inFlight.toSet(), {'p0', 'p1', 'p2'},
@@ -185,7 +185,7 @@ void main() {
     final scheduler = schedulerFor(share, lanes: 8, fetchLanes: 2);
 
     for (var i = 0; i < 6; i++) {
-      scheduler.want(picture('p$i'));
+      scheduler.want(picture('p$i'), targetPx: 155);
     }
     await drain();
 
@@ -199,8 +199,8 @@ void main() {
     final share = _FakeShare(hold: true);
     final scheduler = schedulerFor(share, lanes: 1);
 
-    scheduler.want(picture('a'));
-    scheduler.want(picture('b'));
+    scheduler.want(picture('a'), targetPx: 155);
+    scheduler.want(picture('b'), targetPx: 155);
     await drain();
     scheduler.cancel();
     share.releaseAll();
@@ -217,7 +217,7 @@ void main() {
     final scheduler = schedulerFor(share);
     final told = watch(['a']);
 
-    scheduler.want(picture('a'));
+    scheduler.want(picture('a'), targetPx: 155);
     await drain();
 
     expect(pool.get('a'), isA<ThumbnailFailed>());
@@ -233,13 +233,13 @@ void main() {
       final share = _FakeShare(notReady: {'later'}, unsupported: {'never'});
       final scheduler = schedulerFor(share);
 
-      scheduler.want(picture('later'));
-      scheduler.want(picture('never'));
+      scheduler.want(picture('later'), targetPx: 155);
+      scheduler.want(picture('never'), targetPx: 155);
       await drain();
       expect(share.fetched, ['later', 'never']);
 
-      scheduler.want(picture('later'));
-      scheduler.want(picture('never'));
+      scheduler.want(picture('later'), targetPx: 155);
+      scheduler.want(picture('never'), targetPx: 155);
       await drain();
 
       expect(share.fetched, ['later', 'never', 'later'],
@@ -251,13 +251,13 @@ void main() {
       final scheduler = schedulerFor(share);
       final told = watch(['later']);
 
-      scheduler.want(picture('later'));
+      scheduler.want(picture('later'), targetPx: 155);
       await drain();
       expect(pool.get('later'), isA<ThumbnailFailed>());
       expect(told, ['later'], reason: 'the icon is worth painting once');
 
       share.notReady.clear(); // the viewer cached the file
-      scheduler.want(picture('later'));
+      scheduler.want(picture('later'), targetPx: 155);
       await drain();
 
       expect(pool.get('later'), isA<ThumbnailData>());
@@ -271,7 +271,7 @@ void main() {
       final told = watch(['later']);
 
       for (var i = 0; i < 3; i++) {
-        scheduler.want(picture('later'));
+        scheduler.want(picture('later'), targetPx: 155);
         await drain();
       }
 
@@ -284,8 +284,8 @@ void main() {
     final share = _FakeShare(hold: true);
     final scheduler = schedulerFor(share, lanes: 1);
 
-    scheduler.want(picture('a'));
-    scheduler.want(picture('gone'));
+    scheduler.want(picture('a'), targetPx: 155);
+    scheduler.want(picture('gone'), targetPx: 155);
     scheduler.keepOnly((id) => id != 'gone');
     share.releaseAll();
     await drain();
@@ -340,7 +340,8 @@ class _FakeShare extends SmbSource {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {int targetPx = 155}) async {
     fetched.add(source.id);
     inFlight.add(source.id);
     final isFilm = source.metadata?['isVideo'] == true;

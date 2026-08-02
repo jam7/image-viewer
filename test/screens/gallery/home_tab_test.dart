@@ -184,7 +184,8 @@ class _EmptySource extends ImageSourceProvider {
   Future<List<ImageSource>> listImages({String? path}) async => const [];
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) =>
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+          {int targetPx = 155}) =>
       throw ThumbnailNotSupportedException('none');
 
   @override

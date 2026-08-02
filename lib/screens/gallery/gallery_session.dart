@@ -177,8 +177,9 @@ class GallerySession {
 
   /// See that [item] ends up with a settled answer. What a tile does by being
   /// painted, and what the band around it does by being near.
-  void wantThumbnail(ImageSource item, {int distance = 0}) =>
-      _scheduler.want(item, distance: distance);
+  void wantThumbnail(ImageSource item,
+          {int distance = 0, required int targetPx}) =>
+      _scheduler.want(item, distance: distance, targetPx: targetPx);
 
   /// Follow one item's thumbnail, so that its tile alone repaints when the
   /// answer lands (ADR 011 段階 3).
@@ -191,12 +192,13 @@ class GallerySession {
   /// Ask ahead for the band around what is on screen, so that scrolling meets
   /// thumbnails already there. [near] is what is visible; [around] is the
   /// screen either side of it.
-  void wantBand(List<ImageSource> near, List<ImageSource> around) {
+  void wantBand(List<ImageSource> near, List<ImageSource> around,
+      {required int targetPx}) {
     for (final item in near) {
-      wantThumbnail(item);
+      wantThumbnail(item, targetPx: targetPx);
     }
     for (final item in around) {
-      wantThumbnail(item, distance: 1);
+      wantThumbnail(item, distance: 1, targetPx: targetPx);
     }
     final wanted = {...near.map((i) => i.id), ...around.map((i) => i.id)};
     _scheduler.keepOnly(wanted.contains);

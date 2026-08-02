@@ -270,7 +270,8 @@ class _FakeShare extends SmbSource {
   Future<List<ImageSource>> listImages({String? path}) async => items;
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {int targetPx = 155}) async {
     fetched.add(source.id);
     final isFilm = source.metadata?['isVideo'] == true;
     if (isFilm) {

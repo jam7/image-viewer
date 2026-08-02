@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/image_source.dart';
 import '../../../widgets/thumbnail_result.dart';
+import '../gallery_constants.dart';
 import '../gallery_session.dart';
 
 /// One tile's thumbnail, and only that tile (ADR 011 段階 3).
@@ -64,7 +65,8 @@ class _ThumbnailOfState extends State<ThumbnailOf> {
     // trigger to forget to wire up, which is how the retry this replaced came
     // to stop working without anyone noticing.
     final thumbnail = widget.session.thumbnailFor(widget.item);
-    widget.session.wantThumbnail(widget.item);
+    widget.session.wantThumbnail(widget.item,
+        targetPx: galleryThumbnailPx(context));
     return widget.builder(context, thumbnail);
   }
 }

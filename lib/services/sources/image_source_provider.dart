@@ -22,7 +22,11 @@ abstract class ImageSourceProvider {
   /// サムネイルを取得する。cheaply に生成できない場合は
   /// [ThumbnailNotSupportedException] を throw する (例: 未 DL の PDF、画像の
   /// 無い ZIP)。呼び出し側 (ThumbnailLoader) が失敗結果に変換する。
-  Future<Uint8List> fetchThumbnail(ImageSource source);
+  /// [targetPx] is the long edge the result will be drawn at, in device
+  /// pixels (ADR 012). A source that already holds a compressed picture may
+  /// return it unchanged when it is no larger than that; one that has to make
+  /// the picture — a PDF page — should make it at that size and no bigger.
+  Future<Uint8List> fetchThumbnail(ImageSource source, {required int targetPx});
 
   /// 進行中のサムネイル生成を中断し、重いリソースを解放する。
   /// ThumbnailLoader.cancel() から呼ばれる (例: 動画再生前に SMB 接続と

@@ -286,7 +286,8 @@ class _FakePagedSource extends SmbSource {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {int targetPx = 155}) async {
     thumbnailIds.add(source.id);
     return Uint8List.fromList(const [1]);
   }

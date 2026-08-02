@@ -33,7 +33,7 @@ void main() {
       detailThumbnailUrl: 'https://i.pximg.net/fresh.jpg',
     );
 
-    final bytes = await PixivSource(client: client).fetchThumbnail(favourite());
+    final bytes = await PixivSource(client: client).fetchThumbnail(favourite(), targetPx: 155);
 
     expect(client.detailCalls, [42]);
     expect(client.downloaded, [
@@ -52,7 +52,7 @@ void main() {
     final source = PixivSource(client: client)
       ..onThumbnailUrlRefreshed = (id, url) => refreshed[id] = url;
 
-    await source.fetchThumbnail(favourite());
+    await source.fetchThumbnail(favourite(), targetPx: 155);
 
     expect(refreshed, {'42': 'https://i.pximg.net/fresh.jpg'});
   });
@@ -72,7 +72,7 @@ void main() {
       ..onThumbnailUrlRefreshed = (id, url) => refreshed[id] = url;
 
     await expectLater(
-        source.fetchThumbnail(favourite()), throwsA(isA<DioException>()));
+        source.fetchThumbnail(favourite(), targetPx: 155), throwsA(isA<DioException>()));
     expect(refreshed, isEmpty);
   });
 
@@ -85,7 +85,7 @@ void main() {
     );
 
     await expectLater(
-      PixivSource(client: client).fetchThumbnail(favourite()),
+      PixivSource(client: client).fetchThumbnail(favourite(), targetPx: 155),
       throwsA(isA<DioException>()),
     );
     expect(client.detailCalls, isEmpty);
@@ -94,7 +94,7 @@ void main() {
   test('a working URL is downloaded once, with no API call', () async {
     final client = _FakeApiClient(detailThumbnailUrl: 'unused');
 
-    await PixivSource(client: client).fetchThumbnail(favourite());
+    await PixivSource(client: client).fetchThumbnail(favourite(), targetPx: 155);
 
     expect(client.downloaded, ['https://i.pximg.net/stale.jpg']);
     expect(client.detailCalls, isEmpty);
@@ -107,7 +107,7 @@ void main() {
     );
 
     await expectLater(
-      PixivSource(client: client).fetchThumbnail(favourite()),
+      PixivSource(client: client).fetchThumbnail(favourite(), targetPx: 155),
       throwsA(isA<DioException>()),
     );
     expect(client.downloaded, ['https://i.pximg.net/stale.jpg']);
@@ -120,7 +120,7 @@ void main() {
     );
 
     await expectLater(
-      PixivSource(client: client).fetchThumbnail(favourite(illustId: null)),
+      PixivSource(client: client).fetchThumbnail(favourite(illustId: null), targetPx: 155),
       throwsA(isA<DioException>()),
     );
     expect(client.detailCalls, isEmpty);

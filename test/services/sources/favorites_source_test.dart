@@ -41,7 +41,7 @@ void main() {
   test('a thumbnail is fetched by the source the item came from', () async {
     registry.register('smb:test', smb);
 
-    final bytes = await favorites.fetchThumbnail(smbItem());
+    final bytes = await favorites.fetchThumbnail(smbItem(), targetPx: 155);
 
     expect(smb.thumbnailIds, ['smb:test:pic.jpg']);
     expect(bytes, [7]);
@@ -53,7 +53,7 @@ void main() {
     // "Not yet" rather than "never": the source may be connected later in the
     // same run, and asking again is a lookup in the registry (ADR 011).
     expect(
-      () => favorites.fetchThumbnail(smbItem()),
+      () => favorites.fetchThumbnail(smbItem(), targetPx: 155),
       throwsA(isA<ThumbnailNotReadyException>()),
     );
   });
@@ -102,7 +102,7 @@ void main() {
     final source = FavoritesSource(store: store, registry: registry);
 
     final item = (await source.listImages()).single;
-    await source.fetchThumbnail(item);
+    await source.fetchThumbnail(item, targetPx: 155);
     await pumpEventQueue(); // the write-back is not awaited by the fetch
 
     expect(store.listAll().single.thumbnailUrl, 'https://i.pximg.net/fresh.jpg');
@@ -138,7 +138,8 @@ class _RefreshingPixivSource extends PixivSource {
       : super(client: PixivApiClient(webClient: PixivWebClient()));
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {int targetPx = 155}) async {
     onThumbnailUrlRefreshed?.call(source.id, freshUrl);
     return Uint8List.fromList(const [7]);
   }
@@ -161,7 +162,8 @@ class _RecordingSource extends SmbSource {
         );
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {int targetPx = 155}) async {
     thumbnailIds.add(source.id);
     return Uint8List.fromList(const [7]);
   }

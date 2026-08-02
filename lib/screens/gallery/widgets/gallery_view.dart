@@ -112,9 +112,7 @@ class GalleryViewState extends State<GalleryView> {
   ///
   /// Worked out from the scroll position rather than from which tiles Flutter
   /// has built, because building runs a little ahead and behind and says
-  /// nothing about how far. The width is the screen's rather than the grid's,
-  /// which puts the band off by a fraction of a row at most — it is a band, not
-  /// a boundary.
+  /// nothing about how far.
   void _wantThumbnails({bool evenIfUnmoved = false}) {
     if (!mounted || !_scrollController.hasClients) return;
     final items = _shown.visibleItems;
@@ -144,6 +142,7 @@ class GalleryViewState extends State<GalleryView> {
         ...items.sublist(at(firstRow - rows), at(firstRow)),
         ...items.sublist(at(firstRow + rows), at(firstRow + rows * 2)),
       ],
+      targetPx: layout.thumbnailPx,
     );
   }
 

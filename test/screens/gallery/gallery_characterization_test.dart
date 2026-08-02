@@ -699,7 +699,8 @@ class _FakeSmbSource extends SmbSource {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async =>
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+          {int targetPx = 155}) async =>
       Uint8List.fromList(const [0]);
 }
 
@@ -716,6 +717,7 @@ class _FakePixivSource extends PixivSource {
       PageResult(items: items);
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async =>
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+          {int targetPx = 155}) async =>
       Uint8List.fromList(const [0]);
 }

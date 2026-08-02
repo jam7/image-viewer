@@ -12,7 +12,8 @@ class GoogleDriveSource extends ImageSourceProvider {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {required int targetPx}) async {
     // TODO: 実装
     throw UnimplementedError();
   }

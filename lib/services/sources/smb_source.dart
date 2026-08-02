@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:archive_reader/archive_reader.dart';
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:exif/exif.dart';
-import 'package:flutter/painting.dart';
 import 'package:logging/logging.dart';
 import 'dart:ui' as ui;
 
@@ -18,6 +17,7 @@ import '../cache/cache_manager.dart';
 import '../video/smb_proxy_server.dart';
 import '../video/video_thumbnail_service.dart';
 import 'image_source_provider.dart';
+import 'thumbnail_resize.dart';
 
 final _log = Logger('SMB');
 
@@ -25,7 +25,6 @@ final _log = Logger('SMB');
 class SmbSource extends ImageSourceProvider {
   static const _connectTimeout = Duration(seconds: 15);
   static const _ioTimeout = Duration(seconds: 30);
-  static const _thumbnailMaxSize = 600;
   final ServerConfig config;
   final String password;
   final CacheManager? cacheManager;
@@ -225,7 +224,8 @@ class SmbSource extends ImageSourceProvider {
   /// Capture a thumbnail frame for a video by streaming it through the local
   /// HTTP proxy into media_kit, then resizing. The reused player is released by
   /// [cancelThumbnailWork]. Throws if no proxy is configured or capture fails.
-  Future<Uint8List> _captureVideoThumbnail(ImageSource source) async {
+  Future<Uint8List> _captureVideoThumbnail(
+      ImageSource source, int targetPx) async {
     final proxy = proxyServer;
     if (proxy == null) {
       throw ThumbnailNotSupportedException('Video (no proxy): ${source.name}');
@@ -238,7 +238,7 @@ class SmbSource extends ImageSourceProvider {
       if (bytes == null) {
         throw Exception('Video capture returned null: ${source.name}');
       }
-      final resized = await resizeToThumbnail(bytes);
+      final resized = await shrinkToFit(bytes, targetPx);
       _log.info('Video thumbnail: ${source.name} '
           '(${(bytes.length / 1024).toStringAsFixed(0)} KB -> '
           '${(resized.length / 1024).toStringAsFixed(0)} KB)');
@@ -251,17 +251,20 @@ class SmbSource extends ImageSourceProvider {
   /// How one is made depends on what the file is, and each way has its own
   /// idea of what going wrong means — see the three below.
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) async {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {required int targetPx}) async {
     final metadata = source.metadata;
-    if (metadata?['isVideo'] == true) return _captureVideoThumbnail(source);
-    if (metadata?['isPdf'] == true) return _pdfThumbnail(source);
-    if (metadata?['isZip'] == true) return _zipThumbnail(source);
-    return _pictureThumbnail(source);
+    if (metadata?['isVideo'] == true) {
+      return _captureVideoThumbnail(source, targetPx);
+    }
+    if (metadata?['isPdf'] == true) return _pdfThumbnail(source, targetPx);
+    if (metadata?['isZip'] == true) return _zipThumbnail(source, targetPx);
+    return _pictureThumbnail(source, targetPx);
   }
 
   /// Page 0, once the file is on this device: rendering needs all of it, and
   /// what puts it there is the viewer opening the PDF.
-  Future<Uint8List> _pdfThumbnail(ImageSource source) async {
+  Future<Uint8List> _pdfThumbnail(ImageSource source, int targetPx) async {
     final filePath = cacheManager?.getFilePath('full:${source.id}');
     if (filePath == null) {
       // Cheap to ask again — this was a lookup, not a read — and opening the
@@ -269,7 +272,7 @@ class SmbSource extends ImageSourceProvider {
       throw ThumbnailNotReadyException('PDF not cached: ${source.name}');
     }
     try {
-      final png = await _renderPdfThumbnail(filePath);
+      final png = await _renderPdfThumbnail(filePath, targetPx);
       _log.info('PDF thumbnail: ${source.name} (${(png.length / 1024).toStringAsFixed(0)} KB)');
       return png;
     } catch (e, st) {
@@ -280,7 +283,7 @@ class SmbSource extends ImageSourceProvider {
 
   /// The first picture inside, by range read of the ZIP directory. A ZIP with
   /// no pictures in it will not grow any, so that is a settled no.
-  Future<Uint8List> _zipThumbnail(ImageSource source) async {
+  Future<Uint8List> _zipThumbnail(ImageSource source, int targetPx) async {
     try {
       final zipReader = await _getZipReader(source.uri);
       final entries = await zipReader.listEntries();
@@ -293,7 +296,7 @@ class SmbSource extends ImageSourceProvider {
       }
       final firstImage = await zipReader.readEntry(imageEntries.first);
       _log.info('ZIP thumbnail: ${imageEntries.first.name} (${firstImage.length} bytes)');
-      return resizeToThumbnail(firstImage);
+      return shrinkToFit(firstImage, targetPx);
     } catch (e, st) {
       if (e is ThumbnailNotSupportedException) rethrow;
       _log.warning('ZIP thumbnail failed: ${source.name}', e, st);
@@ -304,20 +307,20 @@ class SmbSource extends ImageSourceProvider {
   /// The EXIF thumbnail if the JPEG carries one big enough, otherwise the
   /// whole picture shrunk — which is a read of the entire file, so it is the
   /// last resort rather than the simple answer.
-  Future<Uint8List> _pictureThumbnail(ImageSource source) async {
+  Future<Uint8List> _pictureThumbnail(ImageSource source, int targetPx) async {
     final name = source.name.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
-      final exifBytes = await _tryExifThumbnail(source);
+      final exifBytes = await _tryExifThumbnail(source, targetPx);
       if (exifBytes != null) {
-        return resizeToThumbnail(exifBytes);
+        return shrinkToFit(exifBytes, targetPx);
       }
     }
-    return resizeToThumbnail(await fetchFullImage(source));
+    return shrinkToFit(await fetchFullImage(source), targetPx);
   }
 
   /// JPEG ヘッダ部の EXIF サムネイルを試す。十分な解像度のものが取れなければ
   /// null を返し、呼び出し側がフル画像にフォールバックする。
-  Future<Uint8List?> _tryExifThumbnail(ImageSource source) async {
+  Future<Uint8List?> _tryExifThumbnail(ImageSource source, int targetPx) async {
     try {
       final header = await _readPartial(source.uri, 65536);
       final exifData = await readExifFromBytes(header);
@@ -329,8 +332,7 @@ class SmbSource extends ImageSourceProvider {
       final exifBytes = Uint8List.fromList(bytes.cast<int>());
       final exifSize = await _getImageSize(exifBytes);
       if (exifSize == null ||
-          (exifSize.width < _thumbnailMaxSize &&
-              exifSize.height < _thumbnailMaxSize)) {
+          (exifSize.width < targetPx && exifSize.height < targetPx)) {
         _log.info('EXIF thumbnail too small '
             '(${exifSize?.width}x${exifSize?.height}), using full image: ${source.name}');
         return null;
@@ -643,48 +645,12 @@ class SmbSource extends ImageSourceProvider {
     }
   }
 
-  /// Resize image data so the long edge is at most [_thumbnailMaxSize] px.
-  /// If data is <= [_thumbnailMaxBytes], returns as-is (avoids JPEG→PNG size increase).
-  /// Otherwise returns PNG bytes.
-  static const _thumbnailMaxBytes = 400 * 1024; // 400KB
-
-  Future<Uint8List> resizeToThumbnail(Uint8List data) async {
-    if (data.length <= _thumbnailMaxBytes) {
-      _log.info('Thumbnail skip resize: ${(data.length / 1024).toStringAsFixed(0)} KB <= ${_thumbnailMaxBytes ~/ 1024} KB');
-      return data;
-    }
-
-    final buffer = await ui.ImmutableBuffer.fromUint8List(data);
-    int? origW, origH;
-    final codec = await PaintingBinding.instance.instantiateImageCodecWithSize(
-      buffer,
-      getTargetSize: (w, h) {
-        origW = w;
-        origH = h;
-        final longEdge = w > h ? w : h;
-        if (longEdge <= _thumbnailMaxSize) return ui.TargetImageSize(width: w, height: h);
-        final scale = _thumbnailMaxSize / longEdge;
-        return ui.TargetImageSize(
-          width: (w * scale).round(),
-          height: (h * scale).round(),
-        );
-      },
-    );
-    final frame = await codec.getNextFrame();
-    _log.info('Thumbnail resize: ${origW}x$origH → ${frame.image.width}x${frame.image.height} (input ${(data.length / 1024).toStringAsFixed(0)} KB)');
-    final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
-    frame.image.dispose();
-    codec.dispose();
-    return byteData!.buffer.asUint8List();
-  }
-
-  /// Render PDF page 0 as a thumbnail with long edge [_thumbnailMaxSize] px.
-  Future<Uint8List> _renderPdfThumbnail(String filePath) async {
+  /// Render PDF page 0 as a thumbnail with long edge [targetPx].
+  Future<Uint8List> _renderPdfThumbnail(String filePath, int targetPx) async {
     final doc = await _openPdfCached(filePath);
     final page = doc.pages[0];
     final longEdge = page.width > page.height ? page.width : page.height;
-    final scale = _thumbnailMaxSize / longEdge;
-    return _renderPdfPageFrom(filePath, 0, scale: scale);
+    return _renderPdfPageFrom(filePath, 0, scale: targetPx / longEdge);
   }
 
   /// Release the video thumbnail player (e.g. before playing a video, so the

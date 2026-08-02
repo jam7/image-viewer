@@ -58,7 +58,8 @@ class FavoritesSource implements ImageSourceProvider {
   }
 
   @override
-  Future<Uint8List> fetchThumbnail(ImageSource source) {
+  Future<Uint8List> fetchThumbnail(ImageSource source,
+      {required int targetPx}) {
     final owner = _ownerOf(source);
     if (owner == null) {
       // The source may be connected later in the same run, and asking again
@@ -73,7 +74,7 @@ class FavoritesSource implements ImageSourceProvider {
     if (owner is PixivSource) {
       owner.onThumbnailUrlRefreshed = _rememberThumbnailUrl;
     }
-    return owner.fetchThumbnail(source);
+    return owner.fetchThumbnail(source, targetPx: targetPx);
   }
 
   /// Writing is fire-and-forget: the thumbnail the reader is waiting for must

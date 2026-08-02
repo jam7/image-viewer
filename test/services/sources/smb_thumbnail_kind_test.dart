@@ -33,7 +33,7 @@ void main() {
     // way in. Until then this is "not yet", not "never": the tile asks again
     // every time it is painted, and the cost of being wrong is one map lookup.
     expect(
-      () => source().fetchThumbnail(pdf()),
+      () => source().fetchThumbnail(pdf(), targetPx: 155),
       throwsA(isA<ThumbnailNotReadyException>()),
     );
   });
