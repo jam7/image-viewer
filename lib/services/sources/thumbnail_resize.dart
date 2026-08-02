@@ -22,6 +22,49 @@ final _log = Logger('ThumbnailResize');
 /// Bytes that are not a picture at all are handed back untouched: shrinking is
 /// this function's job and judging is not. Whatever they are, they reach the
 /// tile as they would have before, and fail to draw there.
+/// Turn one raw BGRA frame into thumbnail bytes: long edge at most
+/// [targetPx], as PNG. Returns null if the pixels cannot be read.
+///
+/// This is [shrinkToFit] for pixels that were never encoded — a video frame
+/// out of mpv. Same engine decode-with-target trick, same PNG at tile size;
+/// the only difference is that the descriptor is built from raw pixels
+/// instead of parsed out of a header.
+///
+/// mpv pads its rows sometimes, so the row length is taken from the buffer
+/// ([height] rows is all it holds) rather than assumed to be `width * 4`.
+Future<Uint8List?> shrinkRawFrame(
+    Uint8List bgra, int width, int height, int targetPx) async {
+  final rowBytes = bgra.length ~/ height;
+  final buffer = await ui.ImmutableBuffer.fromUint8List(bgra);
+  final descriptor = ui.ImageDescriptor.raw(
+    buffer,
+    width: width,
+    height: height,
+    rowBytes: rowBytes,
+    pixelFormat: ui.PixelFormat.bgra8888,
+  );
+  final longEdge = width > height ? width : height;
+  final scale = longEdge > targetPx ? targetPx / longEdge : 1.0;
+  final codec = await descriptor.instantiateCodec(
+    targetWidth: (width * scale).round(),
+    targetHeight: (height * scale).round(),
+  );
+  // Same order as shrinkToFit below: the buffer goes, the descriptor stays.
+  buffer.dispose();
+  final frame = await codec.getNextFrame();
+  try {
+    final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    if (png == null) {
+      _log.warning('could not encode a ${width}x$height frame');
+      return null;
+    }
+    return png.buffer.asUint8List();
+  } finally {
+    frame.image.dispose();
+    codec.dispose();
+  }
+}
+
 Future<Uint8List> shrinkToFit(Uint8List data, int targetPx) async {
   final ui.ImmutableBuffer buffer;
   final ui.ImageDescriptor descriptor;

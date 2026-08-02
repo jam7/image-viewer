@@ -238,13 +238,17 @@ class SmbSource extends ImageSourceProvider {
     final token = url.split('/').last;
     try {
       _videoThumbService ??= VideoThumbnailService();
-      final bytes = await _videoThumbService!.capture(url);
-      if (bytes == null) {
+      final frame = await _videoThumbService!.capture(url);
+      if (frame == null) {
         throw Exception('Video capture returned null: ${source.name}');
       }
-      final resized = await shrinkToFit(bytes, targetPx);
+      final resized = await shrinkRawFrame(
+          frame.bgra, frame.width, frame.height, targetPx);
+      if (resized == null) {
+        throw Exception('Video frame unreadable: ${source.name}');
+      }
       _log.info('Video thumbnail: ${source.name} '
-          '(${(bytes.length / 1024).toStringAsFixed(0)} KB -> '
+          '(${frame.width}x${frame.height} -> '
           '${(resized.length / 1024).toStringAsFixed(0)} KB)');
       return resized;
     } finally {
