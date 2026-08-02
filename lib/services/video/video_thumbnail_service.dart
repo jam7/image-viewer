@@ -92,11 +92,15 @@ class VideoThumbnailService {
         play: false,
       );
 
-      // The frame's own size, needed to read the raw pixels. It arrives when
-      // the track is demuxed; open() resets it first, so this never sees the
-      // previous video's answer.
+      // The frame's own size, needed to read the raw pixels. open() resets
+      // videoParams, so this never sees the previous video's answer — and it
+      // fills in over more than one emission: w/h arrive with the demuxed
+      // track, dw/dh (the display size, which is what the buffer of an
+      // anamorphic video actually is) only once the output is configured.
+      // Waiting for the earlier emission got a 720x480 answer for a
+      // 720x540 buffer.
       final params = await player.stream.videoParams
-          .firstWhere((p) => (p.w ?? 0) > 0 && (p.h ?? 0) > 0)
+          .firstWhere((p) => (p.dw ?? 0) > 0 && (p.dh ?? 0) > 0)
           .timeout(const Duration(seconds: 15));
 
       // Demux said what the frame will be; the decoder may not have put it
@@ -112,7 +116,10 @@ class VideoThumbnailService {
       if (_player != null) await player.stop();
       if (bytes == null) return null;
       final size = frameSizeOf(bytes.length,
-          w: params.w!, h: params.h!, dw: params.dw, dh: params.dh);
+          w: params.w ?? params.dw!,
+          h: params.h ?? params.dh!,
+          dw: params.dw,
+          dh: params.dh);
       if (size == null) {
         _log.warning('cannot size a ${bytes.length}-byte frame '
             '(${params.w}x${params.h}, display ${params.dw}x${params.dh})');
