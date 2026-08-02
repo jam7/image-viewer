@@ -64,8 +64,10 @@ class GalleryGrid extends StatefulWidget {
 }
 
 class _GalleryGridState extends State<GalleryGrid> {
-  /// Width the grid was last laid out at. A change means a resize/rotation.
-  double? _laidOutWidth;
+  /// What the grid was last laid out with. A change means a resize/rotation.
+  /// Held rather than recomputed because the scroll listener runs between
+  /// builds and has to convert pixels to rows with the layout on screen.
+  GalleryLayout? _layout;
 
   /// Last anchor computed from a real scroll position. Held here rather than
   /// read back from [GalleryGrid.anchor] so a resize uses the position as of
@@ -109,8 +111,7 @@ class _GalleryGridState extends State<GalleryGrid> {
     _recorded = null;
     _pendingRestore = null;
     final anchor = widget.anchor;
-    final width = _laidOutWidth;
-    if (anchor == null || width == null) {
+    if (anchor == null || _layout == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !widget.scrollController.hasClients) return;
         widget.scrollController.jumpTo(0);
@@ -130,10 +131,10 @@ class _GalleryGridState extends State<GalleryGrid> {
     final anchor = _pendingRestore;
     if (anchor == null || widget.items.isEmpty) return;
     _pendingRestore = null;
-    final width = _laidOutWidth;
-    if (width == null) return;
+    final layout = _layout;
+    if (layout == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _applyAnchor(anchor, width);
+      if (mounted) _applyAnchor(anchor, layout);
     });
   }
 
@@ -146,17 +147,17 @@ class _GalleryGridState extends State<GalleryGrid> {
   /// Translate the current pixel offset into "which item is at the top-left,
   /// and how far past its row are we".
   void _recordAnchor() {
-    final width = _laidOutWidth;
-    if (width == null || widget.items.isEmpty) return;
+    final layout = _layout;
+    if (layout == null || widget.items.isEmpty) return;
     if (!widget.scrollController.hasClients) return;
 
-    final stride = galleryRowStride(width);
+    final stride = layout.rowStride;
     if (stride <= 0) return;
     // Overscroll goes negative; treat it as the top.
     final pixels = widget.scrollController.position.pixels.clamp(
         0.0, double.maxFinite);
     final row = (pixels / stride).floor();
-    final index = row * galleryCrossAxisCount;
+    final index = row * layout.columns;
     if (index >= widget.items.length) return;
 
     final anchor =
@@ -166,15 +167,18 @@ class _GalleryGridState extends State<GalleryGrid> {
     widget.onAnchorChanged?.call(anchor);
   }
 
-  /// Put [anchor]'s item back at the top-left under the current layout.
-  void _applyAnchor(ScrollAnchor anchor, double width) {
+  /// Put [anchor]'s item back at the top-left under [layout].
+  ///
+  /// The anchor names an item, not a row, so it survives being recorded under
+  /// one layout and applied under another — which is the whole point, since a
+  /// rotation changes both the column count and the stride.
+  void _applyAnchor(ScrollAnchor anchor, GalleryLayout layout) {
     if (!widget.scrollController.hasClients) return;
     final index = widget.items.indexWhere((i) => i.id == anchor.itemId);
     if (index < 0) return; // filtered out or not loaded yet: leave the view be
 
-    final stride = galleryRowStride(width);
-    final row = index ~/ galleryCrossAxisCount;
-    final target = (row + anchor.rowFraction) * stride;
+    final row = index ~/ layout.columns;
+    final target = (row + anchor.rowFraction) * layout.rowStride;
     final position = widget.scrollController.position;
     widget.scrollController
         .jumpTo(target.clamp(0.0, position.maxScrollExtent));
@@ -189,26 +193,28 @@ class _GalleryGridState extends State<GalleryGrid> {
       return Center(child: Text(widget.emptyMessage));
     }
 
+    final media = MediaQuery.of(context);
     return LayoutBuilder(builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      if (_laidOutWidth != width) {
-        final firstLayout = _laidOutWidth == null;
-        _laidOutWidth = width;
+      final layout = GalleryLayout.of(
+          constraints.maxWidth, media.size, media.devicePixelRatio);
+      if (_layout != layout) {
+        final firstLayout = _layout == null;
+        _layout = layout;
         // On first layout restore what the caller handed us; on a resize keep
         // the item the user was looking at. Deferred because the scroll
         // position's extents are only known once this frame has laid out.
         final anchor = firstLayout ? widget.anchor : _recorded;
         if (anchor != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _applyAnchor(anchor, width);
+            if (mounted) _applyAnchor(anchor, layout);
           });
         }
       }
-      return _buildGrid();
+      return _buildGrid(layout);
     });
   }
 
-  Widget _buildGrid() {
+  Widget _buildGrid(GalleryLayout layout) {
     final itemCount = widget.items.length;
     final count = itemCount + (widget.showTrailingLoader ? 1 : 0);
     return Scrollbar(
@@ -223,7 +229,7 @@ class _GalleryGridState extends State<GalleryGrid> {
         // as long ones this way.
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(galleryPadding),
-        gridDelegate: galleryGridDelegate,
+        gridDelegate: layout.gridDelegate,
         itemCount: count,
         itemBuilder: (context, index) {
           if (index >= itemCount) {

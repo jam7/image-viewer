@@ -119,7 +119,15 @@ class GalleryViewState extends State<GalleryView> {
     if (!mounted || !_scrollController.hasClients) return;
     final items = _shown.visibleItems;
     if (items.isEmpty) return;
-    final stride = galleryRowStride(MediaQuery.sizeOf(context).width);
+    final media = MediaQuery.of(context);
+    // The screen's width rather than the grid's, which puts the band off by a
+    // fraction of a row — and, now that the column count follows the width,
+    // can put it off by a whole row near a boundary. Still a band, not a
+    // boundary, and a tile that is on screen asks for itself (ADR 011); the
+    // two widths want reconciling all the same (notes/TODO.md).
+    final layout =
+        GalleryLayout.of(media.size.width, media.size, media.devicePixelRatio);
+    final stride = layout.rowStride;
     if (stride <= 0) return;
     final position = _scrollController.position;
     final firstRow = (position.pixels / stride).floor();
@@ -129,8 +137,7 @@ class GalleryViewState extends State<GalleryView> {
     if (!evenIfUnmoved && firstRow == _bandFromRow) return;
     _bandFromRow = firstRow;
     final rows = (position.viewportDimension / stride).ceil() + 1;
-    int at(int row) =>
-        (row * galleryCrossAxisCount).clamp(0, items.length).toInt();
+    int at(int row) => layout.firstOfRow(row, items.length);
     _shown.wantBand(
       items.sublist(at(firstRow), at(firstRow + rows)),
       [

@@ -6,14 +6,22 @@ import 'package:image_viewer/screens/gallery/gallery_constants.dart';
 import 'package:image_viewer/screens/gallery/scroll_anchor.dart';
 import 'package:image_viewer/screens/gallery/widgets/gallery_grid.dart';
 
-/// Pins the scroll anchor: that galleryRowStride agrees with what the grid
+/// Pins the scroll anchor: that [GalleryLayout] agrees with what the grid
 /// actually lays out (it mirrors the delegate's math by hand, so it has to be
 /// checked against real geometry), and that the anchored item stays put when
 /// the viewport width changes — the rotation jump this exists to fix.
+///
+/// Since ADR 012 a wider viewport means *more columns* rather than wider
+/// tiles, so the same item is in a different row on either side of a rotation.
+/// That is what the anchor naming an item rather than a row is for.
 void main() {
   const viewportHeight = 600.0;
   const narrow = 800.0;
   const wide = 1200.0;
+
+  /// The surface below is 1400x800, which is what the grid sees as the screen.
+  GalleryLayout layoutAt(double width) =>
+      GalleryLayout.of(width, const Size(1400, 800), 1.0);
 
   final items = [
     for (var i = 0; i < 100; i++)
@@ -37,9 +45,14 @@ void main() {
 
   /// The default 800x600 test surface would clamp the "wide" case back to 800
   /// and quietly test nothing, so give both widths room.
+  ///
+  /// Set on the view rather than with `setSurfaceSize`, which moves the render
+  /// surface without moving what MediaQuery reports — and MediaQuery is where
+  /// the tile size comes from since ADR 012.
   Future<void> pumpAt(WidgetTester tester, Widget widget) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(widget);
   }
 
@@ -75,13 +88,14 @@ void main() {
   double contentTop(WidgetTester tester) =>
       tester.getTopLeft(find.byType(GridView)).dy + galleryPadding;
 
-  testWidgets('galleryRowStride matches the laid-out row positions',
+  testWidgets('the row stride matches the laid-out row positions',
       (tester) async {
     await pumpAt(tester, harness(narrow));
 
-    final stride = galleryRowStride(narrow);
+    final layout = layoutAt(narrow);
+    expect(layout.columns, 5, reason: 'the narrow case is the upright one');
     // Scrolling by exactly three strides should bring row 3 flush to the top.
-    controller.jumpTo(stride * 3);
+    controller.jumpTo(layout.rowStride * 3);
     await tester.pump();
 
     expect(
@@ -90,10 +104,23 @@ void main() {
     );
   });
 
+  testWidgets('a wider viewport lays out more columns of the same size',
+      (tester) async {
+    await pumpAt(tester, harness(wide));
+
+    final layout = layoutAt(wide);
+    expect(layout.columns, greaterThan(5));
+    // The first tile of the second row, wherever that now falls.
+    expect(
+      tester.getTopLeft(find.text('item${layout.columns}')).dy,
+      closeTo(contentTop(tester) + layout.rowStride, 0.01),
+    );
+  });
+
   testWidgets('the top-left item is reported as the anchor', (tester) async {
     await pumpAt(tester, harness(narrow));
 
-    final stride = galleryRowStride(narrow);
+    final stride = layoutAt(narrow).rowStride;
     controller.jumpTo(stride * 3 + stride / 4);
     await tester.pump();
 
@@ -104,11 +131,11 @@ void main() {
   testWidgets('widening the viewport keeps the same item at the top',
       (tester) async {
     await pumpAt(tester, harness(narrow));
-    controller.jumpTo(galleryRowStride(narrow) * 3);
+    controller.jumpTo(layoutAt(narrow).rowStride * 3);
     await tester.pump();
     expect(reported?.itemId, 'item15');
 
-    // Rotate: same grid, wider viewport, so rows are taller.
+    // Rotate: same grid, wider viewport, so more columns and a taller row.
     await pumpAt(tester, harness(wide));
     await tester.pump(); // run the post-frame restore
     await tester.pump();
@@ -117,8 +144,11 @@ void main() {
       tester.getTopLeft(find.text('item15')).dy,
       closeTo(contentTop(tester), 0.01),
     );
-    // A pixel offset would have been kept as-is and landed elsewhere.
-    expect(controller.offset, closeTo(galleryRowStride(wide) * 3, 0.01));
+    // Row 3 of five columns is not row 3 of seven. A pixel offset, or a row
+    // number, would have landed somewhere else entirely.
+    final wideLayout = layoutAt(wide);
+    expect(controller.offset,
+        closeTo(wideLayout.rowStride * (15 ~/ wideLayout.columns), 0.01));
   });
 
   testWidgets('an incoming anchor is restored on first layout',
@@ -140,7 +170,7 @@ void main() {
     // asynchronously. The restore is asked for while there is still nothing to
     // aim at, so it has to wait for the items rather than give up.
     await pumpAt(tester, harness(narrow, restoreKey: 'first'));
-    controller.jumpTo(galleryRowStride(narrow) * 3);
+    controller.jumpTo(layoutAt(narrow).rowStride * 3);
     await tester.pump();
     expect(reported?.itemId, 'item15');
 

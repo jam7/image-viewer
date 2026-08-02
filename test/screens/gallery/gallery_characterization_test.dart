@@ -411,7 +411,7 @@ void main() {
 
       await pumpPushed(tester, build(source));
       final scroll = gridScrollState(tester);
-      scroll.position.jumpTo(galleryRowStride(800) * 3);
+      scroll.position.jumpTo(GalleryLayout.of(800, const Size(800, 600), 1.0).rowStride * 3);
       await tester.pump();
       final before = scroll.position.pixels;
       expect(before, greaterThan(0));
@@ -447,7 +447,7 @@ void main() {
           byPath: {'subdir': inner});
 
       await pumpPushed(tester, build(source));
-      gridScrollState(tester).position.jumpTo(galleryRowStride(800) * 3);
+      gridScrollState(tester).position.jumpTo(GalleryLayout.of(800, const Size(800, 600), 1.0).rowStride * 3);
       await tester.pump();
 
       await tester.tap(find.text('subdir'));
