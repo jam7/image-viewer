@@ -262,6 +262,13 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
     });
   }
 
+  /// Between one field and the next. Smaller than [_sectionGap] because the
+  /// seven of them are one thing to read down, not seven things.
+  static const _fieldGap = 6.0;
+
+  /// Between the form and what gets reported below it.
+  static const _sectionGap = 16.0;
+
   /// One line of the form, gap below included.
   ///
   /// The gap belongs to the field rather than to whoever lists them: there
@@ -276,7 +283,7 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
     TextInputType? keyboardType,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: _fieldGap),
       child: TextFormField(
         controller: controller,
         decoration: InputDecoration(labelText: label),
@@ -352,9 +359,8 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
                 _field(_userController, 'ユーザー名'),
                 _field(_passwordController, 'パスワード', obscure: true),
                 _field(_basePathController, 'ベースパス'),
-                // The last field brings 8 of its own; together the 16 that
-                // sets the form apart from what is reported below it.
-                const SizedBox(height: 8),
+                // The last field brought its own gap; this makes up the rest.
+                const SizedBox(height: _sectionGap - _fieldGap),
                 ?_testResultLine(),
                 ?_benchmarkLog(),
               ],
