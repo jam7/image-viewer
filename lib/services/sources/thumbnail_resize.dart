@@ -5,23 +5,31 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('ThumbnailResize');
 
-/// Shrink [data] so that its long edge is at most [targetPx], as PNG bytes.
-/// Returns [data] unchanged when it is already no larger than that.
+/// Decode [descriptor] at [scale] and hand the result back as PNG bytes, or
+/// null if it will not encode. Takes ownership of [buffer], the codec and the
+/// decoded image, and disposes all three.
 ///
-/// The question is asked in pixels (ADR 012). It used to be asked in bytes —
-/// anything under 400KB was passed through — which is not the same question:
-/// a 300KB JPEG is routinely 3000x2000, and it is the pixels that are decoded
-/// into memory to fill a tile a fraction of the size. The byte rule was really
-/// working around "a small JPEG re-encoded as PNG gets bigger", and shrinking
-/// to the tile makes that moot: at a couple of hundred pixels a PNG is small
-/// whatever it started as.
-///
-/// The size is read from the header rather than by decoding, so a picture that
-/// is already small costs nothing but the read.
-///
-/// Bytes that are not a picture at all are handed back untouched: shrinking is
-/// this function's job and judging is not. Whatever they are, they reach the
-/// tile as they would have before, and fail to draw there.
+/// The buffer goes and the descriptor stays, which is the order the framework
+/// uses in instantiateImageCodecWithSize and not the obvious one. Releasing
+/// the descriptor here instead segfaults the decode thread: the codec is still
+/// reading through it, and getNextFrame has not been awaited yet.
+Future<Uint8List?> _pngAtScale(ui.ImageDescriptor descriptor,
+    ui.ImmutableBuffer buffer, int width, int height, double scale) async {
+  final codec = await descriptor.instantiateCodec(
+    targetWidth: (width * scale).round(),
+    targetHeight: (height * scale).round(),
+  );
+  buffer.dispose();
+  final frame = await codec.getNextFrame();
+  try {
+    final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    return png?.buffer.asUint8List();
+  } finally {
+    frame.image.dispose();
+    codec.dispose();
+  }
+}
+
 /// Turn one raw BGRA frame into thumbnail bytes: long edge at most
 /// [targetPx], as PNG. Returns null if the pixels cannot be read.
 ///
@@ -45,26 +53,30 @@ Future<Uint8List?> shrinkRawFrame(
   );
   final longEdge = width > height ? width : height;
   final scale = longEdge > targetPx ? targetPx / longEdge : 1.0;
-  final codec = await descriptor.instantiateCodec(
-    targetWidth: (width * scale).round(),
-    targetHeight: (height * scale).round(),
-  );
-  // Same order as shrinkToFit below: the buffer goes, the descriptor stays.
-  buffer.dispose();
-  final frame = await codec.getNextFrame();
-  try {
-    final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
-    if (png == null) {
-      _log.warning('could not encode a ${width}x$height frame');
-      return null;
-    }
-    return png.buffer.asUint8List();
-  } finally {
-    frame.image.dispose();
-    codec.dispose();
+  final png = await _pngAtScale(descriptor, buffer, width, height, scale);
+  if (png == null) {
+    _log.warning('could not encode a ${width}x$height frame');
   }
+  return png;
 }
 
+/// Shrink [data] so that its long edge is at most [targetPx], as PNG bytes.
+/// Returns [data] unchanged when it is already no larger than that.
+///
+/// The question is asked in pixels (ADR 012). It used to be asked in bytes —
+/// anything under 400KB was passed through — which is not the same question:
+/// a 300KB JPEG is routinely 3000x2000, and it is the pixels that are decoded
+/// into memory to fill a tile a fraction of the size. The byte rule was really
+/// working around "a small JPEG re-encoded as PNG gets bigger", and shrinking
+/// to the tile makes that moot: at a couple of hundred pixels a PNG is small
+/// whatever it started as.
+///
+/// The size is read from the header rather than by decoding, so a picture that
+/// is already small costs nothing but the read.
+///
+/// Bytes that are not a picture at all are handed back untouched: shrinking is
+/// this function's job and judging is not. Whatever they are, they reach the
+/// tile as they would have before, and fail to draw there.
 Future<Uint8List> shrinkToFit(Uint8List data, int targetPx) async {
   final ui.ImmutableBuffer buffer;
   final ui.ImageDescriptor descriptor;
@@ -85,28 +97,13 @@ Future<Uint8List> shrinkToFit(Uint8List data, int targetPx) async {
   }
 
   final scale = targetPx / longEdge;
-  final codec = await descriptor.instantiateCodec(
-    targetWidth: (width * scale).round(),
-    targetHeight: (height * scale).round(),
-  );
-  // The buffer goes and the descriptor stays, which is the order the framework
-  // uses in instantiateImageCodecWithSize and not the obvious one. Releasing
-  // the descriptor here instead segfaults the decode thread: the codec is
-  // still reading through it, and getNextFrame has not been awaited yet.
-  buffer.dispose();
-  final frame = await codec.getNextFrame();
-  try {
-    final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
-    if (png == null) {
-      _log.warning('could not encode a ${width}x$height thumbnail');
-      return data;
-    }
-    _log.info('thumbnail ${width}x$height -> '
-        '${frame.image.width}x${frame.image.height} '
-        '(${data.length ~/ 1024}KB -> ${png.lengthInBytes ~/ 1024}KB)');
-    return png.buffer.asUint8List();
-  } finally {
-    frame.image.dispose();
-    codec.dispose();
+  final png = await _pngAtScale(descriptor, buffer, width, height, scale);
+  if (png == null) {
+    _log.warning('could not encode a ${width}x$height thumbnail');
+    return data;
   }
+  _log.info('thumbnail ${width}x$height -> '
+      '${(width * scale).round()}x${(height * scale).round()} '
+      '(${data.length ~/ 1024}KB -> ${png.length ~/ 1024}KB)');
+  return png;
 }
