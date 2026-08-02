@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
 import '../sources/smb_source.dart';
@@ -47,12 +47,24 @@ class SmbProxyServer {
   /// Register a session and return the playback URL.
   Future<String> registerSession(SmbSource source, String filePath) async {
     await start();
-    final token = _generateToken();
     final tree = await source.connectForProxy();
     final reader = await tree.openRead(filePath);
     final fileSize = reader.fileSize;
     await reader.close();
+    return _register(source, filePath, fileSize);
+  }
 
+  /// The same, for a file whose size is already known. Learning it is the one
+  /// thing here that needs an SMB server to exist.
+  @visibleForTesting
+  Future<String> registerKnownSession(
+      SmbSource source, String filePath, int fileSize) async {
+    await start();
+    return _register(source, filePath, fileSize);
+  }
+
+  String _register(SmbSource source, String filePath, int fileSize) {
+    final token = _generateToken();
     _sessions[token] = _ProxySession(source, filePath, fileSize);
     final url = 'http://127.0.0.1:$port/$token';
     _log.info('Session registered: $filePath ($fileSize bytes) → $url');
@@ -90,66 +102,112 @@ class SmbProxyServer {
       await request.response.close();
       return;
     }
-    final rangeLog = request.headers.value('range') ?? 'full';
-    _log.info('Request: ${session.filePath.split('\\').last} $rangeLog');
+    final rangeHeader = request.headers.value('range');
+    _log.info('Request: ${_nameOf(session)} ${rangeHeader ?? 'full'}');
 
     try {
-      final rangeHeader = request.headers.value('range');
-      int start = 0;
-      int end = session.fileSize - 1;
-
-      if (rangeHeader != null) {
-        final match = RegExp(r'bytes=(\d+)-(\d*)').firstMatch(rangeHeader);
-        if (match != null) {
-          start = int.parse(match.group(1)!);
-          if (match.group(2)!.isNotEmpty) {
-            end = int.parse(match.group(2)!);
-          }
-        }
-      }
-
-      final length = end - start + 1;
-
-      if (rangeHeader != null) {
-        request.response.statusCode = HttpStatus.partialContent;
-        request.response.headers.set('content-range', 'bytes $start-$end/${session.fileSize}');
-      } else {
-        request.response.statusCode = HttpStatus.ok;
-      }
-      request.response.headers.set('content-length', length);
-      request.response.headers.set('content-type', 'application/octet-stream');
-      request.response.headers.set('accept-ranges', 'bytes');
-
-      // Stream data in chunks matching SMB max read size
-      const chunkSize = 1024 * 1024; // 1MB
-      int offset = start;
-      int remaining = length;
-      while (remaining > 0 && !session.cancelled) {
-        final readLen = remaining < chunkSize ? remaining : chunkSize;
-        Uint8List data;
-        try {
-          data = await session.source.readRange(session.filePath, offset, readLen);
-        } catch (e) {
-          // Retry once on connection error (triggers SMB reconnect)
-          _log.info('readRange failed, retrying: $e');
-          data = await session.source.readRange(session.filePath, offset, readLen);
-        }
-        request.response.add(data);
-        offset += data.length;
-        remaining -= data.length;
-      }
+      final asked = _rangeAsked(rangeHeader, session.fileSize);
+      _writeHeaders(request.response, asked, session.fileSize,
+          partial: rangeHeader != null);
+      await _streamRange(request.response, session, asked);
       await request.response.close();
       if (session.cancelled) {
-        _log.info('Response aborted: ${session.filePath.split('\\').last}');
+        _log.info('Response aborted: ${_nameOf(session)}');
       } else {
-        _log.info('Response done: ${session.filePath.split('\\').last} ${length ~/ 1024}KB');
+        _log.info('Response done: ${_nameOf(session)} ${asked.length ~/ 1024}KB');
       }
     } catch (e, st) {
-      _log.warning('Proxy request error: ${session.filePath.split('\\').last}', e, st);
-      try {
-        request.response.statusCode = HttpStatus.internalServerError;
-        await request.response.close();
-      } catch (_) {}
+      _log.warning('Proxy request error: ${_nameOf(session)}', e, st);
+      await _failRequest(request.response);
     }
   }
+
+  /// The window the player asked for, defaulting to the whole file. A Range
+  /// header that does not parse is answered with the whole file as well —
+  /// media_kit does not send one, and guessing at a malformed one is worse
+  /// than sending everything.
+  _ByteRange _rangeAsked(String? rangeHeader, int fileSize) {
+    var start = 0;
+    var end = fileSize - 1;
+    final match = rangeHeader == null
+        ? null
+        : RegExp(r'bytes=(\d+)-(\d*)').firstMatch(rangeHeader);
+    if (match != null) {
+      start = int.parse(match.group(1)!);
+      if (match.group(2)!.isNotEmpty) {
+        end = int.parse(match.group(2)!);
+      }
+    }
+    return _ByteRange(start, end);
+  }
+
+  void _writeHeaders(
+    HttpResponse response,
+    _ByteRange range,
+    int fileSize, {
+    required bool partial,
+  }) {
+    if (partial) {
+      response.statusCode = HttpStatus.partialContent;
+      response.headers
+          .set('content-range', 'bytes ${range.start}-${range.end}/$fileSize');
+    } else {
+      response.statusCode = HttpStatus.ok;
+    }
+    response.headers.set('content-length', range.length);
+    response.headers.set('content-type', 'application/octet-stream');
+    response.headers.set('accept-ranges', 'bytes');
+  }
+
+  /// Reads the window a piece at a time, checking before each piece whether
+  /// the session is still wanted: the player is closed by invalidating its
+  /// token, and reading on would hold an SMB connection the next one needs.
+  Future<void> _streamRange(
+      HttpResponse response, _ProxySession session, _ByteRange range) async {
+    // Chunks match the SMB max read size
+    const chunkSize = 1024 * 1024; // 1MB
+    var offset = range.start;
+    var remaining = range.length;
+    while (remaining > 0 && !session.cancelled) {
+      final readLen = remaining < chunkSize ? remaining : chunkSize;
+      final data = await _readRetrying(session, offset, readLen);
+      response.add(data);
+      offset += data.length;
+      remaining -= data.length;
+    }
+  }
+
+  Future<Uint8List> _readRetrying(
+      _ProxySession session, int offset, int length) async {
+    try {
+      return await session.source.readRange(session.filePath, offset, length);
+    } catch (e) {
+      // Retry once on connection error (triggers SMB reconnect)
+      _log.info('readRange failed, retrying: $e');
+      return session.source.readRange(session.filePath, offset, length);
+    }
+  }
+
+  Future<void> _failRequest(HttpResponse response) async {
+    try {
+      response.statusCode = HttpStatus.internalServerError;
+      await response.close();
+    } catch (e) {
+      // Nothing left to say it with: the headers went out long before the
+      // read that failed, so the player sees a short body and a closed
+      // connection either way.
+      _log.info('could not report the failure to the player: $e');
+    }
+  }
+
+  String _nameOf(_ProxySession session) => session.filePath.split('\\').last;
+}
+
+class _ByteRange {
+  final int start;
+  final int end;
+
+  const _ByteRange(this.start, this.end);
+
+  int get length => end - start + 1;
 }
