@@ -123,6 +123,8 @@ test-user
 新着
 トップ
 アドレスをコピー
+# What an empty required field in the SMB connection form says.
+必須
 ~^[^\n]*(お気に入り|サービス|サーバー|ライブラリ|ブックマーク|設定|ホーム|再読み込み|の作品|部分|古い順|見つかりませんでした|新しいタブで開きました)[^\n]*$
 
 # -- documentation examples -------------------------------------------------

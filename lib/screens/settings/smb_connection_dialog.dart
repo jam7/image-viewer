@@ -262,6 +262,76 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
     });
   }
 
+  /// One line of the form, gap below included.
+  ///
+  /// The gap belongs to the field rather than to whoever lists them: there
+  /// are seven, and a missing one is a dialog that looks slightly wrong in a
+  /// way nobody can name. [required] is the same emptiness check each time —
+  /// a host and a share are all this needs to try a connection.
+  Widget _field(
+    TextEditingController controller,
+    String label, {
+    bool required = false,
+    bool obscure = false,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextFormField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+        obscureText: obscure,
+        keyboardType: keyboardType,
+        validator: required
+            ? (v) => v == null || v.trim().isEmpty ? '必須' : null
+            : null,
+      ),
+    );
+  }
+
+  /// How the last connection attempt went, in one line.
+  Widget? _testResultLine() {
+    final result = _testResult;
+    if (result == null) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        result,
+        style: TextStyle(
+          color: result.startsWith('接続成功') ? Colors.green : Colors.red,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  /// The benchmark's output as it arrives, in a box of its own so a long run
+  /// scrolls instead of pushing the buttons off the dialog.
+  Widget? _benchmarkLog() {
+    if (_benchLines.isEmpty) return null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade900,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      constraints: const BoxConstraints(maxHeight: 200),
+      child: SingleChildScrollView(
+        reverse: true,
+        child: Text(
+          _benchLines.join('\n'),
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 11,
+            color: Colors.greenAccent,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -274,117 +344,62 @@ class _SmbConnectionDialogState extends State<SmbConnectionDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(labelText: '名前（任意）'),
-                ),
+                _field(_nameController, '名前（任意）'),
+                _field(_hostController, 'ホスト', required: true),
+                _field(_portController, 'ポート',
+                    keyboardType: TextInputType.number),
+                _field(_shareController, '共有名', required: true),
+                _field(_userController, 'ユーザー名'),
+                _field(_passwordController, 'パスワード', obscure: true),
+                _field(_basePathController, 'ベースパス'),
+                // The last field brings 8 of its own; together the 16 that
+                // sets the form apart from what is reported below it.
                 const SizedBox(height: 8),
-                TextFormField(
-                  controller: _hostController,
-                  decoration: const InputDecoration(labelText: 'ホスト'),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? '必須' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _portController,
-                  decoration: const InputDecoration(labelText: 'ポート'),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _shareController,
-                  decoration: const InputDecoration(labelText: '共有名'),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? '必須' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _userController,
-                  decoration: const InputDecoration(labelText: 'ユーザー名'),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(labelText: 'パスワード'),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _basePathController,
-                  decoration: const InputDecoration(labelText: 'ベースパス'),
-                ),
-                const SizedBox(height: 16),
-                if (_testResult != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      _testResult!,
-                      style: TextStyle(
-                        color: _testResult!.startsWith('接続成功')
-                            ? Colors.green
-                            : Colors.red,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                if (_benchLines.isNotEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade900,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    child: SingleChildScrollView(
-                      reverse: true,
-                      child: Text(
-                        _benchLines.join('\n'),
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          color: Colors.greenAccent,
-                        ),
-                      ),
-                    ),
-                  ),
+                ?_testResultLine(),
+                ?_benchmarkLog(),
               ],
             ),
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isTesting || _isBenchmarking ? null : _testConnection,
-          child: _isTesting
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('テスト接続'),
-        ),
-        TextButton(
-          onPressed: _isTesting
-              ? null
-              : _isBenchmarking
-                  ? () => setState(() => _benchmarkCancelled = true)
-                  : _runBenchmark,
-          child: _isBenchmarking
-              ? const Text('中止')
-              : const Text('性能確認'),
-        ),
-        TextButton(
-          onPressed: _isBenchmarking ? null : () => Navigator.of(context).pop(),
-          child: const Text('キャンセル'),
-        ),
-        ElevatedButton(
-          onPressed: _isBenchmarking ? null : _save,
-          child: const Text('保存'),
-        ),
-      ],
+      actions: _actions(context),
     );
+  }
+
+  /// Both of the two things this dialog can do take a while and talk to the
+  /// same server, so each button is also a statement about what the other one
+  /// is doing: nothing but 中止 is available during a benchmark, and nothing
+  /// at all while a connection is being tried.
+  List<Widget> _actions(BuildContext context) {
+    return [
+      TextButton(
+        onPressed: _isTesting || _isBenchmarking ? null : _testConnection,
+        child: _isTesting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('テスト接続'),
+      ),
+      TextButton(
+        onPressed: _isTesting
+            ? null
+            : _isBenchmarking
+                ? () => setState(() => _benchmarkCancelled = true)
+                : _runBenchmark,
+        child: _isBenchmarking
+            ? const Text('中止')
+            : const Text('性能確認'),
+      ),
+      TextButton(
+        onPressed: _isBenchmarking ? null : () => Navigator.of(context).pop(),
+        child: const Text('キャンセル'),
+      ),
+      ElevatedButton(
+        onPressed: _isBenchmarking ? null : _save,
+        child: const Text('保存'),
+      ),
+    ];
   }
 }
