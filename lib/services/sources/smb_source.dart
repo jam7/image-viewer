@@ -248,56 +248,63 @@ class SmbSource extends ImageSourceProvider {
     }
   }
 
+  /// How one is made depends on what the file is, and each way has its own
+  /// idea of what going wrong means — see the three below.
   @override
   Future<Uint8List> fetchThumbnail(ImageSource source) async {
-    // Video: capture a frame via the local HTTP proxy + media_kit, then resize.
-    if (source.metadata?['isVideo'] == true) {
-      return _captureVideoThumbnail(source);
-    }
+    final metadata = source.metadata;
+    if (metadata?['isVideo'] == true) return _captureVideoThumbnail(source);
+    if (metadata?['isPdf'] == true) return _pdfThumbnail(source);
+    if (metadata?['isZip'] == true) return _zipThumbnail(source);
+    return _pictureThumbnail(source);
+  }
 
-    // PDF: render page 0 if cached locally
-    if (source.metadata?['isPdf'] == true) {
-      final pdfCacheKey = 'full:${source.id}';
-      final filePath = cacheManager?.getFilePath(pdfCacheKey);
-      if (filePath == null) {
-        // Cheap to ask again — this was a lookup, not a read — and opening the
-        // PDF in the viewer caches the file, at which point page 0 renders.
-        throw ThumbnailNotReadyException('PDF not cached: ${source.name}');
-      }
-      try {
-        final png = await _renderPdfThumbnail(filePath);
-        _log.info('PDF thumbnail: ${source.name} (${(png.length / 1024).toStringAsFixed(0)} KB)');
-        return png;
-      } catch (e, st) {
-        _log.warning('PDF thumbnail failed: ${source.name}', e, st);
-        throw ThumbnailNotSupportedException('PDF: ${source.name}');
-      }
+  /// Page 0, once the file is on this device: rendering needs all of it, and
+  /// what puts it there is the viewer opening the PDF.
+  Future<Uint8List> _pdfThumbnail(ImageSource source) async {
+    final filePath = cacheManager?.getFilePath('full:${source.id}');
+    if (filePath == null) {
+      // Cheap to ask again — this was a lookup, not a read — and opening the
+      // PDF in the viewer caches the file, at which point page 0 renders.
+      throw ThumbnailNotReadyException('PDF not cached: ${source.name}');
     }
-
-    // ZIP: read first image from ZIP directory via range read
-    if (source.metadata?['isZip'] == true) {
-      final zipPath = source.uri;
-      try {
-        final zipReader = await _getZipReader(zipPath);
-        final entries = await zipReader.listEntries();
-        final imageEntries = entries
-            .where((e) => !e.isDirectory && _isImageName(e.name))
-            .toList()
-          ..sort((a, b) => naturalCompare(a.name, b.name));
-        if (imageEntries.isEmpty) {
-          throw ThumbnailNotSupportedException('ZIP has no images: ${source.name}');
-        }
-        final firstImage = await zipReader.readEntry(imageEntries.first);
-        _log.info('ZIP thumbnail: ${imageEntries.first.name} (${firstImage.length} bytes)');
-        return resizeToThumbnail(firstImage);
-      } catch (e, st) {
-        if (e is ThumbnailNotSupportedException) rethrow;
-        _log.warning('ZIP thumbnail failed: ${source.name}', e, st);
-        throw ThumbnailNotSupportedException('ZIP: ${source.name}');
-      }
+    try {
+      final png = await _renderPdfThumbnail(filePath);
+      _log.info('PDF thumbnail: ${source.name} (${(png.length / 1024).toStringAsFixed(0)} KB)');
+      return png;
+    } catch (e, st) {
+      _log.warning('PDF thumbnail failed: ${source.name}', e, st);
+      throw ThumbnailNotSupportedException('PDF: ${source.name}');
     }
+  }
 
-    // JPEG: try EXIF thumbnail first
+  /// The first picture inside, by range read of the ZIP directory. A ZIP with
+  /// no pictures in it will not grow any, so that is a settled no.
+  Future<Uint8List> _zipThumbnail(ImageSource source) async {
+    try {
+      final zipReader = await _getZipReader(source.uri);
+      final entries = await zipReader.listEntries();
+      final imageEntries = entries
+          .where((e) => !e.isDirectory && _isImageName(e.name))
+          .toList()
+        ..sort((a, b) => naturalCompare(a.name, b.name));
+      if (imageEntries.isEmpty) {
+        throw ThumbnailNotSupportedException('ZIP has no images: ${source.name}');
+      }
+      final firstImage = await zipReader.readEntry(imageEntries.first);
+      _log.info('ZIP thumbnail: ${imageEntries.first.name} (${firstImage.length} bytes)');
+      return resizeToThumbnail(firstImage);
+    } catch (e, st) {
+      if (e is ThumbnailNotSupportedException) rethrow;
+      _log.warning('ZIP thumbnail failed: ${source.name}', e, st);
+      throw ThumbnailNotSupportedException('ZIP: ${source.name}');
+    }
+  }
+
+  /// The EXIF thumbnail if the JPEG carries one big enough, otherwise the
+  /// whole picture shrunk — which is a read of the entire file, so it is the
+  /// last resort rather than the simple answer.
+  Future<Uint8List> _pictureThumbnail(ImageSource source) async {
     final name = source.name.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
       final exifBytes = await _tryExifThumbnail(source);
@@ -305,10 +312,7 @@ class SmbSource extends ImageSourceProvider {
         return resizeToThumbnail(exifBytes);
       }
     }
-
-    // Fallback: full image → resize
-    final fullData = await fetchFullImage(source);
-    return resizeToThumbnail(fullData);
+    return resizeToThumbnail(await fetchFullImage(source));
   }
 
   /// JPEG ヘッダ部の EXIF サムネイルを試す。十分な解像度のものが取れなければ
