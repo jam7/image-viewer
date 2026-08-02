@@ -165,9 +165,13 @@ class VideoThumbnailService {
           leastBlackFraction = fraction;
           leastBlack = bytes;
         }
-        // The first second is skipped even when bright: fade-ins pass the
-        // blackness test a few frames in while still being murk.
-        if (position >= const Duration(seconds: 1) && fraction <= 0.5) break;
+        // Nothing before 3s is accepted however bright: 3s was the app's
+        // long-standing capture point and frames before it were never
+        // candidates. Accepting from 1s made one tile *worse* — a dim murky
+        // frame at 1s slipped under the blackness bar, where the old seek
+        // sailed past it to a good frame at 3s. The scan's only job is to
+        // keep going when 3s itself is sitting on a dark title card.
+        if (position >= const Duration(seconds: 3) && fraction <= 0.5) break;
         if (position >= _scanWindow) break;
         if (player.state.completed) break;
       }
