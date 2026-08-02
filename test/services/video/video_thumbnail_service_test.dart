@@ -60,24 +60,38 @@ void main() {
     return out;
   }
 
-  test('a black title card measures black, a lit scene does not', () {
-    final card = half(const [0, 0, 0, 255], const [12, 8, 4, 255], 4096);
-    final scene = half(const [90, 120, 180, 255], const [30, 60, 20, 255], 4096);
+  test('a watermark plate is dark: grey ground, bright mark', () {
+    // The case the near-black test missed: the ground is around 50 per
+    // channel -- nowhere near black, plainly dark -- with a bright mark on
+    // top. Luminance counts the ground, so the plate measures mostly dark.
+    final plate =
+        half(const [50, 50, 50, 255], const [235, 235, 235, 255], 4096);
 
-    expect(blackFractionOf(card), 1.0);
-    expect(blackFractionOf(scene), 0.0);
+    expect(darkFractionOf(plate), closeTo(0.5, 0.01));
   });
 
-  test('half black is half black', () {
+  test('a black title card measures dark, a lit scene does not', () {
+    final card = half(const [0, 0, 0, 255], const [12, 8, 4, 255], 4096);
+    final scene =
+        half(const [90, 120, 180, 255], const [130, 160, 110, 255], 4096);
+
+    expect(darkFractionOf(card), 1.0);
+    expect(darkFractionOf(scene), 0.0);
+  });
+
+  test('half dark is half dark', () {
     final frame = half(const [0, 0, 0, 255], const [200, 200, 200, 255], 4096);
 
-    expect(blackFractionOf(frame), closeTo(0.5, 0.01));
+    expect(darkFractionOf(frame), closeTo(0.5, 0.01));
   });
 
-  test('one bright channel keeps a pixel out of the black count', () {
-    // Deep blue: B is high, R and G are nothing. Not black.
-    final frame = half(const [220, 0, 0, 255], const [220, 0, 0, 255], 4096);
+  test('darkness follows the eye, not the channel values', () {
+    // Deep blue reads dark to a person even at a high channel value, and
+    // green reads bright: Rec.601 weights say so too. BGRA order.
+    final blue = half(const [220, 0, 0, 255], const [220, 0, 0, 255], 4096);
+    final green = half(const [0, 160, 0, 255], const [0, 160, 0, 255], 4096);
 
-    expect(blackFractionOf(frame), 0.0);
+    expect(darkFractionOf(blue), 1.0);
+    expect(darkFractionOf(green), 0.0);
   });
 }

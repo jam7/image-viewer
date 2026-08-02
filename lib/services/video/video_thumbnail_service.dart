@@ -36,22 +36,30 @@ typedef CapturedFrame = ({Uint8List bgra, int width, int height});
   return null;
 }
 
-/// How much of the frame is black: 0.0 (none) to 1.0 (all of it).
+/// How much of the frame is dark: 0.0 (none) to 1.0 (all of it).
 ///
-/// "Black" is every channel under 30 of 255 — dark enough that a black
-/// title card counts and a dim scene mostly does not. Every 8th pixel is
-/// looked at, which is plenty for a whole-frame fraction and keeps the walk
-/// under a millisecond where the full frame would be several.
-double blackFractionOf(Uint8List bgra) {
-  const step = 4 * 8;
-  var black = 0;
-  var seen = 0;
-  for (var i = 0; i + 2 < bgra.length; i += step) {
-    seen++;
-    if (bgra[i] < 30 && bgra[i + 1] < 30 && bgra[i + 2] < 30) black++;
+/// Dark means **low luminance**, not black. The first version counted only
+/// near-black pixels (every channel under 30), and a watermark plate — a
+/// bright mark on a dark grey ground — sailed through: its ground sat
+/// around 50 per channel, so nothing in the frame counted. Luminance calls
+/// that ground what a person does: dark. Every pixel is examined; the walk
+/// is integer maths and a few milliseconds even at DVD sizes, once or so
+/// per content second.
+double darkFractionOf(Uint8List bgra) {
+  final pixels = bgra.length ~/ 4;
+  var dark = 0;
+  for (var i = 0; i + 2 < bgra.length; i += 4) {
+    // Rec.601 luma in integer parts-per-thousand; the buffer is BGRA.
+    final luma = 114 * bgra[i] + 587 * bgra[i + 1] + 299 * bgra[i + 2];
+    if (luma < _darkLuma * 1000) dark++;
   }
-  return seen == 0 ? 0 : black / seen;
+  return pixels == 0 ? 0 : dark / pixels;
 }
+
+/// Below this luminance (of 255) a pixel counts as dark. 64 is a quarter of
+/// full brightness: the dark grey of a title plate is in, a lit scene shot
+/// at night is mostly out.
+const _darkLuma = 64;
 
 /// Captures video thumbnails using media_kit.
 /// Reuses a single Player + VideoController across multiple captures.
@@ -76,9 +84,9 @@ class VideoThumbnailService {
   /// - false — no seeking at all. Play from the start (the one frame that
   ///   never needs a flag to be decodable) at several times speed, sample
   ///   about once per content second, and take the first frame past 1s
-  ///   that is not mostly black — title cards and watermark plates open
+  ///   that is not mostly dark — title cards and watermark plates open
   ///   these files, and a fixed 3s landed square on them. If everything
-  ///   sampled is black, the least black frame seen wins over failing.
+  ///   sampled is dark, the least dark frame seen wins over failing.
   Future<CapturedFrame?> capture(String url,
       {required bool trustIndex}) async {
     // Wait for any in-progress capture
@@ -149,8 +157,8 @@ class VideoThumbnailService {
       await player.setRate(_scanRate);
       final params = await _sizedVideoParams(player);
 
-      Uint8List? leastBlack;
-      var leastBlackFraction = 2.0;
+      Uint8List? leastDark;
+      var leastDarkFraction = 2.0;
       final sampleEvery =
           Duration(milliseconds: 1000 ~/ _scanRate.round());
       final scanned = Stopwatch()..start();
@@ -160,29 +168,28 @@ class VideoThumbnailService {
         final position = player.state.position;
         final bytes = await player.screenshot(format: null);
         if (bytes == null) continue;
-        final fraction = blackFractionOf(bytes);
-        if (fraction < leastBlackFraction) {
-          leastBlackFraction = fraction;
-          leastBlack = bytes;
+        final fraction = darkFractionOf(bytes);
+        if (fraction < leastDarkFraction) {
+          leastDarkFraction = fraction;
+          leastDark = bytes;
         }
-        // Nothing before 3s is accepted however bright: 3s was the app's
-        // long-standing capture point and frames before it were never
-        // candidates. Accepting from 1s made one tile *worse* — a dim murky
-        // frame at 1s slipped under the blackness bar, where the old seek
-        // sailed past it to a good frame at 3s. The scan's only job is to
-        // keep going when 3s itself is sitting on a dark title card.
-        if (position >= const Duration(seconds: 3) && fraction <= 0.5) break;
+        // The first second is skipped even when bright, so a fade-in's
+        // opening frames are never candidates. (When the dark test was
+        // still a near-black test, this floor sat at 3s to paper over the
+        // watermark plate it kept missing; luminance catches the plate by
+        // content, so the floor is back to being just a fade-in guard.)
+        if (position >= const Duration(seconds: 1) && fraction <= 0.5) break;
         if (position >= _scanWindow) break;
         if (player.state.completed) break;
       }
 
       if (_player != null) await player.stop();
-      if (leastBlack == null) return null;
-      if (leastBlackFraction > 0.5) {
-        _log.info('every sampled frame was mostly black; keeping the '
-            'least black one (${(leastBlackFraction * 100).round()}%)');
+      if (leastDark == null) return null;
+      if (leastDarkFraction > 0.5) {
+        _log.info('every sampled frame was mostly dark; keeping the '
+            'least dark one (${(leastDarkFraction * 100).round()}%)');
       }
-      return _framed(leastBlack, params);
+      return _framed(leastDark, params);
     } catch (e, st) {
       return _captureFailed(e, st);
     }
