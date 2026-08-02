@@ -99,6 +99,13 @@ class VideoThumbnailService {
         // No audio at all. The volume was already 0, but the sound was still
         // being decoded — and, over the SMB proxy, still being downloaded.
         unawaited(platform.setProperty('aid', 'no'));
+        // Keyframe seek. mpv's --start is a precise seek by default, which
+        // decodes and discards everything from the previous keyframe to the
+        // 3s mark — measured at 1.5-2s of CPU per video on the tablet, and
+        // the one capture that needed more than the retry window fell off it.
+        // A thumbnail does not care that the frame is exactly at 3s; the
+        // nearest keyframe before it arrives at once.
+        unawaited(platform.setProperty('hr-seek', 'no'));
       }
       player.setVolume(0);
       _player = player;
