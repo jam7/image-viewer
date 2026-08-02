@@ -1146,6 +1146,17 @@ class _ViewerScreenState extends State<ViewerScreen> {
     return KeyEventResult.ignored;
   }
 
+  /// The window's width in device pixels: what a page is worth decoding at.
+  ///
+  /// Only the width, since giving both dimensions to a decoder stretches the
+  /// picture to fit them. A page taller than the window still decodes a little
+  /// larger than it is drawn, which is a long way short of decoding it at
+  /// whatever the scanner produced.
+  static int _displayWidthPx(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return (media.size.width * media.devicePixelRatio).round();
+  }
+
   /// Whatever this page turns out to be: a film, something nothing can open,
   /// the picture itself, or the wait for it.
   Widget _buildPage(ImageSource currentImage, Uint8List? data) {
@@ -1180,7 +1191,14 @@ class _ViewerScreenState extends State<ViewerScreen> {
             _offset.dy,
           ) // ignore: deprecated_member_use
           ..scale(_scale), // ignore: deprecated_member_use
-        child: Image.memory(data, fit: BoxFit.contain),
+        child: Image.memory(
+          data,
+          fit: BoxFit.contain,
+          // Decoded at the width of the window rather than of the file
+          // (ADR 012). A 3000x2000 scan is 24MB decoded, and four pages are
+          // held ahead of this one; Flutter's image cache is 100MB.
+          cacheWidth: _displayWidthPx(context),
+        ),
       );
     }
     return _buildUnreadable(currentImage) ??

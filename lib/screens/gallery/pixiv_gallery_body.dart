@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'widgets/thumbnail_image.dart';
 import 'widgets/thumbnail_of.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
@@ -86,7 +87,7 @@ class _PixivGalleryBodyState extends State<PixivGalleryBody> {
         fit: StackFit.expand,
         children: [
           switch (thumb) {
-            ThumbnailData(data: final d) => Image.memory(d, fit: BoxFit.cover),
+            ThumbnailData(data: final d) => ThumbnailImage(d),
             ThumbnailFailed() => Container(
                 color: Colors.grey[300],
                 child: Icon(Icons.broken_image, color: Colors.red[300]),

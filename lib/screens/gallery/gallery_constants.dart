@@ -22,6 +22,14 @@ const galleryPadding = 4.0;
 /// a grid that shows barely three rows of thumbnails on a tablet in landscape.
 const galleryHeaderRowHeight = 44.0;
 
+/// What a thumbnail should be stored and decoded at on this device, in device
+/// pixels. Independent of the window's width — see [GalleryLayout.tile].
+int galleryThumbnailPx(BuildContext context) {
+  final media = MediaQuery.of(context);
+  return GalleryLayout.of(media.size.width, media.size, media.devicePixelRatio)
+      .thumbnailPx;
+}
+
 /// Every number the grid is laid out from, worked out once (ADR 012).
 ///
 /// The point of gathering them is that they are not independent. The tile

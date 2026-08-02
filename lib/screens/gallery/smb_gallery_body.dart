@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/image_source.dart';
 import 'gallery_session.dart';
+import 'widgets/thumbnail_image.dart';
 import 'widgets/thumbnail_of.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
@@ -114,7 +115,7 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
               ? Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.memory(thumb.data, fit: BoxFit.cover),
+                    ThumbnailImage(thumb.data),
                     const Center(
                       child: Icon(Icons.play_circle_outline, color: Colors.white70, size: 48),
                     ),
@@ -122,8 +123,7 @@ class _SmbGalleryBodyState extends State<SmbGalleryBody> {
                 )
               : _buildIconTile(item.name, Icons.play_circle_outline, Colors.deepPurple))
           : switch (thumb) {
-              ThumbnailData(data: final d) =>
-                Image.memory(d, fit: BoxFit.cover),
+              ThumbnailData(data: final d) => ThumbnailImage(d),
               // Both say "no picture for this"; the difference is whether it
               // is worth asking again, which is the scheduler's business and
               // not something a reader can act on.

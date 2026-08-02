@@ -6,6 +6,7 @@ import '../../services/favorites/favorites_store.dart';
 import '../../services/sources/source_registry.dart';
 import '../../widgets/thumbnail_result.dart';
 import 'gallery_session.dart';
+import 'widgets/thumbnail_image.dart';
 import 'widgets/thumbnail_of.dart';
 import 'gallery_tab.dart';
 import 'gallery_uri.dart';
@@ -114,7 +115,7 @@ class _FavoritesGalleryBodyState extends State<FavoritesGalleryBody> {
     return GestureDetector(
       onTap: () => _openViewer(index),
       child: switch (thumb) {
-        ThumbnailData(data: final d) => Image.memory(d, fit: BoxFit.cover),
+        ThumbnailData(data: final d) => ThumbnailImage(d),
         // A favourite whose source is not connected this run has no thumbnail
         // to fetch, only whatever was cached; say which source it wants.
         ThumbnailFailed() => _buildIconTile(item),
