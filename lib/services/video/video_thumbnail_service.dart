@@ -28,14 +28,26 @@ class VideoThumbnailService {
   /// Capture one frame from the given video URL at 3 seconds.
   /// Returns the raw frame, or null if capture fails.
   /// Serialized: concurrent calls wait for the previous capture to finish.
-  Future<CapturedFrame?> capture(String url) async {
+  ///
+  /// [seekPrecisely] decides how the 3s mark is reached. A keyframe seek
+  /// (false) shows the nearest keyframe at once — but it trusts the
+  /// demuxer's keyframe flags, and ASF/AVI flags lie often enough that the
+  /// "keyframe" is a delta frame, which decodes without its reference into
+  /// coloured macroblock noise. A precise seek (true) decodes forward from
+  /// the keyframe to the target, so a lying flag heals along the way; it
+  /// costs the decode of everything in between (1.5-2s for a 3MP phone
+  /// video, which is why it is not simply always on). The caller knows the
+  /// container; MP4's keyframe list is an index (stss), not a flag, and can
+  /// be trusted.
+  Future<CapturedFrame?> capture(String url,
+      {required bool seekPrecisely}) async {
     // Wait for any in-progress capture
     while (_lock != null) {
       await _lock!.future;
     }
     _lock = Completer<void>();
     try {
-      return await _captureImpl(url);
+      return await _captureImpl(url, seekPrecisely);
     } finally {
       final lock = _lock;
       _lock = null;
@@ -43,11 +55,15 @@ class VideoThumbnailService {
     }
   }
 
-  Future<CapturedFrame?> _captureImpl(String url) async {
+  Future<CapturedFrame?> _captureImpl(String url, bool seekPrecisely) async {
     _ensurePlayer();
     final player = _player!;
 
     try {
+      final platform = player.platform;
+      if (platform is NativePlayer) {
+        await platform.setProperty('hr-seek', seekPrecisely ? 'yes' : 'no');
+      }
       // Opened paused: mpv seeks to `start` and decodes that one frame for
       // display, which is all a thumbnail needs. Playing (the old way) meant
       // waiting for the position to pass 2s, and seeks snap to keyframes —
@@ -99,13 +115,6 @@ class VideoThumbnailService {
         // No audio at all. The volume was already 0, but the sound was still
         // being decoded — and, over the SMB proxy, still being downloaded.
         unawaited(platform.setProperty('aid', 'no'));
-        // Keyframe seek. mpv's --start is a precise seek by default, which
-        // decodes and discards everything from the previous keyframe to the
-        // 3s mark — measured at 1.5-2s of CPU per video on the tablet, and
-        // the one capture that needed more than the retry window fell off it.
-        // A thumbnail does not care that the frame is exactly at 3s; the
-        // nearest keyframe before it arrives at once.
-        unawaited(platform.setProperty('hr-seek', 'no'));
       }
       player.setVolume(0);
       _player = player;
