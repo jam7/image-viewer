@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show Size;
 
@@ -18,6 +19,7 @@ import '../../utils/natural_sort.dart';
 import '../cache/cache_manager.dart';
 import '../video/smb_proxy_server.dart';
 import '../video/video_thumbnail_service.dart';
+import 'live_paths.dart';
 import 'image_source_provider.dart';
 import 'thumbnail_resize.dart';
 
@@ -46,7 +48,7 @@ class SmbSource extends ImageSourceProvider {
 
 
   /// Cached PDF file paths keyed by PDF source path.
-  final Map<String, String> _pdfFilePathCache = {};
+  final _pdfFilePathCache = LivePaths();
   /// Future cache to prevent duplicate concurrent PDF downloads.
   final Map<String, Future<String>> _pdfDownloadFutures = {};
 
@@ -529,9 +531,20 @@ class SmbSource extends ImageSourceProvider {
   /// Ensure PDF file is available on local disk. Returns file path.
   /// Uses Future cache to prevent duplicate concurrent downloads.
   Future<String> _ensurePdfFile(String pdfPath, String pdfCacheKey) {
-    // Check in-memory path cache (synchronous)
+    // Check in-memory path cache (synchronous). The file behind it can be
+    // deleted while the app runs -- clearing L2 from the settings screen does
+    // exactly that -- and a path is only worth handing back while it still
+    // names something, so [LivePaths] checks.
+    // Asked before the lookup, because the lookup is what drops a dead entry.
+    final remembered = _pdfFilePathCache.wasRemembered(pdfPath);
     final cachedPath = _pdfFilePathCache[pdfPath];
     if (cachedPath != null) return Future.value(cachedPath);
+    if (remembered) {
+      // We knew this file and now it is gone. Anything built from that path
+      // went with it: the open document is reading a name that no longer
+      // exists, and would fail a page at a time instead of once, here.
+      unawaited(_closePdfCache());
+    }
 
     // Use Future cache to prevent duplicate downloads.
     // The cleanup callback MUST NOT return Map.remove's result: the removed
