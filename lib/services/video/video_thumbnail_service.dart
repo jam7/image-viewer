@@ -17,6 +17,24 @@ final _log = Logger('VideoThumbnail');
 /// engine instead (`shrinkRawFrame`).
 typedef CapturedFrame = ({Uint8List bgra, int width, int height});
 
+/// The width and height of a raw frame [byteCount] bytes long.
+///
+/// mpv's screenshot honours the pixel aspect ratio: an anamorphic video
+/// (a 720x480 DVD-style file displayed as 720x540) comes back at its
+/// **display** size, not its storage size. The buffer's own dimensions are
+/// in the screenshot-raw reply, but media_kit discards them for
+/// `format: null`, so they are re-derived here and verified against the
+/// byte count — reading the buffer with the wrong height was worth two
+/// striped tiles before anyone noticed which videos had a PAR.
+///
+/// Null when no candidate matches; rows might be padded then, and guessing
+/// the height from a padded length picks wrong answers silently.
+(int, int)? frameSizeOf(int byteCount, {required int w, required int h, int? dw, int? dh}) {
+  if (dw != null && dh != null && byteCount == dw * dh * 4) return (dw, dh);
+  if (byteCount == w * h * 4) return (w, h);
+  return null;
+}
+
 /// Captures video thumbnails using media_kit.
 /// Reuses a single Player + VideoController across multiple captures.
 /// Serializes captures to prevent concurrent Player.open conflicts.
@@ -93,7 +111,14 @@ class VideoThumbnailService {
 
       if (_player != null) await player.stop();
       if (bytes == null) return null;
-      return (bgra: bytes, width: params.w!, height: params.h!);
+      final size = frameSizeOf(bytes.length,
+          w: params.w!, h: params.h!, dw: params.dw, dh: params.dh);
+      if (size == null) {
+        _log.warning('cannot size a ${bytes.length}-byte frame '
+            '(${params.w}x${params.h}, display ${params.dw}x${params.dh})');
+        return null;
+      }
+      return (bgra: bytes, width: size.$1, height: size.$2);
     } catch (e, st) {
       if (_player == null) {
         // Player was externally disposed (e.g. video playback started)
