@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -54,6 +54,7 @@ class KeyedFileStore {
   int get maxSizeBytes => _maxSizeBytes;
 
   /// Nothing before [init] answers anything: the guard subclasses share.
+  @protected
   bool get initialized => _initialized;
 
   /// [baseDir] overrides the app documents directory (tests only).
@@ -132,14 +133,14 @@ class KeyedFileStore {
     await _writeIndex();
   }
 
-  // --- サブクラス向け ---
-
+  @protected
   File fileFor(String key) {
     final hash = sha256.convert(utf8.encode(key)).toString();
     return File('${_dir.path}/$hash.bin');
   }
 
   /// The file for [key] is written and this many bytes long.
+  @protected
   void recordEntry(String key, int sizeBytes) {
     final now = DateTime.now();
     _entries[key] = CacheEntryMeta(
@@ -153,6 +154,7 @@ class KeyedFileStore {
 
   /// After a change the caller is awaiting. Writes now or schedules, by
   /// [indexDelay].
+  @protected
   Future<void> saveIndex() async {
     if (_indexDelay == null) {
       await _writeIndex();
