@@ -22,8 +22,8 @@ final _log = Logger('ThumbnailPool');
 /// this" is an answer, and forgetting it means asking the share again every
 /// time the tile is painted.
 class ThumbnailPool {
-  /// Roughly 1000 thumbnails at the size the app makes them (long edge 600px,
-  /// under 400KB, in practice tens of KB).
+  /// Roughly a thousand thumbnails at the size the app makes them: since
+  /// ADR 012 the long edge is the tile's own size, which is tens of KB each.
   static const defaultMaxBytes = 32 * 1024 * 1024;
 
   final int maxBytes;

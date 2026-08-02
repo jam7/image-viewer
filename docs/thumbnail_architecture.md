@@ -79,7 +79,7 @@ metadata: 10863 entries encoded in 127ms (1006KB)   ← 8ms 超の索引書き�
 
 | プレフィックス | 用途 |
 |---|---|
-| `thumb:<id>` | サムネイル (長辺 600px PNG) |
+| `thumb:<id>` | サムネイル (長辺はタイルの実寸、PNG。ADR 012) |
 | `full:<id>` | 表示用データ (画像/ZIP/PDF バイト) |
 
 サムネイル取得時は `thumb:` キーのみ検索。`full:` は検索しない (PDF/ZIP は

@@ -231,7 +231,7 @@ class ImageSource {
 
 | プレフィックス | 用途 |
 |---|---|
-| `thumb:<id>` | サムネイル (長辺 600px PNG) |
+| `thumb:<id>` | サムネイル (長辺はタイルの実寸、PNG。ADR 012) |
 | `full:<id>` | 表示用データ (画像/ZIP/PDF バイト) |
 
 ## SmbSource: PDF / ZIP の処理
